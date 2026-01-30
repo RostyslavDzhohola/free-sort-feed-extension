@@ -14,19 +14,26 @@ On any Instagram profile's Reels tab, the extension:
 
 This lets creators quickly spot which content "breaks out" relative to audience size.
 
-## Installation
+## Prerequisites
 
-### From source (developer mode)
+- [Node.js](https://nodejs.org/) (v18+)
+- [pnpm](https://pnpm.io/) package manager
 
-1. Clone this repo
-2. Open `chrome://extensions/` in Chrome
-3. Enable **Developer mode** (top-right toggle)
-4. Click **Load unpacked** and select the `porto/` directory
-5. The extension icon appears in your toolbar
+## Getting Started
 
-### From Chrome Web Store
+```bash
+# 1. Install dependencies
+pnpm install
 
-*(Coming soon)*
+# 2. Build the extension
+pnpm build
+
+# 3. Load in Chrome
+#    - Open chrome://extensions/
+#    - Enable "Developer mode" (top-right toggle)
+#    - Click "Load unpacked"
+#    - Select the dist/ folder
+```
 
 ## Usage
 
@@ -40,28 +47,78 @@ This lets creators quickly spot which content "breaks out" relative to audience 
 6. Use **Open** or **Copy link** buttons to save interesting Reels
 7. Click **Reset** to restore the original page
 
+## Development Workflow
+
+### Watch mode with hot reload
+
+```bash
+pnpm watch
+```
+
+This starts esbuild in watch mode. On every `.ts` file save:
+- esbuild rebuilds to `dist/` in ~20ms
+- A background service worker (`hot-reload.js`) auto-detects the change and reloads the extension
+
+The hot-reload service worker is **only included in watch mode** — production builds (`pnpm build`) do not include it.
+
+After the extension auto-reloads, you still need to **reopen the popup** or **refresh the Instagram tab** to see your changes.
+
+### Available commands
+
+| Command | Description |
+|---------|-------------|
+| `pnpm build` | Production build to `dist/` (no hot reload) |
+| `pnpm watch` | Watch mode + hot reload service worker |
+| `pnpm typecheck` | Type-check with `tsc --noEmit` |
+| `pnpm lint` | Run ESLint |
+| `pnpm clean` | Remove `dist/` |
+
+### Full check before committing
+
+```bash
+pnpm typecheck && pnpm lint && pnpm build
+```
+
+## Project Structure
+
+```
+src/
+├── popup.html          — Extension popup UI
+├── popup.ts            — Popup logic (tab detection, follower reading, script injection)
+├── injected.ts         — Core engine (scrolling, parsing, filtering, overlay)
+├── hot-reload.ts       — Dev-only: auto-reload service worker
+├── manifest.json       — Chrome Extension config (Manifest V3)
+├── types/
+│   ├── globals.d.ts    — Window.__reels5x_* type augmentation
+│   └── reel.ts         — ReelData, QualifyingReel interfaces
+└── shared/
+    └── parse-count.ts  — Shared parseCount() + formatCount()
+
+dist/                   — Build output (Chrome loads this)
+icons/                  — Extension icons (16, 48, 128px)
+esbuild.mjs             — Build script
+conductor.json          — Conductor workspace scripts
+```
+
+## Conductor Setup
+
+This project includes a `conductor.json` for use with [Conductor](https://conductor.build):
+
+- **Setup script** (`pnpm install && pnpm build`): Runs automatically when a new workspace is created — installs deps and produces a ready-to-load `dist/`
+- **Run script** (`pnpm watch`): Click the "Run" button in Conductor to start watch mode with hot reload
+- **Spotlight**: Use Conductor's Spotlight feature to sync workspace changes back to the repo root for testing. When spotlighted, changes are copied to the root directory in real-time. Turn off spotlight to restore the original state.
+
 ## Architecture
 
-See [Agents.md](./Agents.md) for a detailed breakdown of the extension's internal components and how they communicate.
+See [Agents.md](./Agents.md) for a detailed breakdown of the extension's internal components.
 
-**Files:**
-
-| File | Purpose |
-|------|---------|
-| `manifest.json` | Chrome Extension config (Manifest V3) |
-| `popup.html` | Popup UI — button, stats display, styling |
-| `popup.js` | Popup logic — tab detection, follower reading, script injection |
-| `injected.js` | Core engine — scrolling, parsing, filtering, sorting, overlay rendering |
-| `icons/` | Extension icons (16px, 48px, 128px) |
-| `plan.md` | Original project specification |
-
-## Technical Details
-
-- **Manifest V3** compliant
-- **Zero dependencies** — vanilla JavaScript, no build step
-- **Minimal permissions** — only `activeTab` and `scripting`
-- **100% local** — no data leaves your browser, no accounts, no backend
-- **Shadow DOM** overlay to avoid CSS conflicts with Instagram
+**Key design decisions:**
+- **TypeScript** with **esbuild** — strict types, fast builds, source maps
+- **IIFE output** — required for Chrome extension popup scripts and `executeScript` injection
+- **No frameworks** — vanilla TypeScript, zero runtime dependencies
+- **Manifest V3** with minimal permissions (`activeTab` + `scripting`)
+- **Shadow DOM** overlay for CSS isolation from Instagram
+- **100% local** — no data leaves the browser
 
 ### Follower Detection (3 fallback strategies)
 
@@ -94,15 +151,6 @@ Handles `2,345` | `12.3K` | `1.2M` | `0.9B` and locale variations.
 - No cross-device sync
 - Works only on Chrome/Chromium browsers
 - Requires the Reels grid and counts to be visible (respects Instagram's login walls)
-
-## Development
-
-No build step required. Edit the JS/HTML files directly and reload the extension in `chrome://extensions/`.
-
-To test changes:
-1. Make edits to source files
-2. Click the refresh icon on the extension card in `chrome://extensions/`
-3. Navigate to an Instagram Reels page and test
 
 ## License
 

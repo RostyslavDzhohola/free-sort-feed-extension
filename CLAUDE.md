@@ -2,22 +2,50 @@
 
 ## Project Overview
 
-Chrome extension (Manifest V3) that filters Instagram Reels by the "5x rule": shows only Reels with `views >= followers * 5`. Vanilla JS, no build step, zero dependencies.
+Chrome extension (Manifest V3) that filters Instagram Reels by the "5x rule": shows only Reels with `views >= followers * 5`. TypeScript with esbuild, no frameworks, minimal dependencies (dev-only).
 
 ## File Map
 
-- `manifest.json` — MV3 config, permissions: `activeTab` + `scripting`
-- `popup.html` + `popup.js` — Extension popup UI and logic
-- `injected.js` — Core engine injected into Instagram pages (24KB, the main file)
+- `src/manifest.json` — MV3 config, permissions: `activeTab` + `scripting`
+- `src/popup.html` + `src/popup.ts` — Extension popup UI and logic
+- `src/injected.ts` — Core engine injected into Instagram pages (the main file)
+- `src/types/globals.d.ts` — Window global augmentation (`__reels5x_active`, `__reels5x_reset`)
+- `src/types/reel.ts` — Shared interfaces (`ReelData`, `QualifyingReel`)
+- `src/shared/parse-count.ts` — Shared `parseCount()` + `formatCount()` utilities
 - `icons/` — Extension icons
+- `dist/` — Build output (Chrome loads this as unpacked extension)
+- `esbuild.mjs` — Build script (compiles TS → IIFE JS bundles)
 - `plan.md` — Original project specification
 
 ## Key Architecture Rules
 
-- **No build step.** Vanilla JS only. No bundler, no npm, no frameworks.
-- **No external dependencies.** Everything is self-contained.
+- **TypeScript with esbuild.** Source in `src/`, compiled to `dist/` via `pnpm build`.
+- **No frameworks.** Vanilla TypeScript only. No React, no UI frameworks.
+- **Dev-only dependencies.** `typescript`, `esbuild`, `chrome-types`, `eslint`. Zero runtime dependencies.
 - **Minimal permissions.** Only `activeTab` and `scripting`. No network access.
 - **No data leaves the browser.** 100% local processing.
+
+## Package Manager
+
+- **Use `pnpm`** — the preferred package manager for this project. Always use `pnpm` instead of `npm` or `yarn`.
+
+## Build Commands
+
+- `pnpm build` — Compile TS to `dist/` (esbuild, IIFE format, source maps)
+- `pnpm watch` — Watch mode for development
+- `pnpm typecheck` — Type check with `tsc --noEmit` (esbuild does not type-check)
+- `pnpm lint` — ESLint
+- `pnpm clean` — Remove `dist/`
+
+## TypeScript Conventions
+
+- **Strict mode**: `strict: true` + `noUncheckedIndexedAccess` in tsconfig
+- **Target**: ES2020 (Chrome extensions run in modern Chromium)
+- **Output format**: IIFE (required — popup loads via `<script>`, injected.js via `executeScript`)
+- **Chrome types**: Provided by `chrome-types` npm package (ambient `chrome.*` APIs)
+- **Shared code**: `src/shared/` contains utilities imported by both entry points. esbuild inlines imports into each IIFE bundle.
+- **Self-contained constraint**: `readFollowersFromPage()` in `popup.ts` is injected via `executeScript({ func })` and MUST remain self-contained — no imports, no closures. Its inline `parseCount()` intentionally duplicates `src/shared/parse-count.ts`.
+- **Window globals**: Typed via `src/types/globals.d.ts` augmentation of the `Window` interface.
 
 ## Coding Patterns and Conventions
 
