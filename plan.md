@@ -25,6 +25,13 @@
 - [ ] Let user choose how many reels to scan (e.g. 50, 100, 200)
 - [ ] Time-based filtering — only show reels from last 3 / 6 / 12 months
 
+### Minimum Views Filter
+- [ ] Separate standalone filter (independent of the 5x rule)
+- [ ] Let user specify a minimum view count threshold (e.g. 10,000)
+- [ ] Show only Reels with views >= the user-specified threshold
+- [ ] Add input field to popup UI for entering the minimum views value
+- [ ] Can be used on its own without running the 5x outlier filter
+
 ### Sorting Options
 - [ ] Sort by number of comments
 - [ ] Sort by number of likes
