@@ -6,7 +6,7 @@ Chrome extension (Manifest V3) that filters Instagram Reels by the "5x rule": sh
 
 ## File Map
 
-- `src/manifest.json` — MV3 config, permissions: `activeTab` + `scripting` + `sidePanel`
+- `src/manifest.json` — MV3 config, permissions: `activeTab` + `scripting` + `sidePanel` + `storage` + `webNavigation`
 - `src/sidepanel.html` + `src/sidepanel.ts` — Side panel UI and logic (replaces popup)
 - `src/injected.ts` — Core engine injected into Instagram pages (zero on-page UI)
 - `src/background.ts` — Background service worker (opens side panel on icon click)
@@ -26,7 +26,7 @@ Chrome extension (Manifest V3) that filters Instagram Reels by the "5x rule": sh
 - **TypeScript with esbuild.** Source in `src/`, compiled to `dist/` via `pnpm build`.
 - **No frameworks.** Vanilla TypeScript only. No React, no UI frameworks.
 - **Dev-only dependencies.** `typescript`, `esbuild`, `chrome-types`, `eslint`. Zero runtime dependencies.
-- **Minimal permissions.** Only `activeTab`, `scripting`, and `sidePanel`. No network access.
+- **Minimal permissions.** `activeTab`, `scripting`, `sidePanel`, `storage` (persist scan settings), and `webNavigation` (detect SPA route changes). No network access.
 - **No data leaves the browser.** 100% local processing.
 
 ## Package Manager
