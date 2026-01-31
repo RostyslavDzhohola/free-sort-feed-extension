@@ -4,11 +4,8 @@
   "version": "1.0.0",
   "description": "Filter Instagram Reels to show only outliers with 5× or more views relative to followers.",
   "permissions": [
-    "activeTab",
     "scripting",
-    "sidePanel",
-    "storage",
-    "webNavigation"
+    "sidePanel"
   ],
   "host_permissions": [
     "*://*.instagram.com/*"

@@ -35,8 +35,8 @@ function init(): void {
   function updateState(state: OutliersState): void {
     window.__outliers_state = state;
     try {
-      chrome.runtime.sendMessage({ type: "outliers:state", state }, () => {
-        void chrome.runtime.lastError;
+      chrome.runtime.sendMessage({ type: "outliers:state", state }).catch(function () {
+        // Side panel may not be open — non-fatal
       });
     } catch {
       // Side panel may not be open — non-fatal
@@ -46,8 +46,8 @@ function init(): void {
   function emitReset(): void {
     window.__outliers_state = undefined;
     try {
-      chrome.runtime.sendMessage({ type: "outliers:reset" }, () => {
-        void chrome.runtime.lastError;
+      chrome.runtime.sendMessage({ type: "outliers:reset" }).catch(function () {
+        // Side panel may not be open — non-fatal
       });
     } catch {
       // Side panel may not be open — non-fatal
