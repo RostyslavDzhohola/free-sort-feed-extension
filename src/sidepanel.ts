@@ -520,17 +520,26 @@ async function handleNavigation(details: { tabId: number; url: string }): Promis
 
   lastKnownProfile = newProfile;
 
-  // Clear stale persisted state on the page
+  // Fully reset the injected script (stops observer, unhides tiles, removes CSS)
   try {
     await chrome.scripting.executeScript({
       target: { tabId: details.tabId },
       func: function () {
-        (window as unknown as { __outliers_state?: unknown }).__outliers_state = undefined;
-        (window as unknown as { __outliers_active?: boolean }).__outliers_active = false;
+        const w = window as unknown as {
+          __outliers_reset?: () => void;
+          __outliers_state?: unknown;
+          __outliers_active?: boolean;
+        };
+        if (typeof w.__outliers_reset === "function") {
+          w.__outliers_reset();
+        }
+        // Clear in case injected.ts was never loaded (no reset function yet)
+        w.__outliers_state = undefined;
+        w.__outliers_active = false;
       },
     });
   } catch {
-    // Non-fatal
+    // Non-fatal — tab may have navigated to a non-injectable page
   }
 
   hideProgress();
