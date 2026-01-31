@@ -1,4 +1,4 @@
-# CLAUDE.md — Project Memory for Reels 5x Outlier Filter
+# CLAUDE.md — Project Memory for Outliers
 
 ## Project Overview
 
@@ -6,15 +6,19 @@ Chrome extension (Manifest V3) that filters Instagram Reels by the "5x rule": sh
 
 ## File Map
 
-- `src/manifest.json` — MV3 config, permissions: `activeTab` + `scripting`
-- `src/popup.html` + `src/popup.ts` — Extension popup UI and logic
-- `src/injected.ts` — Core engine injected into Instagram pages (the main file)
-- `src/types/globals.d.ts` — Window global augmentation (`__reels5x_active`, `__reels5x_reset`)
-- `src/types/reel.ts` — Shared interfaces (`ReelData`, `QualifyingReel`)
+- `src/manifest.json` — MV3 config, permissions: `activeTab` + `scripting` + `sidePanel` + `storage` + `webNavigation`
+- `src/sidepanel.html` + `src/sidepanel.ts` — Side panel UI and logic (replaces popup)
+- `src/injected.ts` — Core engine injected into Instagram pages (zero on-page UI)
+- `src/background.ts` — Background service worker (opens side panel on icon click)
+- `src/types/globals.d.ts` — Window global augmentation (`__outliers_active`, `__outliers_reset`, `__outliers_state`)
+- `src/types/state.ts` — Shared state/message types (`OutliersState`, `OutliersEntry`, `OutliersMessage`)
+- `src/types/reel.ts` — Shared interfaces (`ReelData`)
 - `src/shared/parse-count.ts` — Shared `parseCount()` + `formatCount()` utilities
 - `icons/` — Extension icons
 - `dist/` — Build output (Chrome loads this as unpacked extension)
+- `src/hot-reload.ts` — Service worker for watch-mode hot reloading (dev only)
 - `esbuild.mjs` — Build script (compiles TS → IIFE JS bundles)
+- `conductor.json` — Conductor integration config (setup + run scripts)
 - `plan.md` — Original project specification
 
 ## Key Architecture Rules
@@ -22,7 +26,7 @@ Chrome extension (Manifest V3) that filters Instagram Reels by the "5x rule": sh
 - **TypeScript with esbuild.** Source in `src/`, compiled to `dist/` via `pnpm build`.
 - **No frameworks.** Vanilla TypeScript only. No React, no UI frameworks.
 - **Dev-only dependencies.** `typescript`, `esbuild`, `chrome-types`, `eslint`. Zero runtime dependencies.
-- **Minimal permissions.** Only `activeTab` and `scripting`. No network access.
+- **Minimal permissions.** `activeTab`, `scripting`, `sidePanel`, `storage` (persist scan settings), and `webNavigation` (detect SPA route changes). No network access.
 - **No data leaves the browser.** 100% local processing.
 
 ## Package Manager
@@ -31,27 +35,28 @@ Chrome extension (Manifest V3) that filters Instagram Reels by the "5x rule": sh
 
 ## Build Commands
 
-- `pnpm build` — Compile TS to `dist/` (esbuild, IIFE format, source maps)
-- `pnpm watch` — Watch mode for development
+- `pnpm build` — Compile TS to `dist/` (esbuild, IIFE format, source maps). Also copies static assets (`sidepanel.html`, `manifest.json`, icons) to `dist/`.
+- `pnpm watch` — Watch mode with hot-reload service worker (`hot-reload.ts`) for automatic extension reloading
 - `pnpm typecheck` — Type check with `tsc --noEmit` (esbuild does not type-check)
 - `pnpm lint` — ESLint
 - `pnpm clean` — Remove `dist/`
+- **Pre-commit check:** `pnpm typecheck && pnpm lint && pnpm build`
 
 ## TypeScript Conventions
 
 - **Strict mode**: `strict: true` + `noUncheckedIndexedAccess` in tsconfig
 - **Target**: ES2020 (Chrome extensions run in modern Chromium)
-- **Output format**: IIFE (required — popup loads via `<script>`, injected.js via `executeScript`)
+- **Output format**: IIFE (required — side panel loads via `<script>`, injected.js via `executeScript`)
 - **Chrome types**: Provided by `chrome-types` npm package (ambient `chrome.*` APIs)
-- **Shared code**: `src/shared/` contains utilities imported by both entry points. esbuild inlines imports into each IIFE bundle.
-- **Self-contained constraint**: `readFollowersFromPage()` in `popup.ts` is injected via `executeScript({ func })` and MUST remain self-contained — no imports, no closures. Its inline `parseCount()` intentionally duplicates `src/shared/parse-count.ts`.
+- **Shared code**: `src/shared/` contains utilities imported by multiple entry points. `src/types/state.ts` contains the shared state/message types. esbuild inlines imports into each IIFE bundle.
+- **Self-contained constraint**: `readFollowersFromPage()` in `sidepanel.ts` is injected via `executeScript({ func })` and MUST remain self-contained — no imports, no closures. Its inline `parseCount()` intentionally duplicates `src/shared/parse-count.ts`.
 - **Window globals**: Typed via `src/types/globals.d.ts` augmentation of the `Window` interface.
 
 ## Coding Patterns and Conventions
 
 ### Chrome Extension Specifics
-- Functions passed to `chrome.scripting.executeScript` must be **self-contained** (no closures over popup variables). This is a hard Chrome API constraint.
-- `executeScript` resolves when the script *starts* executing, not when its internal logic completes. Handle failures gracefully in popup.
+- Functions passed to `chrome.scripting.executeScript` must be **self-contained** (no closures over side panel variables). This is a hard Chrome API constraint.
+- `executeScript` resolves when the script *starts* executing, not when its internal logic completes. Handle failures gracefully in the side panel.
 - Use **granular try-catch blocks** — avoid broad catches that hide root causes. Split to isolate potential failures, especially with async operations.
 - Use `try-catch-finally` for event handlers that modify UI state. The `finally` block guarantees cleanup (e.g., re-enabling buttons) regardless of errors.
 
@@ -67,13 +72,14 @@ Chrome extension (Manifest V3) that filters Instagram Reels by the "5x rule": sh
 
 ### Error Handling
 - Provide **specific error messages** (e.g., "Open an Instagram profile page first.") not generic "Something went wrong."
-- A **single `resetAll()` function** handles all cleanup: removes overlay, unhides tiles, stops observers, cleans CSS, restores page state. Never do manual partial cleanup.
+- A **single `resetAll()` function** handles all cleanup: unhides tiles, stops observers, cleans CSS, clears `window.__outliers_state`, emits reset message, restores page state. Never do manual partial cleanup.
 - **Silent error recovery is bad.** Errors in critical loops should be logged or surfaced to the user.
 
 ### UI Patterns
 - Always keep buttons enabled after operations complete (use `finally`).
 - Show progress indicators during long-running operations (scrolling, scanning).
-- Overlay uses **Shadow DOM** for CSS isolation from Instagram.
+- All UI lives in the **Chrome side panel** — zero on-page overlays. The injected script communicates results via `chrome.runtime.sendMessage` and `window.__outliers_state`.
+- Side panel rehydrates from `window.__outliers_state` when opened, so closing/reopening preserves results.
 
 ## Performance Guardrails
 

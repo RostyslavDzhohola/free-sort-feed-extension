@@ -1,4 +1,4 @@
-# Reels 5x Outlier Filter
+# Outliers
 
 A free Chrome extension that helps Instagram creators identify "outlier" Reels — videos whose views significantly exceed the creator's follower count.
 
@@ -9,10 +9,10 @@ On any Instagram profile's Reels tab, the extension:
 1. Reads the creator's **follower count** from the profile page
 2. Computes a threshold: `followers x 5`
 3. Scrolls through all Reels and reads their **view counts**
-4. **Hides** Reels below the threshold
-5. Shows a **sorted overlay panel** of qualifying Reels (highest views first)
+4. **Hides** Reels below the threshold on the page
+5. Shows a **sorted results list** in Chrome's side panel (highest views first)
 
-This lets creators quickly spot which content "breaks out" relative to audience size.
+No on-page overlays — all UI lives in the side panel. Closing and reopening the panel preserves your results until you reset.
 
 ## Prerequisites
 
@@ -38,14 +38,15 @@ pnpm build
 ## Usage
 
 1. Navigate to an Instagram profile's **Reels** tab (e.g. `instagram.com/username/reels/`)
-2. Click the extension icon in your toolbar
-3. The popup shows the detected **follower count** and **5x threshold**
-4. Click **Run 5x Filter**
-5. The extension auto-scrolls through Reels, then:
-   - Hides non-qualifying tiles
-   - Shows a floating panel with sorted outliers, their view counts, and `views / followers` ratio
+2. Click the extension icon in your toolbar — a **side panel** opens
+3. The side panel shows the detected **follower count** and **5x threshold**
+4. Click **Run Outliers Scan**
+5. The extension auto-scrolls through Reels, showing live progress in the side panel, then:
+   - Hides non-qualifying tiles on the page
+   - Shows sorted outliers with view counts and `views / followers` ratio in the side panel
 6. Use **Open** or **Copy link** buttons to save interesting Reels
-7. Click **Reset** to restore the original page
+7. Close and reopen the side panel — your results are preserved
+8. Click **Reset** to restore the original page and clear results
 
 ## Development Workflow
 
@@ -61,7 +62,7 @@ This starts esbuild in watch mode. On every `.ts` file save:
 
 The hot-reload service worker is **only included in watch mode** — production builds (`pnpm build`) do not include it.
 
-After the extension auto-reloads, you still need to **reopen the popup** or **refresh the Instagram tab** to see your changes.
+After the extension auto-reloads, you still need to **reopen the side panel** or **refresh the Instagram tab** to see your changes.
 
 ### Available commands
 
@@ -83,14 +84,16 @@ pnpm typecheck && pnpm lint && pnpm build
 
 ```
 src/
-├── popup.html          — Extension popup UI
-├── popup.ts            — Popup logic (tab detection, follower reading, script injection)
-├── injected.ts         — Core engine (scrolling, parsing, filtering, overlay)
+├── sidepanel.html      — Side panel UI
+├── sidepanel.ts        — Side panel logic (tab detection, follower reading, script injection, results display)
+├── background.ts       — Background service worker (opens side panel on icon click)
+├── injected.ts         — Core engine (scrolling, parsing, filtering — zero on-page UI)
 ├── hot-reload.ts       — Dev-only: auto-reload service worker
 ├── manifest.json       — Chrome Extension config (Manifest V3)
 ├── types/
-│   ├── globals.d.ts    — Window.__reels5x_* type augmentation
-│   └── reel.ts         — ReelData, QualifyingReel interfaces
+│   ├── globals.d.ts    — Window.__outliers_* type augmentation
+│   ├── state.ts        — OutliersState, OutliersEntry, OutliersMessage types
+│   └── reel.ts         — ReelData interface
 └── shared/
     └── parse-count.ts  — Shared parseCount() + formatCount()
 
@@ -116,8 +119,8 @@ See [Agents.md](./Agents.md) for a detailed breakdown of the extension's interna
 - **TypeScript** with **esbuild** — strict types, fast builds, source maps
 - **IIFE output** — required for Chrome extension popup scripts and `executeScript` injection
 - **No frameworks** — vanilla TypeScript, zero runtime dependencies
-- **Manifest V3** with minimal permissions (`activeTab` + `scripting`)
-- **Shadow DOM** overlay for CSS isolation from Instagram
+- **Manifest V3** with minimal permissions (`activeTab` + `scripting` + `sidePanel`)
+- **Chrome Side Panel** for persistent UI — no on-page overlays
 - **100% local** — no data leaves the browser
 
 ### Follower Detection (3 fallback strategies)
@@ -155,3 +158,11 @@ Handles `2,345` | `12.3K` | `1.2M` | `0.9B` and locale variations.
 ## License
 
 Free to use.
+
+---
+
+## PS
+
+The mascot icon for this extension was generated using a custom Claude Code skill (`snapai-icon-generator`) that wraps the [SnapAI CLI](https://codewithbeto.dev/tools/snapAI). The skill lets you describe what you want in natural language, and Claude crafts an optimized prompt, selects the right model/style/quality options, and runs the CLI — all from within your coding environment. It's been very useful for quickly iterating on icon designs without leaving the terminal.
+
+I'd like to publish this skill to the Claude Code skills marketplace so others can use it too. If you know how to do that, or if Anthropic has published a guide for submitting community skills, please share!

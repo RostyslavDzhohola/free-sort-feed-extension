@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 20px;
+      background: #fafafa;
+      color: #262626;
+    }
+
+    /* ── Header ───────────────────────────────────── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .header .subtitle {
+      font-size: 12px;
+      color: #8e8e8e;
+    }
+    .header .mascot {
+      width: 48px;
+      height: 48px;
+      border-radius: 10px;
+      flex-shrink: 0;
+    }
+
+    /* ── Stats card ───────────────────────────────── */
+    .stats {
+      background: #fff;
+      border: 1px solid #efefef;
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 0;
+    }
+    .stat-label {
+      font-size: 13px;
+      color: #8e8e8e;
+    }
+    .stat-value {
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .stat-value.followers { color: #262626; }
+    .stat-value.threshold { color: #0095f6; }
+    .divider {
+      height: 1px;
+      background: #efefef;
+      margin: 6px 0;
+    }
+
+    /* ── Status / info messages ───────────────────── */
+    .status-msg {
+      text-align: center;
+      padding: 12px 0;
+      font-size: 13px;
+      color: #8e8e8e;
+    }
+    .status-msg.error {
+      color: #ed4956;
+    }
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid #dbdbdb;
+      border-top-color: #0095f6;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Buttons ──────────────────────────────────── */
+    .controls {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    button {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.85; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    #run-btn {
+      background: #0095f6;
+      color: #fff;
+    }
+    #reset-btn {
+      background: #ed4956;
+      color: #fff;
+      display: none;
+    }
+    #stop-btn {
+      background: #ed4956;
+      color: #fff;
+      display: none;
+    }
+
+    /* ── Progress ─────────────────────────────────── */
+    #progress-area {
+      display: none;
+      margin-bottom: 16px;
+    }
+    .progress-bar-track {
+      height: 4px;
+      background: #efefef;
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: #0095f6;
+      border-radius: 2px;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    .progress-text {
+      font-size: 12px;
+      color: #8e8e8e;
+      text-align: center;
+    }
+
+    /* ── Results ──────────────────────────────────── */
+    #results-area {
+      display: none;
+    }
+    .results-header {
+      font-size: 14px;
+      font-weight: 700;
+      color: #262626;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #efefef;
+    }
+    .results-meta {
+      font-size: 12px;
+      color: #8e8e8e;
+      font-weight: 400;
+    }
+    .results-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+    .result-item {
+      display: flex;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid #efefef;
+      gap: 10px;
+    }
+    .result-item:last-child { border-bottom: none; }
+    .result-rank {
+      font-size: 14px;
+      font-weight: 700;
+      color: #8e8e8e;
+      min-width: 28px;
+    }
+    .result-info { flex: 1; min-width: 0; }
+    .result-views {
+      font-size: 14px;
+      font-weight: 600;
+      color: #262626;
+    }
+    .result-ratio {
+      font-size: 12px;
+      color: #0095f6;
+    }
+    .result-actions {
+      display: flex;
+      gap: 6px;
+    }
+    .btn-sm {
+      padding: 5px 10px;
+      border: 1px solid #dbdbdb;
+      border-radius: 6px;
+      background: #fff;
+      font-size: 12px;
+      cursor: pointer;
+      color: #262626;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .btn-sm:hover { background: #fafafa; }
+    .btn-sm.open { background: #0095f6; color: #fff; border-color: #0095f6; }
+    .empty-msg {
+      text-align: center;
+      padding: 20px 0;
+      font-size: 13px;
+      color: #8e8e8e;
+    }
+
+    /* ── Scan limit ──────────────────────────────── */
+    #scan-limit-area {
+      margin-bottom: 16px;
+    }
+    .scan-limit-label {
+      display: block;
+      font-size: 13px;
+      color: #8e8e8e;
+      margin-bottom: 8px;
+    }
+    .scan-limit-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .preset-buttons {
+      display: flex;
+      gap: 4px;
+    }
+    .preset-btn {
+      flex: 1;
+      padding: 6px 0;
+      border: 1px solid #dbdbdb;
+      border-radius: 6px;
+      background: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      color: #262626;
+      transition: background 0.15s, color 0.15s;
+    }
+    .preset-btn:hover { background: #f0f0f0; }
+    .preset-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .preset-btn.active {
+      background: #0095f6;
+      color: #fff;
+      border-color: #0095f6;
+    }
+    .scan-limit-input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px dashed #c7c7c7;
+      border-radius: 8px;
+      background: #f5f5f5;
+      font-size: 13px;
+      font-weight: 400;
+      color: #262626;
+      text-align: center;
+      outline: none;
+    }
+    .scan-limit-input::placeholder {
+      color: #b0b0b0;
+      font-style: italic;
+    }
+    .scan-limit-input:focus {
+      border-color: #0095f6;
+      border-style: solid;
+      background: #fff;
+    }
+    .scan-limit-input:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-text">
+      <h1>Outliers</h1>
+      <div class="subtitle">Find viral outlier Reels</div>
+    </div>
+    <img src="icons/icon128.png" alt="Outliers mascot" class="mascot">
+  </div>
+
+  <div id="stats-area">
+    <div class="status-msg">
+      <span class="spinner"></span>Reading profile&hellip;
+    </div>
+  </div>
+
+  <div id="scan-limit-area">
+    <label class="scan-limit-label">Scan limit</label>
+    <div class="scan-limit-controls">
+      <div class="preset-buttons">
+        <button class="preset-btn" data-limit="50">50</button>
+        <button class="preset-btn" data-limit="100">100</button>
+        <button class="preset-btn" data-limit="200">200</button>
+        <button class="preset-btn" data-limit="500">500</button>
+        <button class="preset-btn active" data-limit="all">All</button>
+      </div>
+      <input type="number" id="scan-limit-input" class="scan-limit-input" placeholder="Custom limit…" min="1" step="1" />
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="run-btn" disabled>Run Outliers Scan</button>
+    <button id="stop-btn">Stop</button>
+    <button id="reset-btn">Reset</button>
+  </div>
+
+  <div id="progress-area">
+    <div class="progress-bar-track">
+      <div class="progress-bar-fill" id="progress-fill"></div>
+    </div>
+    <div class="progress-text" id="progress-text">Scanning&hellip;</div>
+  </div>
+
+  <div id="results-area">
+    <div class="results-header">
+      Outliers <span class="results-meta" id="results-meta"></span>
+    </div>
+    <div class="results-list" id="results-list"></div>
+  </div>
+
+  <p id="status" class="status-msg"></p>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

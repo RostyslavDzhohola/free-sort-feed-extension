@@ -149,7 +149,7 @@ async function init(): Promise<void> {
       const activeResult = await chrome.scripting.executeScript({
         target: { tabId: cachedTabId },
         func: function () {
-          return !!window.__reels5x_active;
+          return !!window.__outliers_active;
         },
       });
       if (activeResult?.[0]?.result) {
@@ -211,8 +211,8 @@ btn.addEventListener("click", async function () {
         await chrome.scripting.executeScript({
           target: { tabId: tabId },
           func: function () {
-            if (typeof window.__reels5x_reset === "function") {
-              window.__reels5x_reset();
+            if (typeof window.__outliers_reset === "function") {
+              window.__outliers_reset();
             }
           },
         });
@@ -220,7 +220,7 @@ btn.addEventListener("click", async function () {
         /* tab may be closed — still reset local state */
       }
       isActive = false;
-      btn.textContent = "Run 5\u00d7 Filter";
+      btn.textContent = "Run Outliers Scan";
       btn.classList.remove("reset");
       statusEl.textContent = "Filter removed.";
     } else {

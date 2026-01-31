@@ -1,11 +1,18 @@
-// Hot-reload service worker for development only.
+// Hot-reload helper for development only.
 // Polls dist/ files for changes and calls chrome.runtime.reload() when detected.
-// This file is only included in the build when using `pnpm watch`.
+// Started by background.ts and sidepanel.ts in watch mode.
 
 const POLL_INTERVAL_MS = 1000;
+let started = false;
 
 async function getFileTimestamps(): Promise<string> {
-  const files = ["popup.js", "injected.js", "popup.html"];
+  const files = [
+    "sidepanel.js",
+    "injected.js",
+    "background.js",
+    "sidepanel.html",
+    "manifest.json",
+  ];
   const timestamps: string[] = [];
 
   for (const file of files) {
@@ -39,5 +46,10 @@ async function checkForChanges(): Promise<void> {
   }
 }
 
-setInterval(checkForChanges, POLL_INTERVAL_MS);
-console.log("[hot-reload] Watching for changes...");
+export function startHotReload(): void {
+  if (started) return;
+  started = true;
+  void checkForChanges();
+  setInterval(checkForChanges, POLL_INTERVAL_MS);
+  console.log("[hot-reload] Watching for changes...");
+}

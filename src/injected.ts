@@ -1,26 +1,58 @@
-import { parseCount, formatCount } from "./shared/parse-count";
+import { parseCount } from "./shared/parse-count";
 import type { ReelData } from "./types/reel";
+import type { OutliersState, OutliersEntry } from "./types/state";
 
 // esbuild wraps this file in an IIFE, so all top-level code is scoped.
 // We use an init() function with a double-injection guard.
 
 function init(): void {
-  if (window.__reels5x_active) return;
-  window.__reels5x_active = true;
+  console.log("[outliers] init() called, __outliers_active:", window.__outliers_active);
+  if (window.__outliers_active) {
+    console.log("[outliers] Double-injection guard triggered — skipping init");
+    return;
+  }
+  window.__outliers_active = true;
 
   let _runGeneration = 0;
 
+  // Read scan limit set by side panel (null = unlimited)
+  const SCAN_LIMIT: number | null = window.__outliers_scan_limit ?? null;
+  console.log("[outliers] SCAN_LIMIT:", SCAN_LIMIT);
+
   // ── Constants ──────────────────────────────────────────────────────────
   const MULTIPLIER = 5;
-  const HIDDEN_CLASS = "reels5x-hidden";
-  const OVERLAY_ID = "reels5x-overlay";
+  const HIDDEN_CLASS = "outliers-hidden";
   const SCROLL_STEP_PX = 600;
   const SCROLL_WAIT_MS = 800;
   const MAX_SCROLL_ATTEMPTS = 500; // safety cap
+  const REEL_HREF_RE = /\/reel(s)?\/[^/?#]+/i;
 
   // ── State ──────────────────────────────────────────────────────────────
   let _hideObserver: MutationObserver | null = null;
   let _qualifyingHrefs: Set<string> | null = null;
+
+  // ── State management + messaging ──────────────────────────────────────
+  function updateState(state: OutliersState): void {
+    window.__outliers_state = state;
+    try {
+      chrome.runtime.sendMessage({ type: "outliers:state", state }, () => {
+        void chrome.runtime.lastError;
+      });
+    } catch {
+      // Side panel may not be open — non-fatal
+    }
+  }
+
+  function emitReset(): void {
+    window.__outliers_state = undefined;
+    try {
+      chrome.runtime.sendMessage({ type: "outliers:reset" }, () => {
+        void chrome.runtime.lastError;
+      });
+    } catch {
+      // Side panel may not be open — non-fatal
+    }
+  }
 
   // ── Page detection ─────────────────────────────────────────────────────
   function isReelsPage(): boolean {
@@ -32,7 +64,6 @@ function init(): void {
   }
 
   // ── SVG classification ─────────────────────────────────────────────────
-  // Distinguish play (triangle) icons from heart (like) icons
   function isHeartSvg(svg: SVGSVGElement): boolean {
     const label = (svg.getAttribute("aria-label") ?? "").toLowerCase();
     if (/like|heart|unlik/.test(label)) return true;
@@ -41,7 +72,6 @@ function init(): void {
       : "";
     if (/like|heart|unlik/.test(parentLabel)) return true;
 
-    // Check SVG path data — hearts have curved paths (C/c/Q/q commands)
     const paths = svg.querySelectorAll("path");
     for (let i = 0; i < paths.length; i++) {
       const d = paths[i]?.getAttribute("d") ?? "";
@@ -59,7 +89,6 @@ function init(): void {
       : "";
     if (/play|view|video|watch|reel/.test(parentLabel)) return true;
 
-    // Play icons are typically simple triangles (polygon) or short paths
     const polys = svg.querySelectorAll("polygon");
     if (polys.length > 0) return true;
     const paths = svg.querySelectorAll("path");
@@ -87,9 +116,13 @@ function init(): void {
     return NaN;
   }
 
+  function isReelPermalinkHref(href: string | null): href is string {
+    if (!href) return false;
+    return REEL_HREF_RE.test(href);
+  }
+
   // ── Follower extraction ────────────────────────────────────────────────
   function getFollowerCount(): number {
-    // Strategy 1 (primary): DOM — followers link contains the exact count
     const followerLinks = document.querySelectorAll('a[href*="/followers"]');
     for (let i = 0; i < followerLinks.length; i++) {
       const link = followerLinks[i]!;
@@ -117,7 +150,6 @@ function init(): void {
       }
     }
 
-    // Strategy 2 (fallback): header text containing "followers"
     const headerSection = document.querySelector("header section");
     if (headerSection) {
       const hSpans = headerSection.querySelectorAll("span");
@@ -133,7 +165,6 @@ function init(): void {
       }
     }
 
-    // Strategy 3 (last resort): meta og:description — can be stale/rounded
     const meta = document.querySelector('meta[property="og:description"]');
     if (meta) {
       const content = meta.getAttribute("content") ?? "";
@@ -147,292 +178,17 @@ function init(): void {
     return NaN;
   }
 
-  // ── DOM helper ─────────────────────────────────────────────────────────
-  interface MakeElAttrs {
-    textContent?: string;
-    className?: string;
-    style?: string;
-    [key: string]: string | undefined;
-  }
-
-  function makeEl(
-    tag: string,
-    attrs?: MakeElAttrs | null,
-    children?: (Node | string | null)[]
-  ): HTMLElement {
-    const node = document.createElement(tag);
-    if (attrs) {
-      const keys = Object.keys(attrs);
-      for (let i = 0; i < keys.length; i++) {
-        const key = keys[i]!;
-        const val = attrs[key];
-        if (val === undefined) continue;
-        if (key === "textContent") node.textContent = val;
-        else if (key === "className") node.className = val;
-        else if (key === "style") node.style.cssText = val;
-        else node.setAttribute(key, val);
-      }
-    }
-    if (children) {
-      for (let j = 0; j < children.length; j++) {
-        const child = children[j];
-        if (typeof child === "string")
-          node.appendChild(document.createTextNode(child));
-        else if (child) node.appendChild(child);
-      }
-    }
-    return node;
-  }
-
-  // ── Error overlay (non-blocking replacement for alert()) ──────────────
-  function showError(message: string): void {
-    const existing = document.getElementById(OVERLAY_ID);
-    if (existing) existing.remove();
-
-    const host = document.createElement("div");
-    host.id = OVERLAY_ID;
-    host.style.cssText =
-      "position:fixed;top:80px;right:16px;z-index:999999;width:340px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;";
-
-    const shadow = host.attachShadow({ mode: "open" });
-    const styleEl = document.createElement("style");
-    styleEl.textContent = [
-      ":host { all: initial; }",
-      "* { box-sizing: border-box; margin: 0; padding: 0; }",
-      ".box { background:#fff; border-radius:12px; box-shadow:0 4px 24px rgba(0,0,0,0.18); overflow:hidden; }",
-      ".header { padding:12px 16px; background:#ed4956; color:#fff; font-size:14px; font-weight:700; }",
-      ".body { padding:14px 16px; font-size:13px; color:#262626; line-height:1.5; white-space:pre-line; }",
-      ".footer { padding:10px 16px; border-top:1px solid #efefef; text-align:right; }",
-      ".dismiss { padding:6px 16px; border:none; border-radius:6px; background:#ed4956; color:#fff; font-size:13px; font-weight:600; cursor:pointer; }",
-      ".dismiss:hover { opacity:0.85; }",
-    ].join("\n");
-    shadow.appendChild(styleEl);
-
-    const dismissBtn = makeEl("button", {
-      className: "dismiss",
-      textContent: "Dismiss",
-    });
-    dismissBtn.addEventListener("click", function () {
-      host.remove();
-    });
-
-    const box = makeEl("div", { className: "box" }, [
-      makeEl("div", {
-        className: "header",
-        textContent: "Reels 5\u00d7 Filter",
-      }),
-      makeEl("div", { className: "body", textContent: message }),
-      makeEl("div", { className: "footer" }, [dismissBtn]),
-    ]);
-    shadow.appendChild(box);
-    document.body.appendChild(host);
-  }
-
-  // ── Progress overlay (shown during scroll phase) ───────────────────────
-  function showProgress(message: string): void {
-    const existing = document.getElementById(OVERLAY_ID);
-    if (existing) existing.remove();
-
-    const host = document.createElement("div");
-    host.id = OVERLAY_ID;
-    host.style.cssText =
-      "position:fixed;top:80px;right:16px;z-index:999999;width:320px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;";
-
-    const shadow = host.attachShadow({ mode: "open" });
-    const styleEl = document.createElement("style");
-    styleEl.textContent = [
-      ":host { all: initial; }",
-      ".box { background:#fff; border-radius:12px; box-shadow:0 4px 24px rgba(0,0,0,0.18); padding:16px; }",
-      ".title { font-size:14px; font-weight:700; color:#262626; margin-bottom:8px; }",
-      ".msg { font-size:13px; color:#8e8e8e; }",
-      ".spinner { display:inline-block; width:14px; height:14px; border:2px solid #dbdbdb; border-top-color:#0095f6; border-radius:50%; animation:spin 0.8s linear infinite; margin-right:8px; vertical-align:middle; }",
-      "@keyframes spin { to { transform:rotate(360deg); } }",
-    ].join("\n");
-    shadow.appendChild(styleEl);
-
-    const box = makeEl("div", { className: "box" }, [
-      makeEl("div", { className: "title", textContent: "Reels 5\u00d7 Filter" }),
-      makeEl("div", { className: "msg" }, [
-        makeEl("span", { className: "spinner" }),
-        message,
-      ]),
-    ]);
-    shadow.appendChild(box);
-    document.body.appendChild(host);
-  }
-
-  // ── Overlay rendering (Shadow DOM) ─────────────────────────────────────
-  function renderOverlay(
-    followers: number,
-    threshold: number,
-    qualifying: ReelData[],
-    totalScanned: number
-  ): void {
-    removeOverlay();
-
-    const host = document.createElement("div");
-    host.id = OVERLAY_ID;
-    host.style.cssText =
-      "position:fixed;top:80px;right:16px;z-index:999999;width:360px;max-height:80vh;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;";
-
-    const shadow = host.attachShadow({ mode: "open" });
-
-    const styleEl = document.createElement("style");
-    styleEl.textContent = [
-      ":host { all: initial; }",
-      "* { box-sizing: border-box; margin: 0; padding: 0; }",
-      ".panel { background:#fff; border-radius:12px; box-shadow:0 4px 24px rgba(0,0,0,0.18); overflow:hidden; display:flex; flex-direction:column; max-height:80vh; }",
-      ".header { padding:14px 16px; background:#0095f6; color:#fff; }",
-      ".header h2 { font-size:15px; font-weight:700; margin-bottom:6px; }",
-      ".header .meta { font-size:12px; opacity:0.9; line-height:1.4; }",
-      ".list { overflow-y:auto; flex:1; padding:8px 0; }",
-      ".item { display:flex; align-items:center; padding:10px 16px; border-bottom:1px solid #efefef; gap:10px; }",
-      ".item:last-child { border-bottom:none; }",
-      ".rank { font-size:14px; font-weight:700; color:#8e8e8e; min-width:24px; }",
-      ".info { flex:1; min-width:0; }",
-      ".views { font-size:14px; font-weight:600; color:#262626; }",
-      ".ratio { font-size:12px; color:#0095f6; }",
-      ".actions { display:flex; gap:6px; }",
-      ".btn { padding:5px 10px; border:1px solid #dbdbdb; border-radius:6px; background:#fff; font-size:12px; cursor:pointer; color:#262626; text-decoration:none; white-space:nowrap; }",
-      ".btn:hover { background:#fafafa; }",
-      ".btn.open { background:#0095f6; color:#fff; border-color:#0095f6; }",
-      ".empty { padding:24px 16px; text-align:center; color:#8e8e8e; font-size:13px; }",
-      ".footer { padding:10px 16px; border-top:1px solid #efefef; text-align:center; }",
-      ".close-btn { padding:6px 16px; border:none; border-radius:6px; background:#ed4956; color:#fff; font-size:13px; font-weight:600; cursor:pointer; }",
-      ".close-btn:hover { opacity:0.85; }",
-    ].join("\n");
-    shadow.appendChild(styleEl);
-
-    const outlierText =
-      qualifying.length +
-      " outlier" +
-      (qualifying.length !== 1 ? "s" : "") +
-      " found";
-    const scannedText = "(scanned " + totalScanned + " reels)";
-
-    const headerH2 = makeEl("h2", {
-      textContent: "Reels 5\u00d7 Outliers",
-    });
-    const metaDiv = makeEl("div", { className: "meta" }, [
-      "Followers: " +
-        formatCount(followers) +
-        " \u00b7 Threshold: " +
-        formatCount(threshold) +
-        " views",
-      document.createElement("br"),
-      outlierText + " " + scannedText,
-    ]);
-    const header = makeEl("div", { className: "header" }, [headerH2, metaDiv]);
-
-    const list = makeEl("div", { className: "list" });
-
-    if (qualifying.length === 0) {
-      list.appendChild(
-        makeEl("div", {
-          className: "empty",
-          textContent: "No Reels reached the 5\u00d7 threshold.",
-        })
-      );
-    } else {
-      qualifying.forEach(function (reel, i) {
-        const ratio = (reel.views / followers).toFixed(1);
-        const rank = makeEl("span", {
-          className: "rank",
-          textContent: "#" + (i + 1),
-        });
-        const viewsEl = makeEl("div", {
-          className: "views",
-          textContent: formatCount(reel.views) + " views",
-        });
-        const ratioEl = makeEl("div", {
-          className: "ratio",
-          textContent: ratio + "\u00d7 follower count",
-        });
-        const info = makeEl("div", { className: "info" }, [viewsEl, ratioEl]);
-
-        const openLink = makeEl("a", {
-          className: "btn open",
-          href: reel.url,
-          target: "_blank",
-          rel: "noopener",
-          textContent: "Open",
-        });
-
-        const copyBtn = makeEl("button", {
-          className: "btn copy",
-          textContent: "Copy link",
-        });
-        (copyBtn as HTMLElement).dataset.url = reel.url;
-
-        const actions = makeEl("div", { className: "actions" }, [
-          openLink,
-          copyBtn,
-        ]);
-        const item = makeEl("div", { className: "item" }, [
-          rank,
-          info,
-          actions,
-        ]);
-        list.appendChild(item);
-      });
-    }
-
-    const closeBtn = makeEl("button", {
-      className: "close-btn",
-      textContent: "Close & Reset",
-    });
-    closeBtn.addEventListener("click", function () {
-      resetAll();
-    });
-    const footer = makeEl("div", { className: "footer" }, [closeBtn]);
-
-    const panel = makeEl("div", { className: "panel" }, [
-      header,
-      list,
-      footer,
-    ]);
-    shadow.appendChild(panel);
-
-    shadow.addEventListener("click", function (e: Event) {
-      const target = (e.target as Element)?.closest(".copy") as HTMLElement | null;
-      if (!target) return;
-      const url = target.dataset.url;
-      if (!url) return;
-      navigator.clipboard
-        .writeText(url)
-        .then(function () {
-          target.textContent = "Copied!";
-          setTimeout(function () {
-            target.textContent = "Copy link";
-          }, 1500);
-        })
-        .catch(function () {
-          target.textContent = "Failed";
-          setTimeout(function () {
-            target.textContent = "Copy link";
-          }, 1500);
-        });
-    });
-
-    document.body.appendChild(host);
-  }
-
-  function removeOverlay(): void {
-    const existing = document.getElementById(OVERLAY_ID);
-    if (existing) existing.remove();
-  }
-
   // ── Hide / show tiles ──────────────────────────────────────────────────
   function injectHideStyle(): void {
-    if (document.getElementById("reels5x-style")) return;
+    if (document.getElementById("outliers-style")) return;
     const style = document.createElement("style");
-    style.id = "reels5x-style";
+    style.id = "outliers-style";
     style.textContent = "." + HIDDEN_CLASS + " { display: none !important; }";
     document.head.appendChild(style);
   }
 
   function removeHideStyle(): void {
-    const style = document.getElementById("reels5x-style");
+    const style = document.getElementById("outliers-style");
     if (style) style.remove();
   }
 
@@ -449,12 +205,13 @@ function init(): void {
       'a[href*="/reel/"], a[href*="/reels/"]'
     );
     for (let i = 0; i < links.length; i++) {
-      const href = links[i]!.getAttribute("href");
-      if (!href) continue;
+      const link = links[i] as HTMLAnchorElement;
+      const href = link.getAttribute("href");
+      if (!isReelPermalinkHref(href)) continue;
       const tile =
-        links[i]!.closest("article") ??
-        links[i]!.closest('[role="button"]') ??
-        links[i]!.parentElement;
+        link.closest("article") ??
+        link.closest('[role="button"]') ??
+        link.parentElement;
       if (!tile) continue;
       if (_qualifyingHrefs.has(href)) {
         tile.classList.remove(HIDDEN_CLASS);
@@ -491,11 +248,36 @@ function init(): void {
     _qualifyingHrefs = null;
     unhideAll();
     removeHideStyle();
-    removeOverlay();
-    window.__reels5x_active = false;
+    window.__outliers_active = false;
+    emitReset();
   }
 
-  window.__reels5x_reset = resetAll;
+  window.__outliers_reset = resetAll;
+
+  function stopScan(): void {
+    _runGeneration++;
+    window.scrollTo(0, 0);
+    resetAll();
+  }
+
+  window.__outliers_stop = stopScan;
+
+  // ── Error handling (sets state + sends to side panel) ──────────────────
+  function reportError(errorText: string): void {
+    unhideAll();
+    removeHideStyle();
+    stopHideObserver();
+    window.__outliers_active = false;
+    updateState({
+      status: "error",
+      followers: null,
+      threshold: null,
+      scannedCount: 0,
+      scanLimit: SCAN_LIMIT,
+      outliers: [],
+      errorText: errorText,
+    });
+  }
 
   // ── Collect reels currently visible in the DOM into an accumulator map ─
   function collectVisibleReels(reelMap: Map<string, ReelData>): void {
@@ -503,9 +285,9 @@ function init(): void {
       'a[href*="/reel/"], a[href*="/reels/"]'
     );
     for (let li = 0; li < links.length; li++) {
-      const link = links[li]!;
+      const link = links[li]! as HTMLAnchorElement;
       const href = link.getAttribute("href");
-      if (!href || reelMap.has(href)) continue;
+      if (!isReelPermalinkHref(href) || reelMap.has(href)) continue;
 
       const fullUrl = href.startsWith("http")
         ? href
@@ -601,11 +383,24 @@ function init(): void {
     let stableRounds = 0;
     let scrollAttempts = 0;
 
-    showProgress("Scrolling to load all reels\u2026 (0 found)");
+    console.log("[outliers] autoScrollAndRun() started — gen:", myGen, "limit:", SCAN_LIMIT);
+
+    updateState({
+      status: "scanning",
+      followers: null,
+      threshold: null,
+      scannedCount: 0,
+      scanLimit: SCAN_LIMIT,
+      outliers: [],
+      errorText: null,
+    });
 
     function scrollStep(): void {
       try {
-        if (myGen !== _runGeneration) return;
+        if (myGen !== _runGeneration) {
+          console.log("[outliers] scrollStep aborted — stale generation", myGen, "vs", _runGeneration);
+          return;
+        }
 
         collectVisibleReels(reelMap);
         const currentSize = reelMap.size;
@@ -613,28 +408,42 @@ function init(): void {
         if (currentSize > previousMapSize) {
           stableRounds = 0;
           previousMapSize = currentSize;
-          showProgress(
-            "Scrolling to load all reels\u2026 (" + currentSize + " found)"
-          );
+          updateState({
+            status: "scanning",
+            followers: null,
+            threshold: null,
+            scannedCount: currentSize,
+            scanLimit: SCAN_LIMIT,
+            outliers: [],
+            errorText: null,
+          });
         } else {
           stableRounds++;
         }
 
         scrollAttempts++;
 
-        if (stableRounds >= 8 || scrollAttempts >= MAX_SCROLL_ATTEMPTS) {
+        const reachedLimit = SCAN_LIMIT !== null && currentSize >= SCAN_LIMIT;
+        if (reachedLimit || stableRounds >= 8 || scrollAttempts >= MAX_SCROLL_ATTEMPTS) {
+          const reason = reachedLimit ? "limit reached" : stableRounds >= 8 ? "no new reels (stable x8)" : "max scroll attempts";
+          console.log("[outliers] Scroll stopped —", reason, "| reels:", currentSize, "| scrolls:", scrollAttempts);
           window.scrollTo(0, 0);
           setTimeout(function () {
+            if (myGen !== _runGeneration) return;
             analyzeFromMap(reelMap);
           }, 500);
           return;
         }
 
+        if (scrollAttempts % 10 === 0) {
+          console.log("[outliers] Scroll #" + scrollAttempts + " — reels: " + currentSize + ", stable: " + stableRounds);
+        }
+
         window.scrollTo(0, window.scrollY + SCROLL_STEP_PX);
         setTimeout(scrollStep, SCROLL_WAIT_MS);
       } catch (err) {
-        console.error("[reels5x] Scroll loop error:", err);
-        resetAll();
+        console.error("[outliers] Scroll loop error:", err);
+        reportError("Scroll loop error — please try again.");
       }
     }
 
@@ -643,12 +452,12 @@ function init(): void {
 
   // ── Analysis using accumulated reel map ────────────────────────────────
   function analyzeFromMap(reelMap: Map<string, ReelData>): void {
+    console.log("[outliers] analyzeFromMap() — reels collected:", reelMap.size);
     const followers = getFollowerCount();
+    console.log("[outliers] Followers detected:", followers);
     if (isNaN(followers) || followers <= 0) {
-      resetAll();
-      showError(
-        "Can\u2019t read followers on this profile.\n\n" +
-          "The follower count may not be visible on this page."
+      reportError(
+        "Can\u2019t read followers on this profile. The follower count may not be visible on this page."
       );
       return;
     }
@@ -663,10 +472,8 @@ function init(): void {
     });
 
     if (reelsWithViews.length === 0) {
-      resetAll();
-      showError(
-        "Can\u2019t read views on this profile.\n\n" +
-          "View counts may not be displayed on these Reel thumbnails."
+      reportError(
+        "Can\u2019t read views on this profile. View counts may not be displayed on these Reel thumbnails."
       );
       return;
     }
@@ -677,31 +484,48 @@ function init(): void {
       })
       .sort(function (a, b) {
         return b.views - a.views;
-      }); // Views are guaranteed non-NaN after the reelsWithViews filter above.
+      });
 
     _qualifyingHrefs = new Set<string>();
+    const outliers: OutliersEntry[] = [];
     for (let i = 0; i < qualifying.length; i++) {
-      _qualifyingHrefs.add(qualifying[i]!.href);
+      const reel = qualifying[i]!;
+      _qualifyingHrefs.add(reel.href);
+      outliers.push({
+        url: reel.url,
+        href: reel.href,
+        views: reel.views,
+        ratio: reel.views / followers,
+      });
     }
 
     injectHideStyle();
     hideNonQualifyingTiles();
     startHideObserver();
 
-    renderOverlay(followers, threshold, qualifying, allReels.length);
+    updateState({
+      status: "done",
+      followers: followers,
+      threshold: threshold,
+      scannedCount: allReels.length,
+      scanLimit: SCAN_LIMIT,
+      outliers: outliers,
+      errorText: null,
+    });
   }
 
   // ── Main entry ─────────────────────────────────────────────────────────
   function run(): void {
-    if (!isReelsPage()) {
-      const onProfile = /^https?:\/\/(www\.)?instagram\.com\/[^/]+\/?$/.test(
-        window.location.href
-      );
+    const url = window.location.href;
+    const onReels = isReelsPage();
+    console.log("[outliers] run() — URL:", url, "isReelsPage:", onReels);
+
+    if (!onReels) {
+      const onProfile = /^https?:\/\/(www\.)?instagram\.com\/[^/]+\/?$/.test(url);
       const msg = onProfile
-        ? 'Please navigate to the Reels tab of this profile first.\n\nClick the "Reels" tab (film icon) on the profile, then try again.'
-        : "Please open an Instagram profile\u2019s Reels tab first.\n\nExample: instagram.com/username/reels/";
-      resetAll();
-      showError(msg);
+        ? 'Please navigate to the Reels tab of this profile first. Click the "Reels" tab (film icon) on the profile, then try again.'
+        : "Please open an Instagram profile\u2019s Reels tab first. Example: instagram.com/username/reels/";
+      reportError(msg);
       return;
     }
 
