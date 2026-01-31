@@ -1,5 +1,5 @@
 import * as esbuild from "esbuild";
-import { cpSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, writeFileSync, rmSync, watch } from "node:fs";
 
 const isWatch = process.argv.includes("--watch");
 
@@ -8,15 +8,14 @@ rmSync("dist", { recursive: true, force: true });
 mkdirSync("dist/icons", { recursive: true });
 
 // Copy static assets to dist/
-cpSync("src/popup.html", "dist/popup.html");
-cpSync("icons", "dist/icons", { recursive: true });
-
-// In watch mode, inject the background service worker for hot reload
-const manifest = JSON.parse(readFileSync("src/manifest.json", "utf-8"));
-if (isWatch) {
-  manifest.background = { service_worker: "hot-reload.js" };
+function copyStaticAssets() {
+  cpSync("src/sidepanel.html", "dist/sidepanel.html");
+  cpSync("icons", "dist/icons", { recursive: true });
+  const manifest = JSON.parse(readFileSync("src/manifest.json", "utf-8"));
+  writeFileSync("dist/manifest.json", JSON.stringify(manifest, null, 2));
 }
-writeFileSync("dist/manifest.json", JSON.stringify(manifest, null, 2));
+
+copyStaticAssets();
 
 /** Plugin that logs rebuild events with timestamps */
 const rebuildLoggerPlugin = {
@@ -39,7 +38,7 @@ const rebuildLoggerPlugin = {
         console.log(`\x1b[31m✖ [${time}] Build failed with ${result.errors.length} error(s)\x1b[0m`);
       } else {
         // Re-copy static assets on rebuild
-        cpSync("src/popup.html", "dist/popup.html");
+        copyStaticAssets();
         const warnings = result.warnings.length > 0 ? ` (${result.warnings.length} warning(s))` : "";
         console.log(`\x1b[32m✔ [${time}] Rebuild succeeded${warnings}\x1b[0m`);
       }
@@ -52,17 +51,16 @@ const commonOptions = {
   sourcemap: true,
   target: "chrome120",
   format: "iife",
+  define: {
+    __OUTLIERS_WATCH__: isWatch ? "true" : "false",
+  },
 };
 
 const entryPoints = [
-  { in: "src/popup.ts", out: "popup" },
+  { in: "src/sidepanel.ts", out: "sidepanel" },
   { in: "src/injected.ts", out: "injected" },
+  { in: "src/background.ts", out: "background" },
 ];
-
-// Include hot-reload service worker in watch mode
-if (isWatch) {
-  entryPoints.push({ in: "src/hot-reload.ts", out: "hot-reload" });
-}
 
 if (isWatch) {
   for (const entry of entryPoints) {
@@ -73,6 +71,16 @@ if (isWatch) {
       plugins: [rebuildLoggerPlugin],
     });
     await ctx.watch();
+  }
+  // Watch static assets that esbuild doesn't track
+  const staticFiles = ["src/manifest.json", "src/sidepanel.html"];
+  for (const file of staticFiles) {
+    watch(file, { persistent: false }, () => {
+      const time = new Date().toLocaleTimeString();
+      console.log(`\n\x1b[33m⚡ [${time}] Static asset changed: ${file}\x1b[0m`);
+      copyStaticAssets();
+      console.log(`\x1b[32m✔ [${time}] Static assets re-copied\x1b[0m`);
+    });
   }
   console.log("Watching for changes (hot reload enabled)...");
 } else {

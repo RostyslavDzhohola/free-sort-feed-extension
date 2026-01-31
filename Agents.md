@@ -2,52 +2,64 @@
 
 This document describes the Chrome extension's internal components as cooperating "agents", each with a distinct role, lifecycle, and communication pattern.
 
+## Planning Rules (Repo-wide)
+
+When writing an implementation plan for this project:
+
+- Do **not** include optional branches or "nice-to-haves" (no "optional", "maybe", "could", "either/or").
+- If multiple approaches are plausible, ask questions first and wait for answers before finalizing the plan.
+- If any requirement is ambiguous, ask clarifying questions instead of assuming or adding alternatives.
+- Write a single, deterministic plan with concrete deliverables (what changes, where, and what "done" means).
+
 ## Agent Overview
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Chrome Browser                        │
-│                                                         │
-│  ┌──────────────┐    executeScript     ┌─────────────┐  │
-│  │  Popup Agent  │ ──────────────────> │  Page Agent  │  │
-│  │  (popup.js)   │                     │ (injected.js)│  │
-│  │              │ <────────────────── │              │  │
-│  │              │   result callback    │  ┌────────┐ │  │
-│  └──────────────┘                     │  │Observer│ │  │
-│         │                              │  │ Agent  │ │  │
-│         │ chrome.tabs                  │  └────────┘ │  │
-│         v                              │  ┌────────┐ │  │
-│  ┌──────────────┐                     │  │Overlay │ │  │
-│  │  Tab Agent    │                     │  │ Agent  │ │  │
-│  │ (Chrome API)  │                     │  └────────┘ │  │
-│  └──────────────┘                     └─────────────┘  │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                       Chrome Browser                          │
+│                                                              │
+│  ┌────────────────┐  executeScript    ┌──────────────────┐  │
+│  │ Side Panel Agent│ ─────────────>  │   Page Agent      │  │
+│  │ (sidepanel.js)  │                  │  (injected.js)    │  │
+│  │                │ <─────────────── │                    │  │
+│  │                │  runtime messages │  ┌──────────────┐ │  │
+│  └────────────────┘                  │  │ Observer Agent│ │  │
+│         │                             │  │(MutationObs) │ │  │
+│         │ chrome.tabs                 │  └──────────────┘ │  │
+│         v                             └──────────────────┘  │
+│  ┌────────────────┐                                          │
+│  │ Background Agent│                                          │
+│  │ (background.js) │                                          │
+│  └────────────────┘                                          │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-## 1. Popup Agent (`popup.js`)
+## 1. Side Panel Agent (`sidepanel.js`)
 
-**Role:** User-facing controller. Handles all interaction between the user and the extension.
+**Role:** User-facing controller. Handles all interaction between the user and the extension. Replaces the former Popup Agent and Overlay Agent — all UI now lives in the side panel.
 
 **Responsibilities:**
 - Validates the active tab is an Instagram Reels page
 - Reads follower count from the page via `chrome.scripting.executeScript`
-- Displays stats (follower count, 5x threshold) in the popup UI
-- Manages the Run/Reset button state toggle
+- Displays stats (follower count, 5x threshold) in the side panel
+- Manages the Run/Reset button state
 - Injects the Page Agent (`injected.js`) on user command
-- Triggers reset by calling `window.__reels5x_reset()` on the page
+- Triggers reset by calling `window.__outliers_reset()` on the page
+- Listens for runtime messages from the Page Agent and renders progress, results, and errors
+- Rehydrates UI from `window.__outliers_state` when the panel is opened/reopened
 
 **Lifecycle:**
-1. User clicks extension icon → popup opens
-2. Popup reads active tab URL and validates it
-3. Executes `readFollowersFromPage()` in the page context
-4. Displays follower count and threshold
-5. Waits for user to click Run or Reset
-6. On Run: injects `injected.js` into the tab
-7. On Reset: calls the page's reset function
+1. User clicks extension icon → side panel opens
+2. Side panel reads active tab URL and validates it
+3. Checks for persisted state (`window.__outliers_state`) on the page
+4. If state exists: renders it immediately (rehydration)
+5. If no state: reads follower count and displays stats
+6. Waits for user to click Run or Reset
+7. On Run: injects `injected.js` into the tab, listens for messages
+8. On Reset: calls the page's reset function, clears UI
 
 **Communication:**
 - **Outbound:** `chrome.scripting.executeScript` to inject functions/files into the page
-- **Inbound:** Return values from executed scripts (follower count, status)
+- **Inbound:** `chrome.runtime.onMessage` for live progress/results/errors from the Page Agent; return values from `executeScript` for follower count and state rehydration
 - **API access:** `chrome.tabs.query` to get the active tab
 
 **Constraints:**
@@ -57,7 +69,7 @@ This document describes the Chrome extension's internal components as cooperatin
 
 ## 2. Page Agent (`injected.js`)
 
-**Role:** Core engine. Runs inside the Instagram page context with full DOM access.
+**Role:** Core engine. Runs inside the Instagram page context with full DOM access. Produces **zero on-page UI** — all display is handled by the Side Panel Agent.
 
 **Responsibilities:**
 - Validates the page URL matches the Reels tab pattern
@@ -66,26 +78,30 @@ This document describes the Chrome extension's internal components as cooperatin
 - Parses view counts from Reel thumbnails (4-tier strategy)
 - Applies the 5x filter: `views >= followers * 5`
 - Sorts qualifying Reels by view count (descending)
-- Delegates display to the Overlay Agent and monitoring to the Observer Agent
-- Exposes `window.__reels5x_reset()` for cleanup
+- Hides non-qualifying tiles via CSS class
+- Maintains `window.__outliers_state` (serializable JSON) for side panel rehydration
+- Sends runtime messages to the side panel on progress, completion, error, and reset
+- Starts Observer Agent for ongoing tile monitoring
+- Exposes `window.__outliers_reset()` for cleanup
 
 **Lifecycle:**
-1. Injected by Popup Agent via `executeScript`
-2. Detects page type and reads follower count
-3. Enters scroll phase: scrolls 600px every 800ms, accumulates tiles in a Map
+1. Injected by Side Panel Agent via `executeScript`
+2. Detects page type and sets state to `scanning`
+3. Enters scroll phase: scrolls 600px every 800ms, accumulates tiles in a Map, emits progress messages
 4. Scroll stops after 8 non-productive rounds or 500 attempts
-5. Enters analysis phase: filters and sorts accumulated Reels
-6. Enters display phase: hides non-qualifying tiles, renders overlay
-7. Starts Observer Agent for ongoing monitoring
+5. Enters analysis phase: reads followers, filters and sorts accumulated Reels
+6. Hides non-qualifying tiles, starts Observer Agent
+7. Sets state to `done` with sorted outliers, emits completion message
 8. Remains active until reset is called
 
 **Data Structures:**
-- `Map<url, {url, views, tileElement}>` — accumulated Reels (survives DOM recycling)
+- `Map<url, {url, views}>` — accumulated Reels (survives DOM recycling)
+- `window.__outliers_state` — serializable state (status, followers, threshold, scannedCount, outliers, errorText)
 - Generation counter (`_runGeneration`) — prevents stale async callbacks
 
 **Communication:**
-- **Inbound:** Injected by Popup Agent; reset triggered via `window.__reels5x_reset()`
-- **Outbound:** Creates Overlay Agent (Shadow DOM); starts Observer Agent (MutationObserver)
+- **Inbound:** Injected by Side Panel Agent; reset triggered via `window.__outliers_reset()`
+- **Outbound:** `chrome.runtime.sendMessage` with `outliers:state` (progress/done/error) and `outliers:reset` messages; starts Observer Agent (MutationObserver)
 
 ## 3. Observer Agent (MutationObserver inside `injected.js`)
 
@@ -94,7 +110,7 @@ This document describes the Chrome extension's internal components as cooperatin
 **Responsibilities:**
 - Watches the Reels grid container for child additions/removals
 - Detects newly loaded tile elements from Instagram's infinite scroll
-- Applies `.reels5x-hidden` class to non-qualifying tiles
+- Applies `.outliers-hidden` class to non-qualifying tiles
 - Throttled via `requestAnimationFrame` to avoid layout thrashing
 
 **Lifecycle:**
@@ -112,32 +128,25 @@ This document describes the Chrome extension's internal components as cooperatin
 
 **Why it exists:** Instagram recycles and replaces DOM elements as the user scrolls. Without this agent, tiles that load after the initial scan would appear unfiltered.
 
-## 4. Overlay Agent (Shadow DOM panel inside `injected.js`)
+## 4. Background Agent (`background.js`)
 
-**Role:** Display renderer. Presents the filtered and sorted results to the user in an isolated UI panel.
+**Role:** Minimal service worker that configures the extension's toolbar icon to open the side panel.
 
 **Responsibilities:**
-- Renders a fixed-position panel (top-right corner) using Shadow DOM
-- Displays: follower count, threshold, outlier count
-- Shows a scrollable ranked list of qualifying Reels with:
-  - Rank number (#1, #2, ...)
-  - View count
-  - Ratio (views / followers)
-  - "Open" button (new tab)
-  - "Copy link" button (clipboard)
-- Provides visual feedback for clipboard operations
+- Calls `chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })` on startup
 
-**Lifecycle:**
-1. Created by Page Agent after filtering completes
-2. Renders once with the full sorted results
-3. Remains visible until reset
-4. Removed during reset (Shadow DOM host element removed from page)
+**Lifecycle:** Runs once when the service worker starts. No ongoing processing.
 
-**Communication:**
-- **Inbound:** Receives sorted Reels array and stats from Page Agent
-- **Outbound:** User interactions (open link, copy to clipboard)
+## Message Protocol
 
-**Why Shadow DOM:** Instagram's CSS is aggressive and changes frequently. Shadow DOM provides complete style isolation so the overlay renders consistently regardless of Instagram's styling.
+The Page Agent and Side Panel Agent communicate via `chrome.runtime.sendMessage`:
+
+| Message type | Direction | Payload |
+|---|---|---|
+| `outliers:state` | Page → Side Panel | Full `OutliersState` snapshot (status, followers, threshold, scannedCount, outliers, errorText) |
+| `outliers:reset` | Page → Side Panel | (no payload — signals state cleared) |
+
+The Side Panel Agent also reads `window.__outliers_state` directly via `executeScript` for rehydration when opened after the scan is already in progress or complete.
 
 ## Agent Communication Flow
 
@@ -145,45 +154,53 @@ This document describes the Chrome extension's internal components as cooperatin
 User clicks "Run"
        │
        v
-  Popup Agent
+  Side Panel Agent
        │
        ├── validates tab URL
        ├── reads followers via executeScript
-       ├── displays stats in popup
+       ├── displays stats in side panel
        └── injects injected.js
               │
               v
          Page Agent
               │
               ├── validates page URL
-              ├── reads followers (3 strategies)
+              ├── sets state: scanning → emits message
               ├── auto-scrolls (accumulates tiles in Map)
+              ├── emits progress messages
               ├── filters: views >= followers * 5
               ├── sorts: descending by views
-              │
-              ├──> Overlay Agent (renders sorted results)
+              ├── hides non-qualifying tiles
+              ├── sets state: done → emits message
               └──> Observer Agent (monitors new tiles)
 
 User clicks "Reset"
        │
        v
-  Popup Agent
+  Side Panel Agent
        │
-       └── calls window.__reels5x_reset()
+       └── calls window.__outliers_reset()
               │
               v
          Page Agent
               │
               ├── disconnects Observer Agent
-              ├── removes Overlay Agent (Shadow DOM)
-              ├── unhides all tiles (removes .reels5x-hidden)
+              ├── unhides all tiles (removes .outliers-hidden)
+              ├── clears window.__outliers_state
+              ├── emits outliers:reset message
               └── cleans up all state
 ```
 
 ## Key Design Decisions
 
-**Why separate agents instead of one monolith?**
-Each component has a distinct lifecycle and failure mode. The Observer Agent can fail without affecting the Overlay Agent. The Popup Agent operates in a different execution context entirely (extension vs. page).
+**Why side panel instead of popup?**
+Popups close when the user clicks away, losing all state. The side panel persists across interactions, allowing the user to see progress and results while interacting with the Instagram page. It also removes the need for any on-page overlay UI.
+
+**Why zero on-page UI?**
+Moving all UI to the side panel eliminates CSS conflicts with Instagram, removes Shadow DOM complexity, and provides a cleaner user experience. The page only receives tile hiding (CSS class toggling) — no overlays, progress indicators, or error messages are injected.
+
+**Why runtime messaging + window state?**
+Runtime messages provide live updates while the side panel is open. `window.__outliers_state` provides persistence for when the panel is closed and reopened — the side panel can fully reconstruct its view from this state alone without re-running the scan.
 
 **Why a Map for tile accumulation?**
 Instagram's virtual scrolling recycles DOM elements. A Map keyed by Reel URL ensures each Reel is counted exactly once, even if its DOM element is destroyed and recreated during scrolling.
