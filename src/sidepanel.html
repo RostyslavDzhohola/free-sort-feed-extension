@@ -214,6 +214,70 @@
       font-size: 13px;
       color: #8e8e8e;
     }
+
+    /* ── Scan limit ──────────────────────────────── */
+    #scan-limit-area {
+      margin-bottom: 16px;
+    }
+    .scan-limit-label {
+      display: block;
+      font-size: 13px;
+      color: #8e8e8e;
+      margin-bottom: 8px;
+    }
+    .scan-limit-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .preset-buttons {
+      display: flex;
+      gap: 4px;
+    }
+    .preset-btn {
+      flex: 1;
+      padding: 6px 0;
+      border: 1px solid #dbdbdb;
+      border-radius: 6px;
+      background: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      color: #262626;
+      transition: background 0.15s, color 0.15s;
+    }
+    .preset-btn:hover { background: #f0f0f0; }
+    .preset-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .preset-btn.active {
+      background: #0095f6;
+      color: #fff;
+      border-color: #0095f6;
+    }
+    .scan-limit-input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px dashed #c7c7c7;
+      border-radius: 8px;
+      background: #f5f5f5;
+      font-size: 13px;
+      font-weight: 400;
+      color: #262626;
+      text-align: center;
+      outline: none;
+    }
+    .scan-limit-input::placeholder {
+      color: #b0b0b0;
+      font-style: italic;
+    }
+    .scan-limit-input:focus {
+      border-color: #0095f6;
+      border-style: solid;
+      background: #fff;
+    }
+    .scan-limit-input:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body>
@@ -228,6 +292,20 @@
   <div id="stats-area">
     <div class="status-msg">
       <span class="spinner"></span>Reading profile&hellip;
+    </div>
+  </div>
+
+  <div id="scan-limit-area">
+    <label class="scan-limit-label">Scan limit</label>
+    <div class="scan-limit-controls">
+      <div class="preset-buttons">
+        <button class="preset-btn" data-limit="50">50</button>
+        <button class="preset-btn" data-limit="100">100</button>
+        <button class="preset-btn" data-limit="200">200</button>
+        <button class="preset-btn" data-limit="500">500</button>
+        <button class="preset-btn active" data-limit="all">All</button>
+      </div>
+      <input type="number" id="scan-limit-input" class="scan-limit-input" placeholder="Custom limit…" min="1" step="1" />
     </div>
   </div>
 

@@ -12,6 +12,7 @@ export interface OutliersState {
   followers: number | null;
   threshold: number | null;
   scannedCount: number;
+  scanLimit: number | null;
   outliers: OutliersEntry[];
   errorText: string | null;
 }

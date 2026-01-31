@@ -7,6 +7,7 @@ declare global {
     __outliers_active: boolean;
     __outliers_reset: (() => void) | undefined;
     __outliers_stop: (() => void) | undefined;
+    __outliers_scan_limit: number | null | undefined;
     __outliers_state: OutliersState | undefined;
   }
 }

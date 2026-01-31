@@ -19,8 +19,12 @@ const resultsArea = document.getElementById("results-area") as HTMLDivElement;
 const resultsMeta = document.getElementById("results-meta") as HTMLSpanElement;
 const resultsList = document.getElementById("results-list") as HTMLDivElement;
 const statusEl = document.getElementById("status") as HTMLParagraphElement;
+const scanLimitInput = document.getElementById("scan-limit-input") as HTMLInputElement;
+const presetBtns = document.querySelectorAll(".preset-btn") as NodeListOf<HTMLButtonElement>;
 
 let cachedTabId: number | null = null;
+let lastKnownUrl: string | null = null;
+let lastKnownProfile: string | null = null;
 
 // ── Formatting helpers ────────────────────────────────────────────────────
 function formatExact(n: number): string {
@@ -37,6 +41,92 @@ function formatCount(n: number): string {
 // ── DOM helpers ───────────────────────────────────────────────────────────
 function clearElement(el: HTMLElement): void {
   while (el.firstChild) el.removeChild(el.firstChild);
+}
+
+// ── Scan limit helpers ────────────────────────────────────────────────────
+const SCAN_LIMIT_KEY = "outliers_scan_limit";
+
+async function loadScanLimit(): Promise<number | null> {
+  try {
+    const data = await chrome.storage.local.get(SCAN_LIMIT_KEY);
+    const val = data[SCAN_LIMIT_KEY];
+    if (typeof val === "number" && val > 0 && Number.isFinite(val)) return val;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function saveScanLimit(limit: number | null): Promise<void> {
+  try {
+    if (limit === null) {
+      await chrome.storage.local.remove(SCAN_LIMIT_KEY);
+    } else {
+      await chrome.storage.local.set({ [SCAN_LIMIT_KEY]: limit });
+    }
+  } catch {
+    // Non-fatal — defaults to unlimited
+  }
+}
+
+function syncScanLimitUI(limit: number | null): void {
+  if (limit === null) {
+    scanLimitInput.value = "";
+    scanLimitInput.placeholder = "Custom limit\u2026";
+  } else {
+    scanLimitInput.value = String(limit);
+  }
+  for (let i = 0; i < presetBtns.length; i++) {
+    const btn = presetBtns[i]!;
+    const btnLimit = btn.getAttribute("data-limit");
+    if (limit === null && btnLimit === "all") {
+      btn.classList.add("active");
+    } else if (btnLimit !== "all" && limit === Number(btnLimit)) {
+      btn.classList.add("active");
+    } else {
+      btn.classList.remove("active");
+    }
+  }
+}
+
+function getScanLimitFromUI(): number | null {
+  const raw = parseInt(scanLimitInput.value, 10);
+  if (isNaN(raw) || raw <= 0) return null;
+  return raw;
+}
+
+function setScanLimitControlsDisabled(disabled: boolean): void {
+  scanLimitInput.disabled = disabled;
+  for (let i = 0; i < presetBtns.length; i++) {
+    presetBtns[i]!.disabled = disabled;
+  }
+}
+
+// ── URL helpers ──────────────────────────────────────────────────────────
+/** Extract the Instagram username from a URL, e.g. "/username" from any profile sub-page. */
+function getProfilePath(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (!/instagram\.com$/i.test(u.hostname.replace(/^www\./, ""))) return null;
+    const parts = u.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
+    // First segment is the username (skip system routes)
+    if (parts.length === 0) return null;
+    const reserved = ["explore", "p", "stories", "direct", "accounts", "reel", "reels"];
+    if (reserved.includes(parts[0]!.toLowerCase())) return null;
+    return "/" + parts[0]!.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/** Check if a URL is a content permalink (/reel/XXX/, /p/XXX/) as opposed to a section page. */
+function isContentPermalink(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return /^\/(reel|reels|p)\//i.test(u.pathname);
+  } catch {
+    return false;
+  }
 }
 
 // ── UI rendering ──────────────────────────────────────────────────────────
@@ -95,12 +185,20 @@ function showLoading(): void {
   statsArea.appendChild(wrapper);
 }
 
-function setProgress(scannedCount: number): void {
+function setProgress(scannedCount: number, scanLimit: number | null): void {
   progressArea.style.display = "block";
-  progressText.textContent = "Scanning\u2026 " + scannedCount + " reels found";
-  progressFill.style.width = "100%";
-  progressFill.style.opacity = "0.4";
-  progressFill.style.animation = "pulse 1.5s ease-in-out infinite";
+  if (scanLimit !== null && scanLimit > 0) {
+    const pct = Math.min(100, (scannedCount / scanLimit) * 100);
+    progressFill.style.width = pct + "%";
+    progressFill.style.opacity = "1";
+    progressFill.style.animation = "";
+    progressText.textContent = "Scanning\u2026 " + scannedCount + " / " + scanLimit + " reels";
+  } else {
+    progressFill.style.width = "100%";
+    progressFill.style.opacity = "0.4";
+    progressFill.style.animation = "pulse 1.5s ease-in-out infinite";
+    progressText.textContent = "Scanning\u2026 " + scannedCount + " reels found";
+  }
 }
 
 function hideProgress(): void {
@@ -186,6 +284,7 @@ function setButtonsForIdle(): void {
   runBtn.disabled = false;
   stopBtn.style.display = "none";
   resetBtn.style.display = "none";
+  setScanLimitControlsDisabled(false);
 }
 
 function setButtonsForScanning(): void {
@@ -193,6 +292,7 @@ function setButtonsForScanning(): void {
   stopBtn.style.display = "block";
   stopBtn.disabled = false;
   resetBtn.style.display = "none";
+  setScanLimitControlsDisabled(true);
 }
 
 function setButtonsForDone(): void {
@@ -200,6 +300,7 @@ function setButtonsForDone(): void {
   stopBtn.style.display = "none";
   resetBtn.style.display = "block";
   resetBtn.disabled = false;
+  setScanLimitControlsDisabled(false);
 }
 
 function setButtonsDisabled(): void {
@@ -224,7 +325,7 @@ function renderState(state: OutliersState): void {
       setButtonsForIdle();
       break;
     case "scanning":
-      setProgress(state.scannedCount);
+      setProgress(state.scannedCount, state.scanLimit);
       hideResults();
       setButtonsForScanning();
       break;
@@ -251,6 +352,13 @@ function renderState(state: OutliersState): void {
 // IMPORTANT: This function is injected via chrome.scripting.executeScript({ func }).
 // It must be entirely self-contained — no imports, no closures, no external references.
 function readFollowersFromPage(): number | null {
+  // Only read followers on actual profile pages (instagram.com/<username>/ or /<username>/reels/)
+  const path = window.location.pathname.replace(/\/+$/, "");
+  const segments = path.split("/").filter(Boolean);
+  if (segments.length === 0) return null; // Home feed — no profile
+  const reserved = ["explore", "p", "stories", "direct", "accounts", "reel", "reels"];
+  if (reserved.includes(segments[0]!.toLowerCase())) return null;
+
   function parseCount(raw: unknown): number {
     if (raw == null) return NaN;
     const s = String(raw).trim().replace(/[\s,\u00a0]+/g, "");
@@ -360,11 +468,12 @@ async function rehydrate(tabId: number): Promise<void> {
       showStats(followers, followers * 5);
       runBtn.disabled = false;
     } else {
-      showError("Can\u2019t read follower count on this page.");
+      showStats(0, 0);
+      runBtn.disabled = true;
     }
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "unknown error";
-    showError("Cannot read page data: " + message);
+  } catch {
+    showStats(0, 0);
+    runBtn.disabled = true;
   }
 }
 
@@ -392,6 +501,58 @@ chrome.runtime.onMessage.addListener(function (
   }
 });
 
+// ── Detect navigation to a different profile ──────────────────────────────
+// Instagram is an SPA — profile-to-profile navigation uses pushState, which
+// does NOT reliably trigger chrome.tabs.onUpdated. We use webNavigation
+// events instead: onCompleted for full loads, onHistoryStateUpdated for SPA.
+async function handleNavigation(details: { tabId: number; url: string }): Promise<void> {
+  if (cachedTabId == null || details.tabId !== cachedTabId) return;
+
+  const newProfile = getProfilePath(details.url);
+  lastKnownUrl = details.url;
+
+  // Navigating to a content permalink (/reel/XXX/, /p/XXX/) — keep current
+  // state so opening a reel from scan results doesn't wipe the outliers list.
+  if (newProfile === null && isContentPermalink(details.url)) return;
+
+  // Same profile as before — no reset needed (covers returning from /reel/ overlay)
+  if (newProfile === lastKnownProfile) return;
+
+  lastKnownProfile = newProfile;
+
+  // Clear stale persisted state on the page
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: details.tabId },
+      func: function () {
+        (window as unknown as { __outliers_state?: unknown }).__outliers_state = undefined;
+        (window as unknown as { __outliers_active?: boolean }).__outliers_active = false;
+      },
+    });
+  } catch {
+    // Non-fatal
+  }
+
+  hideProgress();
+  hideResults();
+  setButtonsForIdle();
+  statusEl.textContent = "";
+  statusEl.className = "status-msg";
+  showLoading();
+
+  // Delay for SPA DOM to settle, then re-read followers
+  setTimeout(function () { rehydrate(details.tabId); }, 500);
+}
+
+// Full page navigations
+chrome.webNavigation.onCompleted.addListener(handleNavigation, {
+  url: [{ hostSuffix: "instagram.com" }],
+});
+// SPA pushState navigations (Instagram profile-to-profile)
+chrome.webNavigation.onHistoryStateUpdated.addListener(handleNavigation, {
+  url: [{ hostSuffix: "instagram.com" }],
+});
+
 // ── Button handlers ───────────────────────────────────────────────────────
 runBtn.addEventListener("click", async function () {
   setButtonsDisabled();
@@ -407,6 +568,14 @@ runBtn.addEventListener("click", async function () {
     }
 
     statusEl.textContent = "Starting scan\u2026";
+    const limit = getScanLimitFromUI();
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (function (l: number | null) {
+        (window as unknown as { __outliers_scan_limit: number | null | undefined }).__outliers_scan_limit = l;
+      }) as unknown as () => void,
+      args: [limit],
+    });
     await chrome.scripting.executeScript({
       target: { tabId },
       files: ["injected.js"],
@@ -483,14 +652,50 @@ resetBtn.addEventListener("click", async function () {
   }
 });
 
+// ── Scan limit event listeners ───────────────────────────────────────────
+for (let i = 0; i < presetBtns.length; i++) {
+  presetBtns[i]!.addEventListener("click", function () {
+    const val = this.getAttribute("data-limit");
+    const limit = val === "all" ? null : parseInt(val ?? "", 10);
+    const resolved = limit !== null && (isNaN(limit) || limit <= 0) ? null : limit;
+    syncScanLimitUI(resolved);
+    saveScanLimit(resolved);
+  });
+}
+
+scanLimitInput.addEventListener("input", function () {
+  const raw = parseInt(scanLimitInput.value, 10);
+  const limit = isNaN(raw) || raw <= 0 ? null : raw;
+  syncScanLimitUI(limit);
+  saveScanLimit(limit);
+});
+
 // ── Init: determine tab and show initial state ───────────────────────────
 async function init(): Promise<void> {
+  const savedLimit = await loadScanLimit();
+  syncScanLimitUI(savedLimit);
+
   const tabId = await getActiveTabId();
   if (!tabId) {
     showError("Open an Instagram profile page first.");
     return;
   }
   cachedTabId = tabId;
+
+  // Capture initial URL for navigation change detection
+  try {
+    const urlResult = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: function () { return window.location.href; },
+    });
+    lastKnownUrl = urlResult?.[0]?.result ?? null;
+    if (lastKnownUrl) {
+      lastKnownProfile = getProfilePath(lastKnownUrl);
+    }
+  } catch {
+    // Non-fatal — URL tracking just won't work until first navigation
+  }
+
   await rehydrate(tabId);
 }
 

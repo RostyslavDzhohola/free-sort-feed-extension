@@ -6,7 +6,9 @@
   "permissions": [
     "activeTab",
     "scripting",
-    "sidePanel"
+    "sidePanel",
+    "storage",
+    "webNavigation"
   ],
   "host_permissions": [
     "*://*.instagram.com/*"
