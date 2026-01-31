@@ -119,7 +119,7 @@ See [Agents.md](./Agents.md) for a detailed breakdown of the extension's interna
 - **TypeScript** with **esbuild** — strict types, fast builds, source maps
 - **IIFE output** — required for Chrome extension popup scripts and `executeScript` injection
 - **No frameworks** — vanilla TypeScript, zero runtime dependencies
-- **Manifest V3** with minimal permissions (`activeTab` + `scripting` + `sidePanel`)
+- **Manifest V3** with minimal permissions (`scripting` + `sidePanel`) + Instagram-only host access
 - **Chrome Side Panel** for persistent UI — no on-page overlays
 - **100% local** — no data leaves the browser
 

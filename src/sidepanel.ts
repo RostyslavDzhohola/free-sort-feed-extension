@@ -25,6 +25,8 @@ const presetBtns = document.querySelectorAll(".preset-btn") as NodeListOf<HTMLBu
 let cachedTabId: number | null = null;
 let lastKnownUrl: string | null = null;
 let lastKnownProfile: string | null = null;
+let navPollTimer: number | null = null;
+let navPollInFlight = false;
 
 // ── Formatting helpers ────────────────────────────────────────────────────
 function formatExact(n: number): string {
@@ -46,23 +48,24 @@ function clearElement(el: HTMLElement): void {
 // ── Scan limit helpers ────────────────────────────────────────────────────
 const SCAN_LIMIT_KEY = "outliers_scan_limit";
 
-async function loadScanLimit(): Promise<number | null> {
+function loadScanLimit(): number | null {
   try {
-    const data = await chrome.storage.local.get(SCAN_LIMIT_KEY);
-    const val = data[SCAN_LIMIT_KEY];
-    if (typeof val === "number" && val > 0 && Number.isFinite(val)) return val;
-    return null;
+    const raw = localStorage.getItem(SCAN_LIMIT_KEY);
+    if (!raw) return null;
+    const val = parseInt(raw, 10);
+    if (!Number.isFinite(val) || val <= 0) return null;
+    return val;
   } catch {
     return null;
   }
 }
 
-async function saveScanLimit(limit: number | null): Promise<void> {
+function saveScanLimit(limit: number | null): void {
   try {
     if (limit === null) {
-      await chrome.storage.local.remove(SCAN_LIMIT_KEY);
+      localStorage.removeItem(SCAN_LIMIT_KEY);
     } else {
-      await chrome.storage.local.set({ [SCAN_LIMIT_KEY]: limit });
+      localStorage.setItem(SCAN_LIMIT_KEY, String(limit));
     }
   } catch {
     // Non-fatal — defaults to unlimited
@@ -426,7 +429,7 @@ function readFollowersFromPage(): number | null {
 }
 
 // ── Tab helpers ───────────────────────────────────────────────────────────
-// NOTE: With only `activeTab` permission, chrome.tabs.query does NOT return
+// NOTE: Without the `tabs` permission, chrome.tabs.query does NOT return
 // tab.url. We return the tab ID without URL validation and rely on
 // executeScript failing gracefully for non-Instagram tabs.
 async function getActiveTabId(): Promise<number | null> {
@@ -502,9 +505,9 @@ chrome.runtime.onMessage.addListener(function (
 });
 
 // ── Detect navigation to a different profile ──────────────────────────────
-// Instagram is an SPA — profile-to-profile navigation uses pushState, which
-// does NOT reliably trigger chrome.tabs.onUpdated. We use webNavigation
-// events instead: onCompleted for full loads, onHistoryStateUpdated for SPA.
+// Instagram is an SPA — profile-to-profile navigation uses pushState.
+// To keep permissions minimal, we poll the tab URL (via executeScript) and
+// reset state when the profile changes.
 async function handleNavigation(details: { tabId: number; url: string }): Promise<void> {
   if (cachedTabId == null || details.tabId !== cachedTabId) return;
 
@@ -553,14 +556,49 @@ async function handleNavigation(details: { tabId: number; url: string }): Promis
   setTimeout(function () { rehydrate(details.tabId); }, 500);
 }
 
-// Full page navigations
-chrome.webNavigation.onCompleted.addListener(handleNavigation, {
-  url: [{ hostSuffix: "instagram.com" }],
-});
-// SPA pushState navigations (Instagram profile-to-profile)
-chrome.webNavigation.onHistoryStateUpdated.addListener(handleNavigation, {
-  url: [{ hostSuffix: "instagram.com" }],
-});
+async function readTabUrl(tabId: number): Promise<string | null> {
+  try {
+    const urlResult = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: function () { return window.location.href; },
+    });
+    return (urlResult?.[0]?.result as string | undefined) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function stopNavigationPolling(): void {
+  if (navPollTimer != null) {
+    clearInterval(navPollTimer);
+    navPollTimer = null;
+  }
+}
+
+function startNavigationPolling(tabId: number): void {
+  stopNavigationPolling();
+  const intervalMs = 800;
+  navPollTimer = window.setInterval(function () {
+    if (navPollInFlight) return;
+    navPollInFlight = true;
+
+    readTabUrl(tabId)
+      .then(function (url) {
+        if (!url) return;
+        if (lastKnownUrl == null) {
+          lastKnownUrl = url;
+          lastKnownProfile = getProfilePath(url);
+          return;
+        }
+        if (url !== lastKnownUrl) {
+          return handleNavigation({ tabId, url });
+        }
+      })
+      .finally(function () {
+        navPollInFlight = false;
+      });
+  }, intervalMs);
+}
 
 // ── Button handlers ───────────────────────────────────────────────────────
 runBtn.addEventListener("click", async function () {
@@ -681,7 +719,7 @@ scanLimitInput.addEventListener("input", function () {
 
 // ── Init: determine tab and show initial state ───────────────────────────
 async function init(): Promise<void> {
-  const savedLimit = await loadScanLimit();
+  const savedLimit = loadScanLimit();
   syncScanLimitUI(savedLimit);
 
   const tabId = await getActiveTabId();
@@ -704,6 +742,9 @@ async function init(): Promise<void> {
   } catch {
     // Non-fatal — URL tracking just won't work until first navigation
   }
+
+  startNavigationPolling(tabId);
+  window.addEventListener("beforeunload", stopNavigationPolling);
 
   await rehydrate(tabId);
 }
