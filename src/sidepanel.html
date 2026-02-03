@@ -9,6 +9,9 @@
       padding: 20px;
       background: #fafafa;
       color: #262626;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
     }
 
     /* ── Header ───────────────────────────────────── */
@@ -278,6 +281,49 @@
       opacity: 0.4;
       cursor: not-allowed;
     }
+
+    /* ── Footer ───────────────────────────────────── */
+    .footer {
+      margin-top: auto;
+      padding-top: 16px;
+      border-top: 1px solid #efefef;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .footer-text {
+      font-size: 12px;
+      color: #8e8e8e;
+      line-height: 1.2;
+    }
+    .footer-links {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .icon-link {
+      width: 32px;
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+      text-decoration: none;
+      color: #262626;
+      border: 1px solid transparent;
+      transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+    }
+    .icon-link:hover {
+      background: #fff;
+      border-color: #efefef;
+      opacity: 0.95;
+    }
+    .icon-link svg {
+      width: 18px;
+      height: 18px;
+      display: block;
+    }
   </style>
 </head>
 <body>
@@ -330,6 +376,36 @@
   </div>
 
   <p id="status" class="status-msg"></p>
+
+  <footer class="footer" aria-label="Footer">
+    <div class="footer-text">Made by Rostyslav Dzhohola</div>
+    <div class="footer-links" aria-label="Social links">
+      <a class="icon-link" href="https://x.com/dzhohola" target="_blank" rel="noopener noreferrer" aria-label="X (Twitter)">
+        <!-- Official X logo (new X) -->
+        <svg viewBox="0 0 24 24" role="img" aria-hidden="true" focusable="false">
+          <path fill="currentColor" d="M18.244 2H21.58l-7.29 8.33L22.86 22h-6.7l-5.24-6.8L4.96 22H1.62l7.8-8.91L1.14 2h6.87l4.73 6.23L18.244 2zm-1.17 18h1.85L6.83 3.93H4.85L17.074 20z"/>
+        </svg>
+      </a>
+
+      <a class="icon-link" href="https://www.instagram.com/dzhohola_/" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
+        <!-- Instagram gradient camera icon -->
+        <svg viewBox="0 0 24 24" role="img" aria-hidden="true" focusable="false">
+          <defs>
+            <linearGradient id="igGradient" x1="0%" y1="100%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#F58529" />
+              <stop offset="30%" stop-color="#DD2A7B" />
+              <stop offset="60%" stop-color="#8134AF" />
+              <stop offset="100%" stop-color="#515BD4" />
+            </linearGradient>
+          </defs>
+          <rect x="2" y="2" width="20" height="20" rx="5" fill="url(#igGradient)" />
+          <rect x="6.6" y="6.6" width="10.8" height="10.8" rx="3" fill="none" stroke="#fff" stroke-width="1.8" />
+          <circle cx="12" cy="12" r="3.1" fill="none" stroke="#fff" stroke-width="1.8" />
+          <circle cx="16.8" cy="7.2" r="1.05" fill="#fff" />
+        </svg>
+      </a>
+    </div>
+  </footer>
 
   <script src="sidepanel.js"></script>
 </body>
