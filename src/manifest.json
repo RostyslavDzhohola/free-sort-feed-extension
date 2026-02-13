@@ -5,7 +5,8 @@
   "description": "Filter Instagram Reels to show only outliers with 5× or more views relative to followers.",
   "permissions": [
     "scripting",
-    "sidePanel"
+    "sidePanel",
+    "storage"
   ],
   "host_permissions": [
     "*://*.instagram.com/*"

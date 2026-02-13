@@ -41,12 +41,17 @@ pnpm build
 2. Click the extension icon in your toolbar — a **side panel** opens
 3. The side panel shows the detected **follower count** and **5x threshold**
 4. Click **Run Outliers Scan**
-5. The extension auto-scrolls through Reels, showing live progress in the side panel, then:
+5. Choose your filter mode:
+   - **5× Outliers** (default): `views >= followers × 5`
+   - **Min Views**: choose `10K`, `100K`, `1M`, or enter a custom minimum
+6. The extension auto-scrolls through Reels, showing live progress in the side panel, then:
    - Hides non-qualifying tiles on the page
    - Shows sorted outliers with view counts and `views / followers` ratio in the side panel
-6. Use **Open** or **Copy link** buttons to save interesting Reels
-7. Close and reopen the side panel — your results are preserved
-8. Click **Reset** to restore the original page and clear results
+7. Use **Open**, **Copy link**, and **Save** to collect reels for later review
+8. Click **Export CSV** to download current results (Google Sheets-friendly, also opens in Excel)
+9. Switch to the **Saved Videos** view in the side panel to manage your saved list, then switch back to **Outliers**
+10. Close and reopen the side panel — current run state and saved reels are preserved
+11. Click **Reset** to restore the original page and clear only the current run state
 
 ## Development Workflow
 
@@ -119,7 +124,7 @@ See [Agents.md](./Agents.md) for a detailed breakdown of the extension's interna
 - **TypeScript** with **esbuild** — strict types, fast builds, source maps
 - **IIFE output** — required for Chrome extension popup scripts and `executeScript` injection
 - **No frameworks** — vanilla TypeScript, zero runtime dependencies
-- **Manifest V3** with minimal permissions (`scripting` + `sidePanel`) + Instagram-only host access
+- **Manifest V3** with minimal permissions (`scripting`, `sidePanel`, `storage`) + Instagram-only host access
 - **Chrome Side Panel** for persistent UI — no on-page overlays
 - **100% local** — no data leaves the browser
 
@@ -149,9 +154,9 @@ Handles `2,345` | `12.3K` | `1.2M` | `0.9B` and locale variations.
 
 ## Limitations (v1)
 
-- Multiplier is fixed at 5x (not adjustable)
-- No CSV/Sheets export
-- No cross-device sync
+- Saved reels are stored in `chrome.storage.local` (device-local only)
+- CSV export includes the currently displayed run results only
+- No cross-device sync for saved items
 - Works only on Chrome/Chromium browsers
 - Requires the Reels grid and counts to be visible (respects Instagram's login walls)
 

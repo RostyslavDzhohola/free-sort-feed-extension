@@ -30,11 +30,111 @@
       font-size: 12px;
       color: #8e8e8e;
     }
+    .header-subrow {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .help-wrap {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+    }
+    .help-btn {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 1px solid #cfd4da;
+      background: #fff;
+      color: #6f7782;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1;
+      padding: 0;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+    }
+    .help-btn:hover,
+    .help-btn:focus-visible {
+      border-color: #0095f6;
+      color: #0095f6;
+      outline: none;
+    }
+    .help-tooltip {
+      position: absolute;
+      top: 26px;
+      left: 0;
+      width: 260px;
+      z-index: 30;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+      padding: 10px 12px;
+      font-size: 12px;
+      color: #4b5563;
+      display: none;
+    }
+    .help-tooltip.visible {
+      display: block;
+    }
+    .help-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #111827;
+      margin-bottom: 6px;
+    }
+    .help-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .help-list li {
+      line-height: 1.35;
+    }
     .header .mascot {
       width: 48px;
       height: 48px;
       border-radius: 10px;
       flex-shrink: 0;
+    }
+
+    /* ── View switch ─────────────────────────────── */
+    .view-switch {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+    .view-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      flex: 1;
+      border: 1px solid #dbdbdb;
+      background: #fff;
+      color: #262626;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .view-btn svg {
+      width: 14px;
+      height: 14px;
+      display: block;
+    }
+    .view-btn.active {
+      background: #0095f6;
+      color: #fff;
+      border-color: #0095f6;
     }
 
     /* ── Stats card ───────────────────────────────── */
@@ -152,6 +252,12 @@
     #results-area {
       display: none;
     }
+    .results-headline {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
     .results-header {
       font-size: 14px;
       font-weight: 700;
@@ -211,12 +317,30 @@
     }
     .btn-sm:hover { background: #fafafa; }
     .btn-sm.open { background: #0095f6; color: #fff; border-color: #0095f6; }
+    .btn-sm.save { border-color: #0095f6; color: #0095f6; }
+    .btn-sm.remove {
+      border-color: #ef4444;
+      color: #ef4444;
+      background: #fff5f5;
+    }
+    .btn-sm.remove:hover { background: #fee2e2; }
     .empty-msg {
       text-align: center;
       padding: 20px 0;
       font-size: 13px;
       color: #8e8e8e;
     }
+    #export-btn {
+      border: 1px solid #0095f6;
+      background: #fff;
+      color: #0095f6;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #export-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
     /* ── Scan limit ──────────────────────────────── */
     #scan-limit-area {
@@ -282,6 +406,162 @@
       cursor: not-allowed;
     }
 
+    /* ── Filter mode ─────────────────────────────── */
+    #filter-mode-area {
+      margin-bottom: 16px;
+    }
+    .filter-mode-label {
+      display: block;
+      font-size: 13px;
+      color: #8e8e8e;
+      margin-bottom: 8px;
+    }
+    .filter-mode-buttons {
+      display: flex;
+      gap: 6px;
+    }
+    .filter-mode-btn {
+      flex: 1;
+      padding: 8px 10px;
+      border: 1px solid #dbdbdb;
+      border-radius: 8px;
+      background: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      color: #262626;
+      cursor: pointer;
+    }
+    .filter-mode-btn.active {
+      background: #0095f6;
+      color: #fff;
+      border-color: #0095f6;
+    }
+    .filter-mode-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── Min views ───────────────────────────────── */
+    #min-views-area {
+      margin-bottom: 16px;
+      display: none;
+    }
+    .min-views-label {
+      display: block;
+      font-size: 13px;
+      color: #8e8e8e;
+      margin-bottom: 8px;
+    }
+    .min-views-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .min-preset-buttons {
+      display: flex;
+      gap: 4px;
+    }
+    .min-preset-btn {
+      flex: 1;
+      padding: 6px 0;
+      border: 1px solid #dbdbdb;
+      border-radius: 6px;
+      background: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      color: #262626;
+    }
+    .min-preset-btn.active {
+      background: #0095f6;
+      color: #fff;
+      border-color: #0095f6;
+    }
+    .min-preset-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .min-views-input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px dashed #c7c7c7;
+      border-radius: 8px;
+      background: #f5f5f5;
+      font-size: 13px;
+      text-align: center;
+      outline: none;
+    }
+    .min-views-input:focus {
+      border-color: #0095f6;
+      border-style: solid;
+      background: #fff;
+    }
+    .min-views-input:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── Saved view ──────────────────────────────── */
+    #saved-view {
+      display: none;
+      flex: 1;
+    }
+    .saved-headline {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      gap: 8px;
+    }
+    .saved-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #262626;
+    }
+    .saved-tools {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .saved-export-btn {
+      border: 1px solid #0095f6;
+      color: #0095f6;
+      background: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 6px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .saved-export-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .saved-clear-btn {
+      border: 1px solid #ef4444;
+      color: #ef4444;
+      background: #fff5f5;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 6px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .saved-clear-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .saved-list {
+      display: flex;
+      flex-direction: column;
+    }
+    .saved-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 0;
+      border-bottom: 1px solid #efefef;
+    }
+    .saved-item:last-child { border-bottom: none; }
+    .saved-info { flex: 1; min-width: 0; }
+    .saved-meta {
+      font-size: 12px;
+      color: #8e8e8e;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     /* ── Footer ───────────────────────────────────── */
     .footer {
       margin-top: auto;
@@ -330,52 +610,118 @@
   <div class="header">
     <div class="header-text">
       <h1>Outliers</h1>
-      <div class="subtitle">Find viral outlier Reels</div>
+      <div class="header-subrow">
+        <div class="subtitle">Find viral outlier Reels</div>
+        <div class="help-wrap">
+          <button
+            id="help-btn"
+            class="help-btn"
+            type="button"
+            aria-label="Troubleshooting tips"
+            aria-expanded="false"
+            aria-controls="help-tooltip"
+          >i</button>
+          <div id="help-tooltip" class="help-tooltip" role="tooltip">
+            <div class="help-title">Quick fixes</div>
+            <ul class="help-list">
+              <li>If followers stay at 0, close and reopen the side panel.</li>
+              <li>If hidden reels remain after Reset, refresh the Instagram page.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
     </div>
     <img src="icons/icon128.png" alt="Outliers mascot" class="mascot">
   </div>
 
-  <div id="stats-area">
-    <div class="status-msg">
-      <span class="spinner"></span>Reading profile&hellip;
-    </div>
+  <div class="view-switch">
+    <button id="view-outliers-btn" class="view-btn active">Outliers</button>
+    <button id="view-saved-btn" class="view-btn" aria-label="Open Library">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path fill="currentColor" d="M3 6a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v1H3V6zm0 4h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8z"/>
+      </svg>
+      <span>Library</span>
+    </button>
   </div>
 
-  <div id="scan-limit-area">
-    <label class="scan-limit-label">Scan limit</label>
-    <div class="scan-limit-controls">
-      <div class="preset-buttons">
-        <button class="preset-btn" data-limit="50">50</button>
-        <button class="preset-btn" data-limit="100">100</button>
-        <button class="preset-btn" data-limit="200">200</button>
-        <button class="preset-btn" data-limit="500">500</button>
-        <button class="preset-btn active" data-limit="all">All</button>
+  <div id="main-view">
+    <div id="stats-area">
+      <div class="status-msg">
+        <span class="spinner"></span>Reading profile&hellip;
       </div>
-      <input type="number" id="scan-limit-input" class="scan-limit-input" placeholder="Custom limit…" min="1" step="1" />
     </div>
-  </div>
 
-  <div class="controls">
-    <button id="run-btn" disabled>Run Outliers Scan</button>
-    <button id="stop-btn">Stop</button>
-    <button id="reset-btn">Reset</button>
-  </div>
-
-  <div id="progress-area">
-    <div class="progress-bar-track">
-      <div class="progress-bar-fill" id="progress-fill"></div>
+    <div id="scan-limit-area">
+      <label class="scan-limit-label">Scan limit</label>
+      <div class="scan-limit-controls">
+        <div class="preset-buttons">
+          <button class="preset-btn" data-limit="50">50</button>
+          <button class="preset-btn" data-limit="100">100</button>
+          <button class="preset-btn" data-limit="200">200</button>
+          <button class="preset-btn" data-limit="500">500</button>
+          <button class="preset-btn active" data-limit="all">All</button>
+        </div>
+        <input type="number" id="scan-limit-input" class="scan-limit-input" placeholder="Custom limit…" min="1" step="1" />
+      </div>
     </div>
-    <div class="progress-text" id="progress-text">Scanning&hellip;</div>
-  </div>
 
-  <div id="results-area">
-    <div class="results-header">
-      Outliers <span class="results-meta" id="results-meta"></span>
+    <div id="filter-mode-area">
+      <label class="filter-mode-label">Filter mode</label>
+      <div class="filter-mode-buttons">
+        <button id="mode-ratio-btn" class="filter-mode-btn active" data-mode="ratio5x">5× Outliers</button>
+        <button id="mode-min-views-btn" class="filter-mode-btn" data-mode="minViews">Min Views</button>
+      </div>
     </div>
-    <div class="results-list" id="results-list"></div>
+
+    <div id="min-views-area">
+      <label class="min-views-label">Minimum views</label>
+      <div class="min-views-controls">
+        <div class="min-preset-buttons">
+          <button class="min-preset-btn" data-min-views="10000">10K</button>
+          <button class="min-preset-btn" data-min-views="100000">100K</button>
+          <button class="min-preset-btn" data-min-views="1000000">1M</button>
+        </div>
+        <input type="number" id="min-views-input" class="min-views-input" placeholder="Custom minimum views…" min="1" step="1" />
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="run-btn" disabled>Run Outliers Scan</button>
+      <button id="stop-btn">Stop</button>
+      <button id="reset-btn">Reset</button>
+    </div>
+
+    <div id="progress-area">
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" id="progress-fill"></div>
+      </div>
+      <div class="progress-text" id="progress-text">Scanning&hellip;</div>
+    </div>
+
+    <div id="results-area">
+      <div class="results-header">
+        <div class="results-headline">
+          <span>Outliers <span class="results-meta" id="results-meta"></span></span>
+          <button id="export-btn" disabled>Export CSV</button>
+        </div>
+      </div>
+      <div class="results-list" id="results-list"></div>
+    </div>
   </div>
 
   <p id="status" class="status-msg"></p>
+
+  <div id="saved-view">
+    <div class="saved-headline">
+      <div class="saved-title">Saved Videos</div>
+      <div class="saved-tools">
+        <button id="saved-export-btn" class="saved-export-btn">Export</button>
+        <button id="saved-clear-btn" class="saved-clear-btn">Clear</button>
+      </div>
+    </div>
+    <p id="saved-status" class="status-msg"></p>
+    <div id="saved-list" class="saved-list"></div>
+  </div>
 
   <footer class="footer" aria-label="Footer">
     <div class="footer-text">Made by Rostyslav Dzhohola</div>

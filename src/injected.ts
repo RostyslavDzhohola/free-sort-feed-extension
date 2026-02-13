@@ -1,6 +1,6 @@
 import { parseCount } from "./shared/parse-count";
 import type { ReelData } from "./types/reel";
-import type { OutliersState, OutliersEntry } from "./types/state";
+import type { OutliersState, OutliersEntry, FilterMode } from "./types/state";
 
 // esbuild wraps this file in an IIFE, so all top-level code is scoped.
 // We use an init() function with a double-injection guard.
@@ -15,9 +15,14 @@ function init(): void {
 
   let _runGeneration = 0;
 
-  // Read scan limit set by side panel (null = unlimited)
+  // Read config set by side panel before injection.
   const SCAN_LIMIT: number | null = window.__outliers_scan_limit ?? null;
+  const FILTER_MODE: FilterMode = window.__outliers_filter_mode === "minViews" ? "minViews" : "ratio5x";
+  const MIN_VIEWS: number = window.__outliers_min_views && window.__outliers_min_views > 0
+    ? window.__outliers_min_views
+    : 10000;
   console.log("[outliers] SCAN_LIMIT:", SCAN_LIMIT);
+  console.log("[outliers] FILTER_MODE:", FILTER_MODE, "MIN_VIEWS:", MIN_VIEWS);
 
   // ── Constants ──────────────────────────────────────────────────────────
   const MULTIPLIER = 5;
@@ -30,6 +35,11 @@ function init(): void {
   // ── State ──────────────────────────────────────────────────────────────
   let _hideObserver: MutationObserver | null = null;
   let _qualifyingHrefs: Set<string> | null = null;
+
+  function getActiveThresholdLabel(threshold: number): string {
+    if (FILTER_MODE === "minViews") return threshold.toLocaleString("en-US") + " views";
+    return threshold.toLocaleString("en-US") + " views";
+  }
 
   // ── State management + messaging ──────────────────────────────────────
   function updateState(state: OutliersState): void {
@@ -272,6 +282,9 @@ function init(): void {
       status: "error",
       followers: null,
       threshold: null,
+      filterMode: FILTER_MODE,
+      minViews: FILTER_MODE === "minViews" ? MIN_VIEWS : null,
+      activeThresholdLabel: FILTER_MODE === "minViews" ? getActiveThresholdLabel(MIN_VIEWS) : "5× follower count",
       scannedCount: 0,
       scanLimit: SCAN_LIMIT,
       outliers: [],
@@ -389,6 +402,9 @@ function init(): void {
       status: "scanning",
       followers: null,
       threshold: null,
+      filterMode: FILTER_MODE,
+      minViews: FILTER_MODE === "minViews" ? MIN_VIEWS : null,
+      activeThresholdLabel: FILTER_MODE === "minViews" ? getActiveThresholdLabel(MIN_VIEWS) : "5× follower count",
       scannedCount: 0,
       scanLimit: SCAN_LIMIT,
       outliers: [],
@@ -412,6 +428,9 @@ function init(): void {
             status: "scanning",
             followers: null,
             threshold: null,
+            filterMode: FILTER_MODE,
+            minViews: FILTER_MODE === "minViews" ? MIN_VIEWS : null,
+            activeThresholdLabel: FILTER_MODE === "minViews" ? getActiveThresholdLabel(MIN_VIEWS) : "5× follower count",
             scannedCount: currentSize,
             scanLimit: SCAN_LIMIT,
             outliers: [],
@@ -462,7 +481,8 @@ function init(): void {
       return;
     }
 
-    const threshold = followers * MULTIPLIER;
+    const threshold = FILTER_MODE === "minViews" ? MIN_VIEWS : followers * MULTIPLIER;
+    const activeThresholdLabel = getActiveThresholdLabel(threshold);
     const allReels: ReelData[] = [];
     reelMap.forEach(function (reel) {
       allReels.push(reel);
@@ -507,6 +527,9 @@ function init(): void {
       status: "done",
       followers: followers,
       threshold: threshold,
+      filterMode: FILTER_MODE,
+      minViews: FILTER_MODE === "minViews" ? MIN_VIEWS : null,
+      activeThresholdLabel: activeThresholdLabel,
       scannedCount: allReels.length,
       scanLimit: SCAN_LIMIT,
       outliers: outliers,
