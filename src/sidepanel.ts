@@ -20,6 +20,9 @@ const mainView = document.getElementById("main-view") as HTMLDivElement;
 const savedView = document.getElementById("saved-view") as HTMLDivElement;
 const viewOutliersBtn = document.getElementById("view-outliers-btn") as HTMLButtonElement;
 const viewSavedBtn = document.getElementById("view-saved-btn") as HTMLButtonElement;
+const helpBtn = document.getElementById("help-btn") as HTMLButtonElement | null;
+const helpTooltip = document.getElementById("help-tooltip") as HTMLDivElement | null;
+const helpWrap = helpBtn?.parentElement as HTMLDivElement | null;
 const runBtn = document.getElementById("run-btn") as HTMLButtonElement;
 const stopBtn = document.getElementById("stop-btn") as HTMLButtonElement;
 const resetBtn = document.getElementById("reset-btn") as HTMLButtonElement;
@@ -54,7 +57,9 @@ let navPollInFlight = false;
 let selectedFilterMode: FilterMode = "ratio5x";
 let selectedMinViews: number | null = null;
 let currentRenderedState: OutliersState | null = null;
+let latestFollowers: number | null = null;
 let activePanelView: "outliers" | "saved" = "outliers";
+let helpTooltipOpen = false;
 
 const savedByUrl = new Map<string, SavedReel>();
 
@@ -95,6 +100,13 @@ function switchPanelView(view: "outliers" | "saved"): void {
     viewOutliersBtn.classList.remove("active");
     viewSavedBtn.classList.add("active");
   }
+}
+
+function setHelpTooltipOpen(open: boolean): void {
+  helpTooltipOpen = open;
+  if (!helpBtn || !helpTooltip) return;
+  helpBtn.setAttribute("aria-expanded", open ? "true" : "false");
+  helpTooltip.classList.toggle("visible", open);
 }
 
 function nowIso(): string {
@@ -380,15 +392,15 @@ function renderSavedReels(): void {
     actions.className = "result-actions";
 
     const open = document.createElement("a");
-    open.className = "btn-sm open";
+    open.className = "btn-sm open action-open";
     open.href = reel.url;
     open.target = "_blank";
     open.rel = "noopener";
     open.textContent = "Open";
 
     const remove = document.createElement("button");
-    remove.className = "btn-sm remove";
-    remove.textContent = "Remove";
+    remove.className = "btn-sm remove action-tail";
+    remove.textContent = "Delete";
     remove.addEventListener("click", function () {
       unsaveReel(reel.url).catch(function () {
         statusEl.textContent = "Failed to remove saved reel.";
@@ -569,18 +581,41 @@ function hideProgress(): void {
 }
 
 function copyToClipboard(text: string, button: HTMLButtonElement): void {
+  const isIconCopyButton = button.classList.contains("action-copy");
+
+  function renderCopyIcon(target: HTMLButtonElement): void {
+    target.innerHTML =
+      '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M10.59 13.41a1 1 0 0 1 0-1.41l3.3-3.3a2 2 0 1 1 2.83 2.83l-1.3 1.3a1 1 0 0 0 1.42 1.41l1.3-1.29a4 4 0 1 0-5.66-5.66l-3.3 3.3a3 3 0 0 0 4.24 4.24l1.06-1.06a1 1 0 1 0-1.42-1.41L12 13.43a1 1 0 0 1-1.41-.02z"/><path fill="currentColor" d="M13.41 10.59a1 1 0 0 1 0 1.41l-3.3 3.3a2 2 0 1 1-2.83-2.83l1.3-1.3a1 1 0 0 0-1.42-1.41l-1.3 1.29a4 4 0 1 0 5.66 5.66l3.3-3.3a3 3 0 1 0-4.24-4.24L9.52 10.23a1 1 0 0 0 1.42 1.41L12 10.57a1 1 0 0 1 1.41.02z"/></svg>';
+  }
+
   navigator.clipboard
     .writeText(text)
     .then(function () {
-      button.textContent = "Copied!";
+      if (isIconCopyButton) {
+        button.textContent = "✓";
+      } else {
+        button.textContent = "Copied!";
+      }
       setTimeout(function () {
-        button.textContent = "Copy link";
+        if (isIconCopyButton) {
+          renderCopyIcon(button);
+        } else {
+          button.textContent = "Copy link";
+        }
       }, 1500);
     })
     .catch(function () {
-      button.textContent = "Failed";
+      if (isIconCopyButton) {
+        button.textContent = "!";
+      } else {
+        button.textContent = "Failed";
+      }
       setTimeout(function () {
-        button.textContent = "Copy link";
+        if (isIconCopyButton) {
+          renderCopyIcon(button);
+        } else {
+          button.textContent = "Copy link";
+        }
       }, 1500);
     });
 }
@@ -625,23 +660,27 @@ function renderResults(outliers: OutliersEntry[], scannedCount: number, state: O
     actions.className = "result-actions";
 
     const openLink = document.createElement("a");
-    openLink.className = "btn-sm open";
+    openLink.className = "btn-sm open action-open";
     openLink.href = reel.url;
     openLink.target = "_blank";
     openLink.rel = "noopener";
     openLink.textContent = "Open";
 
     const copyBtn = document.createElement("button");
-    copyBtn.className = "btn-sm";
-    copyBtn.textContent = "Copy link";
+    copyBtn.className = "btn-sm action-copy";
+    copyBtn.setAttribute("aria-label", "Copy a link");
+    copyBtn.setAttribute("title", "Copy a link");
+    copyBtn.setAttribute("data-tooltip", "Copy a link");
+    copyBtn.innerHTML =
+      '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M10.59 13.41a1 1 0 0 1 0-1.41l3.3-3.3a2 2 0 1 1 2.83 2.83l-1.3 1.3a1 1 0 0 0 1.42 1.41l1.3-1.29a4 4 0 1 0-5.66-5.66l-3.3 3.3a3 3 0 0 0 4.24 4.24l1.06-1.06a1 1 0 1 0-1.42-1.41L12 13.43a1 1 0 0 1-1.41-.02z"/><path fill="currentColor" d="M13.41 10.59a1 1 0 0 1 0 1.41l-3.3 3.3a2 2 0 1 1-2.83-2.83l1.3-1.3a1 1 0 0 0-1.42-1.41l-1.3 1.29a4 4 0 1 0 5.66 5.66l3.3-3.3a3 3 0 1 0-4.24-4.24L9.52 10.23a1 1 0 0 0 1.42 1.41L12 10.57a1 1 0 0 1 1.41.02z"/></svg>';
     copyBtn.addEventListener("click", function () {
       copyToClipboard(reel.url, copyBtn);
     });
 
     const saveBtn = document.createElement("button");
-    saveBtn.className = "btn-sm";
+    saveBtn.className = "btn-sm action-tail";
     const currentlySaved = isSaved(reel.url);
-    saveBtn.textContent = currentlySaved ? "Remove" : "Save";
+    saveBtn.textContent = currentlySaved ? "Delete" : "Save";
     saveBtn.classList.add(currentlySaved ? "remove" : "save");
 
     saveBtn.addEventListener("click", function () {
@@ -708,6 +747,7 @@ function setButtonsDisabled(): void {
 function renderState(rawState: OutliersState): void {
   const state = normalizeState(rawState);
   currentRenderedState = state;
+  if (state.followers && state.followers > 0) latestFollowers = state.followers;
 
   selectedFilterMode = state.filterMode;
   selectedMinViews = state.minViews;
@@ -860,13 +900,16 @@ async function rehydrate(tabId: number): Promise<void> {
     const followers = result?.[0]?.result ?? null;
 
     if (followers && followers > 0) {
+      latestFollowers = followers;
       showStats(followers, getThresholdLabel(selectedFilterMode, followers, selectedMinViews));
       runBtn.disabled = false;
     } else {
+      latestFollowers = null;
       showStats(0, "—");
       runBtn.disabled = true;
     }
   } catch {
+    latestFollowers = null;
     showStats(0, "—");
     runBtn.disabled = true;
   }
@@ -1052,6 +1095,41 @@ function exportSavedResults(): void {
 }
 
 // ── Event handlers ────────────────────────────────────────────────────────
+if (helpBtn) {
+  helpBtn.addEventListener("click", function (ev) {
+    ev.stopPropagation();
+    setHelpTooltipOpen(!helpTooltipOpen);
+  });
+
+  helpBtn.addEventListener("mouseenter", function () {
+    setHelpTooltipOpen(true);
+  });
+
+  helpBtn.addEventListener("focus", function () {
+    setHelpTooltipOpen(true);
+  });
+}
+
+if (helpWrap) {
+  helpWrap.addEventListener("mouseleave", function () {
+    setHelpTooltipOpen(false);
+  });
+}
+
+document.addEventListener("click", function (ev) {
+  if (!helpTooltipOpen || !helpWrap) return;
+  const target = ev.target as Node | null;
+  if (!target || !helpWrap.contains(target)) {
+    setHelpTooltipOpen(false);
+  }
+});
+
+document.addEventListener("keydown", function (ev) {
+  if (ev.key === "Escape") {
+    setHelpTooltipOpen(false);
+  }
+});
+
 viewOutliersBtn.addEventListener("click", function () {
   switchPanelView("outliers");
 });
@@ -1210,10 +1288,10 @@ for (let i = 0; i < filterModeBtns.length; i++) {
     saveFilterMode(mode);
     setFilterControlsDisabled(false);
 
-    if (currentRenderedState?.status !== "done" && currentRenderedState?.followers) {
+    if (currentRenderedState?.status !== "done" && latestFollowers) {
       showStats(
-        currentRenderedState.followers,
-        getThresholdLabel(mode, currentRenderedState.followers, selectedMinViews)
+        latestFollowers,
+        getThresholdLabel(mode, latestFollowers, selectedMinViews)
       );
     }
   });
@@ -1239,6 +1317,7 @@ exportBtn.addEventListener("click", exportCurrentResults);
 
 // ── Init ─────────────────────────────────────────────────────────────────
 async function init(): Promise<void> {
+  setHelpTooltipOpen(false);
   switchPanelView("outliers");
   syncScanLimitUI(loadScanLimit());
   syncFilterModeUI(loadFilterMode());

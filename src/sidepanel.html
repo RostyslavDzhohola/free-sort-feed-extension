@@ -303,6 +303,7 @@
     .result-actions {
       display: flex;
       gap: 6px;
+      align-items: center;
     }
     .btn-sm {
       padding: 5px 10px;
@@ -314,6 +315,7 @@
       color: #262626;
       text-decoration: none;
       white-space: nowrap;
+      flex: 0 0 auto;
     }
     .btn-sm:hover { background: #fafafa; }
     .btn-sm.open { background: #0095f6; color: #fff; border-color: #0095f6; }
@@ -324,6 +326,58 @@
       background: #fff5f5;
     }
     .btn-sm.remove:hover { background: #fee2e2; }
+    .btn-sm.action-open {
+      width: 100px;
+      text-align: center;
+      justify-content: center;
+      display: inline-flex;
+      align-items: center;
+    }
+    .btn-sm.action-tail {
+      width: 100px;
+      text-align: center;
+      justify-content: center;
+      display: inline-flex;
+      align-items: center;
+    }
+    .btn-sm.action-copy {
+      width: 36px;
+      min-width: 36px;
+      padding: 5px 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    .btn-sm.action-copy svg {
+      width: 18px;
+      height: 18px;
+      display: block;
+    }
+    .btn-sm.action-copy[data-tooltip]::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 50%;
+      transform: translateX(-50%) translateY(2px);
+      background: #111827;
+      color: #fff;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1;
+      padding: 6px 8px;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s ease, transform 0.15s ease;
+      z-index: 20;
+    }
+    .btn-sm.action-copy[data-tooltip]:hover::after,
+    .btn-sm.action-copy[data-tooltip]:focus-visible::after {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
     .empty-msg {
       text-align: center;
       padding: 20px 0;
