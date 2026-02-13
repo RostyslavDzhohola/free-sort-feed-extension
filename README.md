@@ -10,7 +10,8 @@ On any Instagram profile's Reels tab, the extension:
 2. Computes a threshold: `followers x 5`
 3. Scrolls through all Reels and reads their **view counts**
 4. **Hides** Reels below the threshold on the page
-5. Shows a **sorted results list** in Chrome's side panel (highest views first)
+5. Preserves Instagram's original grid cell sizing while filtering
+6. Shows a **sorted results list** in Chrome's side panel (highest views first)
 
 No on-page overlays — all UI lives in the side panel. Closing and reopening the panel preserves your results until you reset.
 
@@ -46,7 +47,9 @@ pnpm build
    - **Min Views**: choose `10K`, `100K`, `1M`, or enter a custom minimum
 6. The extension auto-scrolls through Reels, showing live progress in the side panel, then:
    - Hides non-qualifying tiles on the page
+   - Preserves original 3-column slot geometry for visible tiles (stability mode)
    - Shows sorted outliers with view counts and `views / followers` ratio in the side panel
+   - If no reels qualify, keeps the grid in a strict empty-filter mode and locks scroll until **Reset**
 7. Use **Open**, **Copy link**, and **Save** to collect reels for later review
 8. Click **Export CSV** to download current results (Google Sheets-friendly, also opens in Excel)
 9. Switch to the **Saved Videos** view in the side panel to manage your saved list, then switch back to **Outliers**

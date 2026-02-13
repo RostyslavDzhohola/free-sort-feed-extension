@@ -27,14 +27,20 @@ function init(): void {
   // ── Constants ──────────────────────────────────────────────────────────
   const MULTIPLIER = 5;
   const HIDDEN_CLASS = "outliers-hidden";
+  const VISIBLE_CELL_CLASS = "outliers-visible-cell";
+  const HIDDEN_ROW_CLASS = "outliers-hidden-row";
   const SCROLL_STEP_PX = 600;
   const SCROLL_WAIT_MS = 800;
   const MAX_SCROLL_ATTEMPTS = 500; // safety cap
   const REEL_HREF_RE = /\/reel(s)?\/[^/?#]+/i;
+  const REEL_LINK_SELECTOR = 'a[href*="/reel/"], a[href*="/reels/"]';
 
   // ── State ──────────────────────────────────────────────────────────────
   let _hideObserver: MutationObserver | null = null;
   let _qualifyingHrefs: Set<string> | null = null;
+  let _scrollLockActive = false;
+  let _docOverflowBeforeLock = "";
+  let _bodyOverflowBeforeLock = "";
 
   function getActiveThresholdLabel(threshold: number): string {
     if (FILTER_MODE === "minViews") return threshold.toLocaleString("en-US") + " views";
@@ -188,12 +194,23 @@ function init(): void {
     return NaN;
   }
 
-  // ── Hide / show tiles ──────────────────────────────────────────────────
+  // ── Layout filtering + ordering ────────────────────────────────────────
   function injectHideStyle(): void {
     if (document.getElementById("outliers-style")) return;
     const style = document.createElement("style");
     style.id = "outliers-style";
-    style.textContent = "." + HIDDEN_CLASS + " { display: none !important; }";
+    style.textContent = [
+      "." + HIDDEN_CLASS + " {",
+      "  display: none !important;",
+      "}",
+      "." + VISIBLE_CELL_CLASS + " {",
+      "  flex: 0 0 33.3333% !important;",
+      "  max-width: 33.3333% !important;",
+      "}",
+      "." + HIDDEN_ROW_CLASS + " {",
+      "  display: none !important;",
+      "}",
+    ].join("\n");
     document.head.appendChild(style);
   }
 
@@ -202,33 +219,175 @@ function init(): void {
     if (style) style.remove();
   }
 
-  function unhideAll(): void {
-    const nodes = document.querySelectorAll("." + HIDDEN_CLASS);
+  function clearTileClasses(): void {
+    const nodes = document.querySelectorAll("." + HIDDEN_CLASS + ", ." + VISIBLE_CELL_CLASS);
     for (let i = 0; i < nodes.length; i++) {
-      nodes[i]!.classList.remove(HIDDEN_CLASS);
+      const node = nodes[i] as HTMLElement;
+      node.classList.remove(HIDDEN_CLASS);
+      node.classList.remove(VISIBLE_CELL_CLASS);
+      node.style.removeProperty("order");
+      node.style.removeProperty("flex");
+      node.style.removeProperty("width");
+      node.style.removeProperty("max-width");
+    }
+
+    const rows = document.querySelectorAll("." + HIDDEN_ROW_CLASS);
+    for (let i = 0; i < rows.length; i++) {
+      rows[i]!.classList.remove(HIDDEN_ROW_CLASS);
     }
   }
 
-  function hideNonQualifyingTiles(): void {
-    if (!_qualifyingHrefs) return;
-    const links = document.querySelectorAll(
-      'a[href*="/reel/"], a[href*="/reels/"]'
+  function lockPageScroll(): void {
+    if (_scrollLockActive) return;
+    _docOverflowBeforeLock = document.documentElement.style.overflow;
+    _bodyOverflowBeforeLock = document.body.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    _scrollLockActive = true;
+  }
+
+  function unlockPageScroll(): void {
+    if (!_scrollLockActive) return;
+    document.documentElement.style.overflow = _docOverflowBeforeLock;
+    document.body.style.overflow = _bodyOverflowBeforeLock;
+    _docOverflowBeforeLock = "";
+    _bodyOverflowBeforeLock = "";
+    _scrollLockActive = false;
+  }
+
+  function collectUniqueReelHrefs(root: Element): Set<string> {
+    const hrefs = new Set<string>();
+    if (root instanceof HTMLAnchorElement) {
+      const href = root.getAttribute("href");
+      if (isReelPermalinkHref(href)) hrefs.add(href);
+      return hrefs;
+    }
+
+    const anchors = root.querySelectorAll(REEL_LINK_SELECTOR);
+    for (let i = 0; i < anchors.length; i++) {
+      const href = anchors[i]!.getAttribute("href");
+      if (isReelPermalinkHref(href)) hrefs.add(href);
+    }
+    return hrefs;
+  }
+
+  function resolveTileRoot(
+    link: HTMLAnchorElement,
+    getHrefsForNode: (node: Element) => Set<string>
+  ): HTMLElement | null {
+    let current: HTMLElement | null = link;
+    while (current && current !== document.body) {
+      const parentEl: HTMLElement | null = current.parentElement;
+      if (!parentEl) break;
+
+      const currentHrefs = getHrefsForNode(current);
+      let siblingTileCount = 0;
+      for (let i = 0; i < parentEl.children.length; i++) {
+        const sibling = parentEl.children[i]!;
+        const siblingHrefs = getHrefsForNode(sibling);
+        if (siblingHrefs.size === 1) {
+          siblingTileCount++;
+        }
+      }
+
+      const display = window.getComputedStyle(current).display;
+      const rect = current.getBoundingClientRect();
+      const maxTileWidth = window.innerWidth * 0.45;
+      const maxTileHeight = window.innerHeight * 0.9;
+      const looksLikeTileSize =
+        rect.width >= 80 &&
+        rect.height >= 80 &&
+        rect.width <= maxTileWidth &&
+        rect.height <= maxTileHeight;
+
+      // Return the first (closest) valid candidate so we stay at grid-cell level.
+      if (
+        currentHrefs.size === 1 &&
+        siblingTileCount >= 3 &&
+        display !== "contents" &&
+        looksLikeTileSize
+      ) {
+        return current;
+      }
+
+      current = parentEl;
+    }
+
+    return (
+      (link.closest("article, li") as HTMLElement | null) ??
+      link.parentElement
     );
+  }
+
+  function collectTileRootsByHref(): Map<string, HTMLElement> {
+    const tilesByHref = new Map<string, HTMLElement>();
+    const hrefCache = new WeakMap<Element, Set<string>>();
+    const getHrefsForNode = function (node: Element): Set<string> {
+      const cached = hrefCache.get(node);
+      if (cached) return cached;
+      const computed = collectUniqueReelHrefs(node);
+      hrefCache.set(node, computed);
+      return computed;
+    };
+    const links = document.querySelectorAll(REEL_LINK_SELECTOR);
     for (let i = 0; i < links.length; i++) {
       const link = links[i] as HTMLAnchorElement;
       const href = link.getAttribute("href");
-      if (!isReelPermalinkHref(href)) continue;
-      const tile =
-        link.closest("article") ??
-        link.closest('[role="button"]') ??
-        link.parentElement;
-      if (!tile) continue;
-      if (_qualifyingHrefs.has(href)) {
+      if (!isReelPermalinkHref(href) || tilesByHref.has(href)) continue;
+      const tileRoot = resolveTileRoot(link, getHrefsForNode);
+      if (!tileRoot) continue;
+      tilesByHref.set(href, tileRoot);
+    }
+    return tilesByHref;
+  }
+
+  function applyFilteredLayout(): void {
+    if (!_qualifyingHrefs) return;
+    clearTileClasses();
+    const tilesByHref = collectTileRootsByHref();
+    const visibleCountByParent = new Map<HTMLElement, number>();
+    const parents: HTMLElement[] = [];
+    const seenParents = new Set<HTMLElement>();
+
+    tilesByHref.forEach(function (tile, href) {
+      const parent = tile.parentElement;
+      if (parent && !seenParents.has(parent)) {
+        seenParents.add(parent);
+        parents.push(parent);
+      }
+
+      if (_qualifyingHrefs!.has(href)) {
         tile.classList.remove(HIDDEN_CLASS);
+        tile.classList.add(VISIBLE_CELL_CLASS);
+        if (parent) {
+          const currentCount = visibleCountByParent.get(parent) ?? 0;
+          visibleCountByParent.set(parent, currentCount + 1);
+        }
       } else {
         tile.classList.add(HIDDEN_CLASS);
+        tile.classList.remove(VISIBLE_CELL_CLASS);
       }
+    });
+
+    for (let i = 0; i < parents.length; i++) {
+      const parent = parents[i]!;
+      const visibleCount = visibleCountByParent.get(parent) ?? 0;
+      if (visibleCount === 0) parent.classList.add(HIDDEN_ROW_CLASS);
+      else parent.classList.remove(HIDDEN_ROW_CLASS);
     }
+
+    if (_qualifyingHrefs.size === 0) {
+      // Prevent endless bottom-loading when every tile is filtered out.
+      lockPageScroll();
+    } else {
+      unlockPageScroll();
+    }
+  }
+
+  function clearFilteredLayout(): void {
+    _qualifyingHrefs = null;
+    clearTileClasses();
+    unlockPageScroll();
   }
 
   function startHideObserver(): void {
@@ -239,7 +398,7 @@ function init(): void {
       scheduled = true;
       requestAnimationFrame(function () {
         scheduled = false;
-        hideNonQualifyingTiles();
+        applyFilteredLayout();
       });
     });
     _hideObserver.observe(document.body, { childList: true, subtree: true });
@@ -255,8 +414,7 @@ function init(): void {
   // ── Reset ──────────────────────────────────────────────────────────────
   function resetAll(): void {
     stopHideObserver();
-    _qualifyingHrefs = null;
-    unhideAll();
+    clearFilteredLayout();
     removeHideStyle();
     window.__outliers_active = false;
     emitReset();
@@ -274,9 +432,9 @@ function init(): void {
 
   // ── Error handling (sets state + sends to side panel) ──────────────────
   function reportError(errorText: string): void {
-    unhideAll();
-    removeHideStyle();
     stopHideObserver();
+    clearFilteredLayout();
+    removeHideStyle();
     window.__outliers_active = false;
     updateState({
       status: "error",
@@ -294,9 +452,7 @@ function init(): void {
 
   // ── Collect reels currently visible in the DOM into an accumulator map ─
   function collectVisibleReels(reelMap: Map<string, ReelData>): void {
-    const links = document.querySelectorAll(
-      'a[href*="/reel/"], a[href*="/reels/"]'
-    );
+    const links = document.querySelectorAll(REEL_LINK_SELECTOR);
     for (let li = 0; li < links.length; li++) {
       const link = links[li]! as HTMLAnchorElement;
       const href = link.getAttribute("href");
@@ -390,6 +546,8 @@ function init(): void {
   function autoScrollAndRun(): void {
     _runGeneration++;
     const myGen = _runGeneration;
+    clearFilteredLayout();
+    removeHideStyle();
 
     const reelMap = new Map<string, ReelData>();
     let previousMapSize = 0;
@@ -520,8 +678,12 @@ function init(): void {
     }
 
     injectHideStyle();
-    hideNonQualifyingTiles();
-    startHideObserver();
+    applyFilteredLayout();
+    if (qualifying.length === 0) {
+      stopHideObserver();
+    } else {
+      startHideObserver();
+    }
 
     updateState({
       status: "done",

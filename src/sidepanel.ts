@@ -778,6 +778,14 @@ function renderState(rawState: OutliersState): void {
       hideProgress();
       renderResults(state.outliers, state.scannedCount, state);
       setButtonsForDone();
+      if (state.outliers.length === 0) {
+        statusEl.textContent =
+          "No reels matched this filter. Page scrolling is locked while zero-result filtering is active. Click Reset to restore the full grid.";
+        statusEl.className = "status-msg";
+      } else {
+        statusEl.textContent = "";
+        statusEl.className = "status-msg";
+      }
       break;
     case "error":
       hideProgress();
