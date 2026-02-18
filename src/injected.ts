@@ -5,7 +5,6 @@ interface CollectedReel {
   url: string;
   href: string;
   views: number; // NaN if views could not be parsed
-  thumbnailUrl: string | null;
   cardHtml: string | null;
 }
 
@@ -40,6 +39,7 @@ function init(): void {
     : 10000;
 
   const MULTIPLIER = 5;
+  const MAX_CARD_SNAPSHOT_REELS = 150;
   const SCROLL_STEP_PX = 600;
   const SCROLL_WAIT_MS = 800;
   const MAX_SCROLL_ATTEMPTS = 500;
@@ -139,18 +139,6 @@ function init(): void {
   function isReelPermalinkHref(href: string | null): href is string {
     if (!href) return false;
     return REEL_HREF_RE.test(href);
-  }
-
-  function resolveThumbnailUrl(link: HTMLAnchorElement): string | null {
-    const img = link.querySelector("img");
-    if (!img) return null;
-    const currentSrc = (img as HTMLImageElement).currentSrc;
-    if (currentSrc) return currentSrc;
-    const src = (img as HTMLImageElement).src;
-    if (src) return src;
-    const srcset = img.getAttribute("srcset") ?? "";
-    const first = srcset.split(",")[0]?.trim().split(" ")[0];
-    return first || null;
   }
 
   function collectUniqueReelHrefs(root: Element): Set<string> {
@@ -536,6 +524,25 @@ function init(): void {
     }
   }
 
+  function pruneHiddenReelsContent(): void {
+    if (_gridHost) {
+      _gridHost.replaceChildren();
+    }
+    for (let i = 0; i < _hiddenBelowTabs.length; i++) {
+      _hiddenBelowTabs[i]!.el.replaceChildren();
+    }
+  }
+
+  function didNativeModalOpen(dialogsBefore: number, pathBefore: string): boolean {
+    const dialogsAfter = document.querySelectorAll('div[role="dialog"]').length;
+    if (dialogsAfter > dialogsBefore) return true;
+
+    const pathAfter = window.location.pathname;
+    if (pathAfter !== pathBefore && /\/reel(s)?\//i.test(pathAfter)) return true;
+
+    return false;
+  }
+
   function renderCustomGrid(outliers: OutliersEntry[], scannedCount: number, thresholdLabel: string): void {
     ensureAppStyle();
     restoreMovedTiles();
@@ -584,19 +591,57 @@ function init(): void {
           });
         }
         card.appendChild(liveTile);
+        card.addEventListener(
+          "click",
+          function (ev) {
+            const mouse = ev as MouseEvent;
+            if (mouse.button !== 0) return;
+            if (mouse.metaKey || mouse.ctrlKey || mouse.shiftKey || mouse.altKey) {
+              ev.preventDefault();
+              ev.stopPropagation();
+              ev.stopImmediatePropagation();
+              window.open(item.url, "_blank", "noopener,noreferrer");
+              return;
+            }
+
+            const dialogsBefore = document.querySelectorAll('div[role="dialog"]').length;
+            const pathBefore = window.location.pathname;
+
+            // Block hard navigation in current tab, but keep propagation so Instagram handlers can still open modal.
+            ev.preventDefault();
+
+            window.setTimeout(function () {
+              if (didNativeModalOpen(dialogsBefore, pathBefore)) return;
+              window.open(item.url, "_blank", "noopener,noreferrer");
+            }, 500);
+          },
+          true
+        );
+        card.addEventListener(
+          "auxclick",
+          function (ev) {
+            const mouse = ev as MouseEvent;
+            if (mouse.button !== 1) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            ev.stopImmediatePropagation();
+            window.open(item.url, "_blank", "noopener,noreferrer");
+          },
+          true
+        );
       } else if (fromMap?.cardHtml) {
         card.innerHTML = fromMap.cardHtml;
-      } else if (fromMap?.thumbnailUrl) {
-        const fallbackLink = document.createElement("a");
-        fallbackLink.href = item.url;
-        const img = document.createElement("img");
-        img.src = fromMap.thumbnailUrl;
-        img.alt = "Reel thumbnail";
-        fallbackLink.appendChild(img);
-        card.appendChild(fallbackLink);
+        const anchors = card.querySelectorAll("a[href]");
+        for (let ai = 0; ai < anchors.length; ai++) {
+          const a = anchors[ai] as HTMLAnchorElement;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+        }
       } else {
         const fallbackLink = document.createElement("a");
         fallbackLink.href = item.url;
+        fallbackLink.target = "_blank";
+        fallbackLink.rel = "noopener noreferrer";
         fallbackLink.textContent = "Open reel";
         card.appendChild(fallbackLink);
       }
@@ -605,6 +650,9 @@ function init(): void {
 
     shell.appendChild(grid);
     root.appendChild(shell);
+    pruneHiddenReelsContent();
+    runCtx.reelMap.clear();
+    _movedTiles.clear();
   }
 
   function reportError(errorText: string): void {
@@ -715,16 +763,16 @@ function init(): void {
         }
       }
 
-      const thumbnailUrl = resolveThumbnailUrl(link);
       const existing = reelMap.get(href);
       if (!existing) {
-        const tileRoot = resolveTileRoot(link);
+        const snapshot = reelMap.size < MAX_CARD_SNAPSHOT_REELS
+          ? (resolveTileRoot(link)?.outerHTML ?? null)
+          : null;
         reelMap.set(href, {
           url: fullUrl,
           href,
           views,
-          thumbnailUrl,
-          cardHtml: tileRoot ? tileRoot.outerHTML : link.outerHTML,
+          cardHtml: snapshot,
         });
         continue;
       }
@@ -732,12 +780,9 @@ function init(): void {
       if (isNaN(existing.views) && !isNaN(views)) {
         existing.views = views;
       }
-      if (!existing.thumbnailUrl && thumbnailUrl) {
-        existing.thumbnailUrl = thumbnailUrl;
-      }
-      if (!existing.cardHtml) {
-        const tileRoot = resolveTileRoot(link);
-        existing.cardHtml = tileRoot ? tileRoot.outerHTML : link.outerHTML;
+      if (!existing.cardHtml && reelMap.size < MAX_CARD_SNAPSHOT_REELS) {
+        const snapshot = resolveTileRoot(link)?.outerHTML ?? null;
+        if (snapshot) existing.cardHtml = snapshot;
       }
     }
   }
@@ -919,10 +964,14 @@ function init(): void {
     hideInteractionLock();
     removeAppRoot();
     removeAppStyle();
-    showReelsGridHost();
+    _movedTiles.clear();
+    _hiddenBelowTabs.length = 0;
+    _gridHost = null;
+    _gridHostDisplayBefore = "";
 
     window.__outliers_active = false;
     emitReset();
+    window.location.reload();
   }
 
   window.__outliers_reset = resetAll;

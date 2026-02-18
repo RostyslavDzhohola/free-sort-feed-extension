@@ -148,18 +148,19 @@ function getThresholdLabel(mode: FilterMode, followers: number | null, minViews:
 function loadScanLimit(): number | null {
   try {
     const raw = localStorage.getItem(SCAN_LIMIT_KEY);
-    if (!raw) return null;
+    if (raw === null) return 100;
+    if (raw === "all") return null;
     const val = parseInt(raw, 10);
-    if (!Number.isFinite(val) || val <= 0) return null;
+    if (!Number.isFinite(val) || val <= 0) return 100;
     return val;
   } catch {
-    return null;
+    return 100;
   }
 }
 
 function saveScanLimit(limit: number | null): void {
   try {
-    if (limit === null) localStorage.removeItem(SCAN_LIMIT_KEY);
+    if (limit === null) localStorage.setItem(SCAN_LIMIT_KEY, "all");
     else localStorage.setItem(SCAN_LIMIT_KEY, String(limit));
   } catch {
     // Non-fatal
@@ -1246,6 +1247,8 @@ stopBtn.addEventListener("click", async function () {
 
 resetBtn.addEventListener("click", async function () {
   setButtonsDisabled();
+  statusEl.textContent = "Resetting and reloading page…";
+  statusEl.className = "status-msg";
 
   try {
     const tabId = cachedTabId ?? (await getActiveTabId());
@@ -1265,11 +1268,17 @@ resetBtn.addEventListener("click", async function () {
   hideResults();
   setButtonsForIdle();
   currentRenderedState = null;
-  statusEl.textContent = "Outliers cleared.";
+  statusEl.textContent = "Waiting for page reload…";
 
   if (cachedTabId != null) {
     showLoading();
-    await rehydrate(cachedTabId);
+    window.setTimeout(function () {
+      if (cachedTabId != null) {
+        rehydrate(cachedTabId).catch(function () {
+          // Tab may still be navigating — non-fatal
+        });
+      }
+    }, 1500);
   }
 });
 

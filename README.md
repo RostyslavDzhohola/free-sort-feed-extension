@@ -11,7 +11,9 @@ On any Instagram profile's Reels tab, the extension:
 3. Scrolls through all Reels and reads their **view counts**
 4. Locks page interaction while scanning (transparent green safety layer)
 5. Builds a custom in-page outliers grid (sorted highest views first)
-6. Shows the same sorted outliers list in Chrome's side panel
+6. Uses native Instagram tiles when available and lightweight fallbacks otherwise
+7. Keeps your filtered grid safe: tries native modal first, otherwise opens reel in a new tab
+8. Shows the same sorted outliers list in Chrome's side panel
 
 The page grid is replaced by an extension-rendered grid after scan completion. Closing and reopening the side panel preserves your results until reset.
 
@@ -42,6 +44,7 @@ pnpm build
 2. Click the extension icon in your toolbar — a **side panel** opens
 3. The side panel shows the detected **follower count** and **5x threshold**
 4. Click **Run Outliers Scan**
+   - Default scan limit is **100** reels (you can still switch to **All**)
 5. Choose your filter mode:
    - **5× Outliers** (default): `views >= followers × 5`
    - **Min Views**: choose `10K`, `100K`, `1M`, or enter a custom minimum
@@ -49,12 +52,20 @@ pnpm build
    - Blocks page interaction during scan so user actions cannot interrupt collection
    - Renders a custom outliers grid on the page (responsive 4/3/2 columns)
    - Shows sorted outliers with view counts and `views / followers` ratio in the side panel
+   - Reel tile click behavior: tries native Instagram modal first; if modal does not open, opens the reel in a new tab (preserves current outliers grid)
 7. If you click **Stop** mid-scan, the extension finalizes immediately from reels collected so far (no reset)
 8. Use **Open**, **Copy link**, and **Save** to collect reels for later review
 9. Click **Export CSV** to download current results (Google Sheets-friendly, also opens in Excel)
 10. Switch to the **Saved Videos** view in the side panel to manage your saved list, then switch back to **Outliers**
 11. Close and reopen the side panel — current run state and saved reels are preserved
-12. Click **Reset** to restore the original page and clear only the current run state
+12. Click **Reset** to clear state and reload the tab (memory-safe cleanup)
+
+## Future To-Do
+
+- [ ] Add a **Save** button overlay on each outlier tile preview so reels can be saved directly from the in-page grid. This must stay fully synced with side panel saves:
+  - Saving from tile or side panel should update the same saved record.
+  - No duplicate saves for the same reel URL.
+  - Saved state should reflect in both places immediately.
 
 ## Development Workflow
 

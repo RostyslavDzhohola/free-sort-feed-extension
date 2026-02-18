@@ -56,7 +56,7 @@ When writing an implementation plan for this project:
 6. Waits for user to click Run, Stop, or Reset
 7. On Run: injects `injected.js` into the tab, listens for messages
 8. On Stop: calls `window.__outliers_stop()` to finalize from collected reels
-9. On Reset: calls the page's reset function, clears UI
+9. On Reset: calls the page's reset function, clears UI, and waits for tab reload rehydration
 
 **Communication:**
 - **Outbound:** `chrome.scripting.executeScript` to inject functions/files into the page
@@ -80,6 +80,7 @@ When writing an implementation plan for this project:
 - Applies active filter (`views >= followers * 5` or min views)
 - Sorts qualifying Reels by view count (descending)
 - Replaces native reels area with extension-rendered custom outliers grid
+- Uses live Instagram tiles for outliers when available (lightweight link fallback for missing mounted tiles)
 - Locks page interaction during scanning with a transparent green overlay
 - Maintains `window.__outliers_state` (serializable JSON) for side panel rehydration
 - Sends runtime messages to the side panel on progress, completion, error, and reset
@@ -177,10 +178,10 @@ User clicks "Reset"
               │
               ├── removes scan lock overlay
               ├── removes custom outliers grid
-              ├── restores native Instagram content
+              ├── clears in-page extension state
               ├── clears window.__outliers_state
               ├── emits outliers:reset message
-              └── cleans up all state
+              └── reloads the tab for deterministic memory cleanup
 ```
 
 ## Key Design Decisions
@@ -190,6 +191,9 @@ Popups close when the user clicks away, losing all state. The side panel persist
 
 **Why custom page grid + scan lock?**
 The custom page grid guarantees deterministic ordering and responsive composition independent of Instagram's recycled DOM. The lock overlay prevents accidental clicks/scrolls from interfering with scan completeness.
+
+**Why modal-first with new-tab fallback?**
+Some Instagram tiles route to a full page instead of opening a modal depending on internal state. Modal-first keeps native preview behavior when possible; new-tab fallback guarantees the current filtered grid is preserved.
 
 **Why runtime messaging + window state?**
 Runtime messages provide live updates while the side panel is open. `window.__outliers_state` provides persistence for when the panel is closed and reopened — the side panel can fully reconstruct its view from this state alone without re-running the scan.
