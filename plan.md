@@ -21,6 +21,13 @@
 
 ## v2 — Next Features
 
+### Bug Fixes (Priority)
+- [ ] **Fix warning system validation** — Currently executing actions instead of validating user is on correct tab first. After recent update, stopped working properly. System should:
+  - Validate user is on the correct tab BEFORE executing any actions
+  - Show warnings when user is not on the right step/page
+  - NOT auto-execute when validation fails
+  - Only proceed with actions after successful tab/page validation
+
 ### Scan Customization
 - [ ] Let user choose how many reels to scan (e.g. 50, 100, 200)
 - [ ] Time-based filtering — only show reels from last 3 / 6 / 12 months
@@ -38,6 +45,11 @@
 
 ### UI Overhaul
 - [ ] Sidebar panel instead of overlay (better UX for browsing results)
+
+### Review Request (Early Onboarding)
+- [ ] Ask for Chrome Web Store review early — right after first successful scan (user is on emotional high)
+- [ ] Position BEFORE any upsells or advanced features
+- [ ] Rationale: highest conversion when user feels the "win"
 
 ---
 
