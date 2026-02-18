@@ -9,11 +9,11 @@ On any Instagram profile's Reels tab, the extension:
 1. Reads the creator's **follower count** from the profile page
 2. Computes a threshold: `followers x 5`
 3. Scrolls through all Reels and reads their **view counts**
-4. **Hides** Reels below the threshold on the page
-5. Preserves Instagram's original grid cell sizing while filtering
-6. Shows a **sorted results list** in Chrome's side panel (highest views first)
+4. Locks page interaction while scanning (transparent green safety layer)
+5. Builds a custom in-page outliers grid (sorted highest views first)
+6. Shows the same sorted outliers list in Chrome's side panel
 
-No on-page overlays — all UI lives in the side panel. Closing and reopening the panel preserves your results until you reset.
+The page grid is replaced by an extension-rendered grid after scan completion. Closing and reopening the side panel preserves your results until reset.
 
 ## Prerequisites
 
@@ -46,15 +46,15 @@ pnpm build
    - **5× Outliers** (default): `views >= followers × 5`
    - **Min Views**: choose `10K`, `100K`, `1M`, or enter a custom minimum
 6. The extension auto-scrolls through Reels, showing live progress in the side panel, then:
-   - Hides non-qualifying tiles on the page
-   - Preserves original 3-column slot geometry for visible tiles (stability mode)
+   - Blocks page interaction during scan so user actions cannot interrupt collection
+   - Renders a custom outliers grid on the page (responsive 4/3/2 columns)
    - Shows sorted outliers with view counts and `views / followers` ratio in the side panel
-   - If no reels qualify, keeps the grid in a strict empty-filter mode and locks scroll until **Reset**
-7. Use **Open**, **Copy link**, and **Save** to collect reels for later review
-8. Click **Export CSV** to download current results (Google Sheets-friendly, also opens in Excel)
-9. Switch to the **Saved Videos** view in the side panel to manage your saved list, then switch back to **Outliers**
-10. Close and reopen the side panel — current run state and saved reels are preserved
-11. Click **Reset** to restore the original page and clear only the current run state
+7. If you click **Stop** mid-scan, the extension finalizes immediately from reels collected so far (no reset)
+8. Use **Open**, **Copy link**, and **Save** to collect reels for later review
+9. Click **Export CSV** to download current results (Google Sheets-friendly, also opens in Excel)
+10. Switch to the **Saved Videos** view in the side panel to manage your saved list, then switch back to **Outliers**
+11. Close and reopen the side panel — current run state and saved reels are preserved
+12. Click **Reset** to restore the original page and clear only the current run state
 
 ## Development Workflow
 
@@ -95,7 +95,7 @@ src/
 ├── sidepanel.html      — Side panel UI
 ├── sidepanel.ts        — Side panel logic (tab detection, follower reading, script injection, results display)
 ├── background.ts       — Background service worker (opens side panel on icon click)
-├── injected.ts         — Core engine (scrolling, parsing, filtering — zero on-page UI)
+├── injected.ts         — Core engine (scrolling, parsing, interaction lock, custom page grid rendering)
 ├── hot-reload.ts       — Dev-only: auto-reload service worker
 ├── manifest.json       — Chrome Extension config (Manifest V3)
 ├── types/
@@ -128,7 +128,8 @@ See [Agents.md](./Agents.md) for a detailed breakdown of the extension's interna
 - **IIFE output** — required for Chrome extension popup scripts and `executeScript` injection
 - **No frameworks** — vanilla TypeScript, zero runtime dependencies
 - **Manifest V3** with minimal permissions (`scripting`, `sidePanel`, `storage`) + Instagram-only host access
-- **Chrome Side Panel** for persistent UI — no on-page overlays
+- **Chrome Side Panel** for persistent controls + results
+- **Content-script custom grid** for sorted in-page outlier browsing after scan completes
 - **100% local** — no data leaves the browser
 
 ### Follower Detection (3 fallback strategies)

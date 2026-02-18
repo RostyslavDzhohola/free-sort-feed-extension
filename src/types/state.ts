@@ -17,6 +17,7 @@ export interface SavedReel extends OutliersEntry {
 /** Persisted tab state stored on window.__outliers_state (JSON-serializable). */
 export interface OutliersState {
   status: "idle" | "scanning" | "done" | "error";
+  phase: "scanning" | "analyzing" | "rendered";
   followers: number | null;
   threshold: number | null;
   filterMode: FilterMode;

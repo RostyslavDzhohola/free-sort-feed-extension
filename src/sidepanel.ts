@@ -492,8 +492,15 @@ function normalizeState(raw: OutliersState): OutliersState {
     ? raw.activeThresholdLabel
     : getThresholdLabel(mode, followers, minViews);
 
+  const phase = raw.phase === "analyzing" || raw.phase === "rendered" || raw.phase === "scanning"
+    ? raw.phase
+    : raw.status === "done"
+      ? "rendered"
+      : "scanning";
+
   return {
     ...raw,
+    phase,
     filterMode: mode,
     minViews: minViews,
     threshold: threshold ?? null,
@@ -773,6 +780,12 @@ function renderState(rawState: OutliersState): void {
       setProgress(state.scannedCount, state.scanLimit);
       hideResults();
       setButtonsForScanning();
+      if (state.phase === "analyzing") {
+        progressFill.style.width = "100%";
+        progressFill.style.opacity = "0.6";
+        progressFill.style.animation = "pulse 1.2s ease-in-out infinite";
+        progressText.textContent = "Finalizing from collected reels…";
+      }
       break;
     case "done":
       hideProgress();
@@ -780,7 +793,7 @@ function renderState(rawState: OutliersState): void {
       setButtonsForDone();
       if (state.outliers.length === 0) {
         statusEl.textContent =
-          "No reels matched this filter. Page scrolling is locked while zero-result filtering is active. Click Reset to restore the full grid.";
+          "No reels matched this filter. Click Reset to restore the native Instagram view.";
         statusEl.className = "status-msg";
       } else {
         statusEl.textContent = "";
@@ -1213,6 +1226,8 @@ runBtn.addEventListener("click", async function () {
 
 stopBtn.addEventListener("click", async function () {
   setButtonsDisabled();
+  statusEl.textContent = "Stopping scan and finalizing results…";
+  statusEl.className = "status-msg";
 
   try {
     const tabId = cachedTabId ?? (await getActiveTabId());
@@ -1226,16 +1241,6 @@ stopBtn.addEventListener("click", async function () {
     }
   } catch {
     // Non-fatal
-  }
-
-  hideProgress();
-  hideResults();
-  setButtonsForIdle();
-  statusEl.textContent = "Scan stopped.";
-
-  if (cachedTabId != null) {
-    showLoading();
-    await rehydrate(cachedTabId);
   }
 });
 
