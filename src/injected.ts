@@ -196,7 +196,7 @@ function init(): void {
       current = parentEl;
     }
 
-    return (link.closest("article, li, div") as HTMLElement | null) ?? link;
+    return (link.closest("article, li") as HTMLElement | null) ?? link;
   }
 
   function collectTileRootsByHref(): Map<string, HTMLElement> {
@@ -543,6 +543,97 @@ function init(): void {
     return false;
   }
 
+  function sanitizeCapturedHtml(rawHtml: string): DocumentFragment {
+    const template = document.createElement("template");
+    template.innerHTML = rawHtml;
+
+    const blockedTags = new Set([
+      "script",
+      "iframe",
+      "object",
+      "embed",
+      "link",
+      "meta",
+      "style",
+      "form",
+      "base",
+      "noscript",
+      "template",
+    ]);
+    const dangerousUrlAttrs = new Set([
+      "href",
+      "src",
+      "xlink:href",
+      "action",
+      "formaction",
+      "poster",
+      "srcset",
+    ]);
+
+    const normalizeUrlValue = function (value: string): string {
+      let out = value;
+      for (let i = 0; i < 2; i++) {
+        try {
+          const decoded = decodeURIComponent(out);
+          if (decoded === out) break;
+          out = decoded;
+        } catch {
+          break;
+        }
+      }
+      return out.toLowerCase().replace(/[\u0000-\u001f\u007f\s]+/g, "");
+    };
+
+    const isDangerousUrl = function (value: string): boolean {
+      const normalized = normalizeUrlValue(value);
+      return normalized.startsWith("javascript:") || normalized.startsWith("data:");
+    };
+
+    const elements = template.content.querySelectorAll("*");
+    for (let i = 0; i < elements.length; i++) {
+      const el = elements[i]!;
+      const tag = el.tagName.toLowerCase();
+      if (blockedTags.has(tag)) {
+        el.remove();
+        continue;
+      }
+
+      const attrs = Array.from(el.attributes);
+      for (let a = 0; a < attrs.length; a++) {
+        const attr = attrs[a]!;
+        const name = attr.name.toLowerCase();
+        const value = attr.value.trim().toLowerCase();
+
+        if (name.startsWith("on")) {
+          el.removeAttribute(attr.name);
+          continue;
+        }
+
+        if (!dangerousUrlAttrs.has(name)) continue;
+
+        if (name === "srcset") {
+          const parts = attr.value.split(",");
+          let unsafe = false;
+          for (let p = 0; p < parts.length; p++) {
+            const candidate = parts[p]!.trim().split(/\s+/)[0] ?? "";
+            if (candidate && isDangerousUrl(candidate)) {
+              unsafe = true;
+              break;
+            }
+          }
+          if (unsafe) el.removeAttribute(attr.name);
+          continue;
+        }
+
+        if (isDangerousUrl(attr.value) || value.startsWith("javascript:") || value.startsWith("data:")) {
+          el.removeAttribute(attr.name);
+        }
+      }
+    }
+
+    return template.content;
+  }
+
   function renderCustomGrid(outliers: OutliersEntry[], scannedCount: number, thresholdLabel: string): void {
     ensureAppStyle();
     restoreMovedTiles();
@@ -630,7 +721,7 @@ function init(): void {
           true
         );
       } else if (fromMap?.cardHtml) {
-        card.innerHTML = fromMap.cardHtml;
+        card.appendChild(sanitizeCapturedHtml(fromMap.cardHtml));
         const anchors = card.querySelectorAll("a[href]");
         for (let ai = 0; ai < anchors.length; ai++) {
           const a = anchors[ai] as HTMLAnchorElement;
