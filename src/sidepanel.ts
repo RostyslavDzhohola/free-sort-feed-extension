@@ -38,6 +38,10 @@ const savedClearBtn = document.getElementById("saved-clear-btn") as HTMLButtonEl
 const savedExportBtn = document.getElementById("saved-export-btn") as HTMLButtonElement;
 const savedStatusEl = document.getElementById("saved-status") as HTMLParagraphElement;
 const statusEl = document.getElementById("status") as HTMLParagraphElement;
+const reviewPromptEl = document.getElementById("review-prompt") as HTMLDivElement;
+const reviewPromptDismissBtn = document.getElementById("review-prompt-dismiss-btn") as HTMLButtonElement;
+const reviewPromptRateBtn = document.getElementById("review-prompt-rate-btn") as HTMLButtonElement;
+const reviewPromptFeedbackBtn = document.getElementById("review-prompt-feedback-btn") as HTMLButtonElement;
 
 const scanLimitInput = document.getElementById("scan-limit-input") as HTMLInputElement;
 const scanPresetBtns = document.querySelectorAll(".preset-btn") as NodeListOf<HTMLButtonElement>;
@@ -60,6 +64,9 @@ let currentRenderedState: OutliersState | null = null;
 let latestFollowers: number | null = null;
 let activePanelView: "outliers" | "saved" = "outliers";
 let helpTooltipOpen = false;
+let reviewPromptState: ReviewPromptState = createDefaultReviewPromptState();
+let reviewPromptShownThisSession = false;
+let reviewPromptClosedThisSession = false;
 
 const savedByUrl = new Map<string, SavedReel>();
 
@@ -68,6 +75,20 @@ const SCAN_LIMIT_KEY = "outliers_scan_limit";
 const FILTER_MODE_KEY = "outliers_filter_mode";
 const MIN_VIEWS_KEY = "outliers_min_views";
 const SAVED_REELS_KEY = "outliers_saved_reels";
+const REVIEW_PROMPT_STATE_KEY = "outliers_review_prompt_state";
+
+const REVIEW_PROMPT_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
+const REVIEW_URL = "https://chromewebstore.google.com/detail/outliers/heogkfpbeagpoodininnfhdgjmpdalgj/reviews";
+const FEEDBACK_EMAIL = "rosty.build@gmail.com";
+
+interface ReviewPromptState {
+  firstSuccessfulScanAt: string | null;
+  lastPromptAt: string | null;
+  lastDismissedAt: string | null;
+  reviewClickedAt: string | null;
+  feedbackClickedAt: string | null;
+  promptCount: number;
+}
 
 // ── Formatting helpers ────────────────────────────────────────────────────
 function formatExact(n: number): string {
@@ -91,12 +112,14 @@ function switchPanelView(view: "outliers" | "saved"): void {
     mainView.style.display = "block";
     savedView.style.display = "none";
     statusEl.style.display = "block";
+    updateReviewPromptVisibility(currentRenderedState);
     viewOutliersBtn.classList.add("active");
     viewSavedBtn.classList.remove("active");
   } else {
     mainView.style.display = "none";
     savedView.style.display = "block";
     statusEl.style.display = "none";
+    hideReviewPrompt();
     viewOutliersBtn.classList.remove("active");
     viewSavedBtn.classList.add("active");
   }
@@ -111,6 +134,106 @@ function setHelpTooltipOpen(open: boolean): void {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function createDefaultReviewPromptState(): ReviewPromptState {
+  return {
+    firstSuccessfulScanAt: null,
+    lastPromptAt: null,
+    lastDismissedAt: null,
+    reviewClickedAt: null,
+    feedbackClickedAt: null,
+    promptCount: 0,
+  };
+}
+
+function normalizeReviewPromptState(raw: unknown): ReviewPromptState {
+  const base = createDefaultReviewPromptState();
+  if (!raw || typeof raw !== "object") return base;
+  const candidate = raw as Partial<ReviewPromptState>;
+  return {
+    firstSuccessfulScanAt: typeof candidate.firstSuccessfulScanAt === "string" ? candidate.firstSuccessfulScanAt : null,
+    lastPromptAt: typeof candidate.lastPromptAt === "string" ? candidate.lastPromptAt : null,
+    lastDismissedAt: typeof candidate.lastDismissedAt === "string" ? candidate.lastDismissedAt : null,
+    reviewClickedAt: typeof candidate.reviewClickedAt === "string" ? candidate.reviewClickedAt : null,
+    feedbackClickedAt: typeof candidate.feedbackClickedAt === "string" ? candidate.feedbackClickedAt : null,
+    promptCount: Number.isFinite(candidate.promptCount) && (candidate.promptCount ?? 0) >= 0
+      ? Math.floor(candidate.promptCount as number)
+      : 0,
+  };
+}
+
+async function loadReviewPromptState(): Promise<ReviewPromptState> {
+  try {
+    const result = await chrome.storage.local.get(REVIEW_PROMPT_STATE_KEY);
+    return normalizeReviewPromptState(result[REVIEW_PROMPT_STATE_KEY]);
+  } catch {
+    return createDefaultReviewPromptState();
+  }
+}
+
+async function saveReviewPromptState(state: ReviewPromptState): Promise<void> {
+  try {
+    await chrome.storage.local.set({ [REVIEW_PROMPT_STATE_KEY]: state });
+  } catch {
+    // Non-fatal
+  }
+}
+
+function isWithinCooldown(isoDate: string | null, nowMs: number): boolean {
+  if (!isoDate) return false;
+  const thenMs = Date.parse(isoDate);
+  if (!Number.isFinite(thenMs)) return false;
+  return nowMs - thenMs < REVIEW_PROMPT_COOLDOWN_MS;
+}
+
+function isReviewPromptEligible(now: Date, state: ReviewPromptState): boolean {
+  const nowMs = now.getTime();
+  if (state.reviewClickedAt) return false;
+  if (!state.firstSuccessfulScanAt) return false;
+  if (isWithinCooldown(state.lastDismissedAt, nowMs)) return false;
+  if (isWithinCooldown(state.lastPromptAt, nowMs)) return false;
+  return true;
+}
+
+function persistReviewPromptState(): void {
+  saveReviewPromptState(reviewPromptState).catch(function () {
+    // Non-fatal
+  });
+}
+
+function markPromptShown(now: Date): void {
+  reviewPromptState = {
+    ...reviewPromptState,
+    lastPromptAt: now.toISOString(),
+    promptCount: reviewPromptState.promptCount + 1,
+  };
+  persistReviewPromptState();
+}
+
+function markDismissed(now: Date): void {
+  reviewPromptState = {
+    ...reviewPromptState,
+    lastDismissedAt: now.toISOString(),
+  };
+  persistReviewPromptState();
+}
+
+function markReviewClicked(now: Date): void {
+  reviewPromptState = {
+    ...reviewPromptState,
+    reviewClickedAt: now.toISOString(),
+  };
+  persistReviewPromptState();
+}
+
+function markFeedbackClicked(now: Date): void {
+  reviewPromptState = {
+    ...reviewPromptState,
+    feedbackClickedAt: now.toISOString(),
+    lastDismissedAt: now.toISOString(),
+  };
+  persistReviewPromptState();
 }
 
 function sanitizeFilenamePart(value: string): string {
@@ -565,6 +688,57 @@ function showLoading(): void {
   statsArea.appendChild(wrapper);
 }
 
+function hideReviewPrompt(): void {
+  reviewPromptEl.style.display = "none";
+}
+
+function showReviewPrompt(): void {
+  reviewPromptEl.style.display = "block";
+}
+
+function ensureFirstSuccessfulScanRecorded(now: Date): void {
+  if (reviewPromptState.firstSuccessfulScanAt) return;
+  reviewPromptState = {
+    ...reviewPromptState,
+    firstSuccessfulScanAt: now.toISOString(),
+  };
+  persistReviewPromptState();
+}
+
+function updateReviewPromptVisibility(state: OutliersState | null): void {
+  if (activePanelView !== "outliers") {
+    hideReviewPrompt();
+    return;
+  }
+
+  if (!state || state.status !== "done" || state.outliers.length === 0) {
+    hideReviewPrompt();
+    return;
+  }
+
+  if (reviewPromptClosedThisSession) {
+    hideReviewPrompt();
+    return;
+  }
+
+  const now = new Date();
+  ensureFirstSuccessfulScanRecorded(now);
+
+  if (reviewPromptShownThisSession) {
+    showReviewPrompt();
+    return;
+  }
+
+  if (!isReviewPromptEligible(now, reviewPromptState)) {
+    hideReviewPrompt();
+    return;
+  }
+
+  showReviewPrompt();
+  reviewPromptShownThisSession = true;
+  markPromptShown(now);
+}
+
 function setProgress(scannedCount: number, scanLimit: number | null): void {
   progressArea.style.display = "block";
   if (scanLimit !== null && scanLimit > 0) {
@@ -773,13 +947,17 @@ function renderState(rawState: OutliersState): void {
 
   switch (state.status) {
     case "idle":
+      if (reviewPromptShownThisSession) reviewPromptClosedThisSession = true;
       hideProgress();
       hideResults();
+      hideReviewPrompt();
       setButtonsForIdle();
       break;
     case "scanning":
+      if (reviewPromptShownThisSession) reviewPromptClosedThisSession = true;
       setProgress(state.scannedCount, state.scanLimit);
       hideResults();
+      hideReviewPrompt();
       setButtonsForScanning();
       if (state.phase === "analyzing") {
         progressFill.style.width = "100%";
@@ -791,6 +969,7 @@ function renderState(rawState: OutliersState): void {
     case "done":
       hideProgress();
       renderResults(state.outliers, state.scannedCount, state);
+      updateReviewPromptVisibility(state);
       setButtonsForDone();
       if (state.outliers.length === 0) {
         statusEl.textContent =
@@ -802,8 +981,10 @@ function renderState(rawState: OutliersState): void {
       }
       break;
     case "error":
+      if (reviewPromptShownThisSession) reviewPromptClosedThisSession = true;
       hideProgress();
       hideResults();
+      hideReviewPrompt();
       if (state.errorText) {
         statusEl.textContent = state.errorText;
         statusEl.className = "status-msg error";
@@ -914,6 +1095,8 @@ async function rehydrate(tabId: number): Promise<void> {
     // Non-fatal
   }
 
+  currentRenderedState = null;
+
   try {
     const result = await chrome.scripting.executeScript({
       target: { tabId },
@@ -925,15 +1108,18 @@ async function rehydrate(tabId: number): Promise<void> {
       latestFollowers = followers;
       showStats(followers, getThresholdLabel(selectedFilterMode, followers, selectedMinViews));
       runBtn.disabled = false;
+      updateReviewPromptVisibility(currentRenderedState);
     } else {
       latestFollowers = null;
       showStats(0, "—");
       runBtn.disabled = true;
+      hideReviewPrompt();
     }
   } catch {
     latestFollowers = null;
     showStats(0, "—");
     runBtn.disabled = true;
+    hideReviewPrompt();
   }
 }
 
@@ -948,8 +1134,10 @@ chrome.runtime.onMessage.addListener(function (
   if (msg.type === "outliers:state") {
     renderState(msg.state);
   } else if (msg.type === "outliers:reset") {
+    if (reviewPromptShownThisSession) reviewPromptClosedThisSession = true;
     hideProgress();
     hideResults();
+    hideReviewPrompt();
     setButtonsForIdle();
     statusEl.textContent = "Outliers cleared.";
     statusEl.className = "status-msg";
@@ -1116,6 +1304,20 @@ function exportSavedResults(): void {
   savedStatusEl.className = "status-msg";
 }
 
+function buildFeedbackMailtoUrl(): string {
+  const subject = "Outliers extension feedback";
+  const profileUrl = normalizeProfileUrl(lastKnownProfile) ?? (lastKnownUrl ?? "");
+  const body = [
+    "What happened:",
+    "",
+    "What I expected:",
+    "",
+    "Instagram profile URL (optional): " + profileUrl,
+    "Chrome version (optional):",
+  ].join("\n");
+  return "mailto:" + FEEDBACK_EMAIL + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
+}
+
 // ── Event handlers ────────────────────────────────────────────────────────
 if (helpBtn) {
   helpBtn.addEventListener("click", function (ev) {
@@ -1152,6 +1354,32 @@ document.addEventListener("keydown", function (ev) {
   }
 });
 
+reviewPromptDismissBtn.addEventListener("click", function () {
+  const now = new Date();
+  markDismissed(now);
+  reviewPromptClosedThisSession = true;
+  reviewPromptShownThisSession = false;
+  hideReviewPrompt();
+});
+
+reviewPromptRateBtn.addEventListener("click", function () {
+  const now = new Date();
+  markReviewClicked(now);
+  reviewPromptClosedThisSession = true;
+  reviewPromptShownThisSession = false;
+  hideReviewPrompt();
+  window.open(REVIEW_URL, "_blank", "noopener,noreferrer");
+});
+
+reviewPromptFeedbackBtn.addEventListener("click", function () {
+  const now = new Date();
+  markFeedbackClicked(now);
+  reviewPromptClosedThisSession = true;
+  reviewPromptShownThisSession = false;
+  hideReviewPrompt();
+  window.open(buildFeedbackMailtoUrl(), "_blank");
+});
+
 viewOutliersBtn.addEventListener("click", function () {
   switchPanelView("outliers");
 });
@@ -1174,6 +1402,8 @@ savedClearBtn.addEventListener("click", function () {
 
 runBtn.addEventListener("click", async function () {
   setButtonsDisabled();
+  if (reviewPromptShownThisSession) reviewPromptClosedThisSession = true;
+  hideReviewPrompt();
   statusEl.textContent = "";
   statusEl.className = "status-msg";
 
@@ -1247,6 +1477,7 @@ stopBtn.addEventListener("click", async function () {
 
 resetBtn.addEventListener("click", async function () {
   setButtonsDisabled();
+  hideReviewPrompt();
   statusEl.textContent = "Resetting and reloading page…";
   statusEl.className = "status-msg";
 
@@ -1345,6 +1576,10 @@ async function init(): Promise<void> {
   syncFilterModeUI(loadFilterMode());
   syncMinViewsUI(loadMinViews());
   setFilterControlsDisabled(false);
+  reviewPromptState = await loadReviewPromptState();
+  reviewPromptShownThisSession = false;
+  reviewPromptClosedThisSession = false;
+  hideReviewPrompt();
   await loadSavedReels();
 
   const tabId = await getActiveTabId();
