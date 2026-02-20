@@ -1079,7 +1079,12 @@ function renderState(rawState: OutliersState): void {
     case "scanning":
       if (reviewPromptShownThisSession) reviewPromptClosedThisSession = true;
       setProgress(state.scannedCount, state.scanLimit);
-      hideResults();
+      // Show progressively discovered outliers during scan instead of waiting for finalize.
+      if (state.outliers.length > 0) {
+        renderResults(state.outliers, state.scannedCount, state);
+      } else {
+        hideResults();
+      }
       hideReviewPrompt();
       setButtonsForScanning();
       if (state.phase === "analyzing") {

@@ -878,6 +878,67 @@ function init(): void {
     }
   }
 
+  function buildProgressSnapshot(
+    reelMap: Map<string, CollectedReel>,
+    phase: "scanning" | "analyzing",
+    scannedCount: number
+  ): OutliersState {
+    const followersRaw = getFollowerCount();
+    const followers = !isNaN(followersRaw) && followersRaw > 0 ? followersRaw : null;
+    const threshold = FILTER_MODE === "minViews"
+      ? MIN_VIEWS
+      : followers
+        ? followers * MULTIPLIER
+        : null;
+    const activeThresholdLabel = threshold !== null
+      ? getActiveThresholdLabel(threshold)
+      : "5× follower count";
+
+    const allReels: CollectedReel[] = [];
+    reelMap.forEach(function (reel) {
+      allReels.push(reel);
+    });
+
+    const reelsWithViews = allReels.filter(function (r) {
+      return !isNaN(r.views);
+    });
+
+    const qualifying = threshold === null
+      ? []
+      : reelsWithViews
+        .filter(function (r) {
+          return r.views >= threshold;
+        })
+        .sort(function (a, b) {
+          return b.views - a.views;
+        });
+
+    const outliers: OutliersEntry[] = [];
+    for (let i = 0; i < qualifying.length; i++) {
+      const reel = qualifying[i]!;
+      outliers.push({
+        url: reel.url,
+        href: reel.href,
+        views: reel.views,
+        ratio: followers ? reel.views / followers : 0,
+      });
+    }
+
+    return {
+      status: "scanning",
+      phase: phase,
+      followers,
+      threshold,
+      filterMode: FILTER_MODE,
+      minViews: FILTER_MODE === "minViews" ? MIN_VIEWS : null,
+      activeThresholdLabel,
+      scannedCount,
+      scanLimit: SCAN_LIMIT,
+      outliers,
+      errorText: null,
+    };
+  }
+
   function analyzeFromMap(reelMap: Map<string, CollectedReel>, myGen: number): void {
     if (myGen !== _runGeneration) return;
 
@@ -949,20 +1010,8 @@ function init(): void {
     runCtx.isFinalizing = true;
     cancelPendingScroll();
     collectVisibleReels(runCtx.reelMap);
-
-    updateState({
-      status: "scanning",
-      phase: "analyzing",
-      followers: null,
-      threshold: null,
-      filterMode: FILTER_MODE,
-      minViews: FILTER_MODE === "minViews" ? MIN_VIEWS : null,
-      activeThresholdLabel: FILTER_MODE === "minViews" ? getActiveThresholdLabel(MIN_VIEWS) : "5× follower count",
-      scannedCount: runCtx.reelMap.size,
-      scanLimit: SCAN_LIMIT,
-      outliers: [],
-      errorText: null,
-    });
+    // Emit one last progressive snapshot before final render so the side panel stays live.
+    updateState(buildProgressSnapshot(runCtx.reelMap, "analyzing", runCtx.reelMap.size));
 
     window.scrollTo(0, 0);
     _scrollTimer = window.setTimeout(function () {
@@ -982,19 +1031,7 @@ function init(): void {
     ensureAppStyle();
     showInteractionLock();
 
-    updateState({
-      status: "scanning",
-      phase: "scanning",
-      followers: null,
-      threshold: null,
-      filterMode: FILTER_MODE,
-      minViews: FILTER_MODE === "minViews" ? MIN_VIEWS : null,
-      activeThresholdLabel: FILTER_MODE === "minViews" ? getActiveThresholdLabel(MIN_VIEWS) : "5× follower count",
-      scannedCount: 0,
-      scanLimit: SCAN_LIMIT,
-      outliers: [],
-      errorText: null,
-    });
+    updateState(buildProgressSnapshot(runCtx.reelMap, "scanning", 0));
 
     function scrollStep(): void {
       try {
@@ -1010,19 +1047,8 @@ function init(): void {
         if (currentSize > runCtx.previousMapSize) {
           runCtx.stableRounds = 0;
           runCtx.previousMapSize = currentSize;
-          updateState({
-            status: "scanning",
-            phase: "scanning",
-            followers: null,
-            threshold: null,
-            filterMode: FILTER_MODE,
-            minViews: FILTER_MODE === "minViews" ? MIN_VIEWS : null,
-            activeThresholdLabel: FILTER_MODE === "minViews" ? getActiveThresholdLabel(MIN_VIEWS) : "5× follower count",
-            scannedCount: currentSize,
-            scanLimit: SCAN_LIMIT,
-            outliers: [],
-            errorText: null,
-          });
+          // Stream partial outliers while scanning so users can see progress in real time.
+          updateState(buildProgressSnapshot(runCtx.reelMap, "scanning", currentSize));
         } else {
           runCtx.stableRounds++;
         }
