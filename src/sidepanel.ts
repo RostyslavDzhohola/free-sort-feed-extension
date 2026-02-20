@@ -41,7 +41,10 @@ const statusEl = document.getElementById("status") as HTMLParagraphElement;
 const reviewPromptEl = document.getElementById("review-prompt") as HTMLDivElement;
 const reviewPromptDismissBtn = document.getElementById("review-prompt-dismiss-btn") as HTMLButtonElement;
 const reviewPromptRateBtn = document.getElementById("review-prompt-rate-btn") as HTMLButtonElement;
-const reviewPromptFeedbackBtn = document.getElementById("review-prompt-feedback-btn") as HTMLButtonElement;
+const reviewDevModeRow = document.getElementById("review-dev-mode-row") as HTMLLIElement | null;
+const reviewDevModeBtn = document.getElementById("review-dev-mode-btn") as HTMLButtonElement | null;
+const reviewDevModeLabel = document.getElementById("review-dev-mode-label") as HTMLSpanElement | null;
+const reviewDevDebugEl = document.getElementById("review-dev-debug") as HTMLLIElement | null;
 
 const scanLimitInput = document.getElementById("scan-limit-input") as HTMLInputElement;
 const scanPresetBtns = document.querySelectorAll(".preset-btn") as NodeListOf<HTMLButtonElement>;
@@ -67,6 +70,9 @@ let helpTooltipOpen = false;
 let reviewPromptState: ReviewPromptState = createDefaultReviewPromptState();
 let reviewPromptShownThisSession = false;
 let reviewPromptClosedThisSession = false;
+let reviewPromptEligibleSinceMs: number | null = null;
+let reviewPromptDelayTimer: number | null = null;
+let reviewPromptDevMode: ReviewPromptDevMode = "auto";
 
 const savedByUrl = new Map<string, SavedReel>();
 
@@ -76,19 +82,25 @@ const FILTER_MODE_KEY = "outliers_filter_mode";
 const MIN_VIEWS_KEY = "outliers_min_views";
 const SAVED_REELS_KEY = "outliers_saved_reels";
 const REVIEW_PROMPT_STATE_KEY = "outliers_review_prompt_state";
+// Persisted in localStorage so you can flip modal testing modes quickly.
+const REVIEW_PROMPT_DEV_MODE_KEY = "outliers_review_prompt_dev_mode";
 
 const REVIEW_PROMPT_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
 const REVIEW_URL = "https://chromewebstore.google.com/detail/outliers/heogkfpbeagpoodininnfhdgjmpdalgj/reviews";
-const FEEDBACK_EMAIL = "rosty.build@gmail.com";
+// Keep activation broad: show after the first successful 5x result set.
+const REVIEW_PROMPT_MIN_OUTLIERS = 1;
+// Delay the ask so users can scan results first before we interrupt them.
+const REVIEW_PROMPT_DELAY_MS = 20_000;
 
 interface ReviewPromptState {
   firstSuccessfulScanAt: string | null;
   lastPromptAt: string | null;
   lastDismissedAt: string | null;
   reviewClickedAt: string | null;
-  feedbackClickedAt: string | null;
   promptCount: number;
 }
+
+type ReviewPromptDevMode = "auto" | "forceOn" | "forceOff";
 
 // ── Formatting helpers ────────────────────────────────────────────────────
 function formatExact(n: number): string {
@@ -142,7 +154,6 @@ function createDefaultReviewPromptState(): ReviewPromptState {
     lastPromptAt: null,
     lastDismissedAt: null,
     reviewClickedAt: null,
-    feedbackClickedAt: null,
     promptCount: 0,
   };
 }
@@ -156,11 +167,75 @@ function normalizeReviewPromptState(raw: unknown): ReviewPromptState {
     lastPromptAt: typeof candidate.lastPromptAt === "string" ? candidate.lastPromptAt : null,
     lastDismissedAt: typeof candidate.lastDismissedAt === "string" ? candidate.lastDismissedAt : null,
     reviewClickedAt: typeof candidate.reviewClickedAt === "string" ? candidate.reviewClickedAt : null,
-    feedbackClickedAt: typeof candidate.feedbackClickedAt === "string" ? candidate.feedbackClickedAt : null,
     promptCount: Number.isFinite(candidate.promptCount) && (candidate.promptCount ?? 0) >= 0
       ? Math.floor(candidate.promptCount as number)
       : 0,
   };
+}
+
+function loadReviewPromptDevMode(): ReviewPromptDevMode {
+  try {
+    const raw = localStorage.getItem(REVIEW_PROMPT_DEV_MODE_KEY);
+    if (raw === "forceOn" || raw === "forceOff") return raw;
+    return "auto";
+  } catch {
+    return "auto";
+  }
+}
+
+function saveReviewPromptDevMode(mode: ReviewPromptDevMode): void {
+  try {
+    localStorage.setItem(REVIEW_PROMPT_DEV_MODE_KEY, mode);
+  } catch {
+    // Non-fatal
+  }
+}
+
+function getReviewDevModeLabel(mode: ReviewPromptDevMode): string {
+  if (mode === "forceOn") return "ON";
+  if (mode === "forceOff") return "OFF";
+  return "AUTO";
+}
+
+function syncReviewPromptDevModeUI(): void {
+  if (!reviewDevModeLabel || !reviewDevModeBtn) return;
+  const stateLabel = getReviewDevModeLabel(reviewPromptDevMode);
+  reviewDevModeLabel.textContent = stateLabel;
+  reviewDevModeBtn.setAttribute("aria-label", "Review modal dev mode " + stateLabel);
+}
+
+function setReviewPromptDebug(message: string): void {
+  if (!__OUTLIERS_WATCH__ || !reviewDevDebugEl) return;
+  // Helps quickly diagnose why AUTO did/didn't show without opening console.
+  reviewDevDebugEl.textContent = "Review modal: " + message;
+}
+
+function clearReviewPromptDelayTimer(): void {
+  if (reviewPromptDelayTimer == null) return;
+  clearTimeout(reviewPromptDelayTimer);
+  reviewPromptDelayTimer = null;
+}
+
+function clearReviewPromptDelayState(): void {
+  reviewPromptEligibleSinceMs = null;
+  clearReviewPromptDelayTimer();
+}
+
+function scheduleReviewPromptDelayRefresh(waitMs: number): void {
+  if (reviewPromptDelayTimer != null) return;
+  reviewPromptDelayTimer = window.setTimeout(function () {
+    reviewPromptDelayTimer = null;
+    updateReviewPromptVisibility(currentRenderedState);
+  }, waitMs);
+}
+
+function cycleReviewPromptDevMode(): void {
+  // Simple cycle keeps testing quick: AUTO -> FORCE ON -> FORCE OFF -> AUTO.
+  if (reviewPromptDevMode === "auto") reviewPromptDevMode = "forceOn";
+  else if (reviewPromptDevMode === "forceOn") reviewPromptDevMode = "forceOff";
+  else reviewPromptDevMode = "auto";
+  saveReviewPromptDevMode(reviewPromptDevMode);
+  syncReviewPromptDevModeUI();
 }
 
 async function loadReviewPromptState(): Promise<ReviewPromptState> {
@@ -191,8 +266,8 @@ function isReviewPromptEligible(now: Date, state: ReviewPromptState): boolean {
   const nowMs = now.getTime();
   if (state.reviewClickedAt) return false;
   if (!state.firstSuccessfulScanAt) return false;
+  // Cooldown should only apply after an explicit "Not now"/feedback action.
   if (isWithinCooldown(state.lastDismissedAt, nowMs)) return false;
-  if (isWithinCooldown(state.lastPromptAt, nowMs)) return false;
   return true;
 }
 
@@ -223,15 +298,6 @@ function markReviewClicked(now: Date): void {
   reviewPromptState = {
     ...reviewPromptState,
     reviewClickedAt: now.toISOString(),
-  };
-  persistReviewPromptState();
-}
-
-function markFeedbackClicked(now: Date): void {
-  reviewPromptState = {
-    ...reviewPromptState,
-    feedbackClickedAt: now.toISOString(),
-    lastDismissedAt: now.toISOString(),
   };
   persistReviewPromptState();
 }
@@ -693,7 +759,7 @@ function hideReviewPrompt(): void {
 }
 
 function showReviewPrompt(): void {
-  reviewPromptEl.style.display = "block";
+  reviewPromptEl.style.display = "flex";
 }
 
 function ensureFirstSuccessfulScanRecorded(now: Date): void {
@@ -707,33 +773,90 @@ function ensureFirstSuccessfulScanRecorded(now: Date): void {
 
 function updateReviewPromptVisibility(state: OutliersState | null): void {
   if (activePanelView !== "outliers") {
+    setReviewPromptDebug("blocked (not in Outliers view)");
     hideReviewPrompt();
     return;
   }
 
-  if (!state || state.status !== "done" || state.outliers.length === 0) {
+  // Dev mode lets you quickly force the modal on/off without clearing storage.
+  if (reviewPromptDevMode === "forceOff") {
+    clearReviewPromptDelayState();
+    setReviewPromptDebug("forced OFF by dev mode");
+    hideReviewPrompt();
+    return;
+  }
+  if (reviewPromptDevMode === "forceOn") {
+    clearReviewPromptDelayState();
+    setReviewPromptDebug("forced ON by dev mode");
+    showReviewPrompt();
+    return;
+  }
+
+  // Show review ask only after a meaningful 5x success, not min-views mode.
+  if (
+    !state ||
+    state.status !== "done" ||
+    state.filterMode !== "ratio5x" ||
+    state.outliers.length < REVIEW_PROMPT_MIN_OUTLIERS
+  ) {
+    const stateLabel = state ? state.status : "no state";
+    const modeLabel = state ? state.filterMode : "n/a";
+    const outlierCount = state ? state.outliers.length : 0;
+    setReviewPromptDebug(
+      "blocked (status=" + stateLabel + ", mode=" + modeLabel + ", outliers=" + outlierCount + ")"
+    );
+    clearReviewPromptDelayState();
     hideReviewPrompt();
     return;
   }
 
   if (reviewPromptClosedThisSession) {
+    clearReviewPromptDelayState();
+    setReviewPromptDebug("blocked (already closed in this session)");
     hideReviewPrompt();
     return;
   }
 
   const now = new Date();
+  // Record the first qualifying success so eligibility is deterministic across reopen/reload.
   ensureFirstSuccessfulScanRecorded(now);
 
   if (reviewPromptShownThisSession) {
+    clearReviewPromptDelayState();
+    setReviewPromptDebug("showing (already shown this session)");
     showReviewPrompt();
     return;
   }
 
   if (!isReviewPromptEligible(now, reviewPromptState)) {
+    clearReviewPromptDelayState();
+    if (reviewPromptState.reviewClickedAt) {
+      setReviewPromptDebug("blocked (review already clicked on this device)");
+    } else if (isWithinCooldown(reviewPromptState.lastDismissedAt, now.getTime())) {
+      setReviewPromptDebug("blocked (30-day cooldown after dismiss)");
+    } else {
+      setReviewPromptDebug("blocked (not eligible)");
+    }
     hideReviewPrompt();
     return;
   }
 
+  if (reviewPromptEligibleSinceMs == null) {
+    reviewPromptEligibleSinceMs = now.getTime();
+  }
+
+  const elapsedMs = now.getTime() - reviewPromptEligibleSinceMs;
+  if (elapsedMs < REVIEW_PROMPT_DELAY_MS) {
+    const remainingMs = REVIEW_PROMPT_DELAY_MS - elapsedMs;
+    const remainingSeconds = Math.ceil(remainingMs / 1000);
+    setReviewPromptDebug("waiting " + remainingSeconds + "s before showing");
+    scheduleReviewPromptDelayRefresh(remainingMs);
+    hideReviewPrompt();
+    return;
+  }
+
+  clearReviewPromptDelayState();
+  setReviewPromptDebug("eligible (auto, delay complete)");
   showReviewPrompt();
   reviewPromptShownThisSession = true;
   markPromptShown(now);
@@ -1304,20 +1427,6 @@ function exportSavedResults(): void {
   savedStatusEl.className = "status-msg";
 }
 
-function buildFeedbackMailtoUrl(): string {
-  const subject = "Outliers extension feedback";
-  const profileUrl = normalizeProfileUrl(lastKnownProfile) ?? (lastKnownUrl ?? "");
-  const body = [
-    "What happened:",
-    "",
-    "What I expected:",
-    "",
-    "Instagram profile URL (optional): " + profileUrl,
-    "Chrome version (optional):",
-  ].join("\n");
-  return "mailto:" + FEEDBACK_EMAIL + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
-}
-
 // ── Event handlers ────────────────────────────────────────────────────────
 if (helpBtn) {
   helpBtn.addEventListener("click", function (ev) {
@@ -1340,6 +1449,14 @@ if (helpWrap) {
   });
 }
 
+if (__OUTLIERS_WATCH__ && reviewDevModeBtn) {
+  reviewDevModeBtn.addEventListener("click", function (ev) {
+    ev.stopPropagation();
+    cycleReviewPromptDevMode();
+    updateReviewPromptVisibility(currentRenderedState);
+  });
+}
+
 document.addEventListener("click", function (ev) {
   if (!helpTooltipOpen || !helpWrap) return;
   const target = ev.target as Node | null;
@@ -1359,6 +1476,7 @@ reviewPromptDismissBtn.addEventListener("click", function () {
   markDismissed(now);
   reviewPromptClosedThisSession = true;
   reviewPromptShownThisSession = false;
+  clearReviewPromptDelayState();
   hideReviewPrompt();
 });
 
@@ -1367,17 +1485,9 @@ reviewPromptRateBtn.addEventListener("click", function () {
   markReviewClicked(now);
   reviewPromptClosedThisSession = true;
   reviewPromptShownThisSession = false;
+  clearReviewPromptDelayState();
   hideReviewPrompt();
   window.open(REVIEW_URL, "_blank", "noopener,noreferrer");
-});
-
-reviewPromptFeedbackBtn.addEventListener("click", function () {
-  const now = new Date();
-  markFeedbackClicked(now);
-  reviewPromptClosedThisSession = true;
-  reviewPromptShownThisSession = false;
-  hideReviewPrompt();
-  window.open(buildFeedbackMailtoUrl(), "_blank");
 });
 
 viewOutliersBtn.addEventListener("click", function () {
@@ -1403,6 +1513,7 @@ savedClearBtn.addEventListener("click", function () {
 runBtn.addEventListener("click", async function () {
   setButtonsDisabled();
   if (reviewPromptShownThisSession) reviewPromptClosedThisSession = true;
+  clearReviewPromptDelayState();
   hideReviewPrompt();
   statusEl.textContent = "";
   statusEl.className = "status-msg";
@@ -1477,6 +1588,7 @@ stopBtn.addEventListener("click", async function () {
 
 resetBtn.addEventListener("click", async function () {
   setButtonsDisabled();
+  clearReviewPromptDelayState();
   hideReviewPrompt();
   statusEl.textContent = "Resetting and reloading page…";
   statusEl.className = "status-msg";
@@ -1576,9 +1688,22 @@ async function init(): Promise<void> {
   syncFilterModeUI(loadFilterMode());
   syncMinViewsUI(loadMinViews());
   setFilterControlsDisabled(false);
+  if (__OUTLIERS_WATCH__) {
+    // Dev-only review toggle is visible only in watch builds.
+    reviewPromptDevMode = loadReviewPromptDevMode();
+    if (reviewDevModeRow) reviewDevModeRow.style.display = "flex";
+    if (reviewDevDebugEl) reviewDevDebugEl.style.display = "block";
+    syncReviewPromptDevModeUI();
+    setReviewPromptDebug("waiting for eligible 5x run");
+  } else {
+    reviewPromptDevMode = "auto";
+    if (reviewDevModeRow) reviewDevModeRow.style.display = "none";
+    if (reviewDevDebugEl) reviewDevDebugEl.style.display = "none";
+  }
   reviewPromptState = await loadReviewPromptState();
   reviewPromptShownThisSession = false;
   reviewPromptClosedThisSession = false;
+  clearReviewPromptDelayState();
   hideReviewPrompt();
   await loadSavedReels();
 

@@ -98,6 +98,37 @@
     .help-list li {
       line-height: 1.35;
     }
+    .help-dev-row {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .help-dev-debug {
+      display: none;
+      font-size: 11px;
+      color: #6b7280;
+      line-height: 1.3;
+    }
+    .help-dev-label {
+      font-size: 11px;
+      color: #6b7280;
+      letter-spacing: 0.02em;
+    }
+    .help-dev-btn {
+      border: 1px solid #d1d5db;
+      background: #fff;
+      color: #111827;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      min-width: 70px;
+    }
+    .help-dev-btn:hover {
+      background: #f3f4f6;
+    }
     .header .mascot {
       width: 48px;
       height: 48px;
@@ -399,53 +430,86 @@
     /* ── Review prompt ───────────────────────────── */
     #review-prompt {
       display: none;
-      margin-top: 8px;
-      margin-bottom: 14px;
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      padding: 12px;
-      box-shadow: 0 4px 14px rgba(17, 24, 39, 0.06);
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      background: rgba(15, 23, 42, 0.46);
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      opacity: 0;
+      animation: review-overlay-fade-in 240ms ease forwards;
     }
-    .review-prompt-title {
-      font-size: 14px;
-      font-weight: 700;
-      color: #111827;
-      margin-bottom: 4px;
+    .review-prompt-card {
+      width: 100%;
+      max-width: 390px;
+      background: #fff;
+      border: 1px solid #e6ebf2;
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 14px 36px rgba(15, 23, 42, 0.24);
+      opacity: 0;
+      transform: translateY(12px) scale(0.98);
+      animation: review-card-enter 280ms cubic-bezier(0.2, 0.8, 0.2, 1) 60ms forwards;
+    }
+    @keyframes review-overlay-fade-in {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes review-card-enter {
+      from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.98);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
     }
     .review-prompt-body {
-      font-size: 12px;
-      color: #4b5563;
-      line-height: 1.35;
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1.15;
+      color: #111827;
+      letter-spacing: -0.02em;
       margin-bottom: 10px;
     }
+    .review-prompt-subtitle {
+      font-size: 14px;
+      line-height: 1.45;
+      color: #4b5563;
+      margin-bottom: 16px;
+    }
     .review-prompt-actions {
-      display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
     }
     .review-btn {
-      border-radius: 8px;
-      font-size: 12px;
+      border-radius: 10px;
+      font-size: 14px;
       font-weight: 700;
-      padding: 7px 10px;
-      border: 1px solid #d1d5db;
-      background: #fff;
-      color: #111827;
+      padding: 11px 12px;
+      border: 1px solid transparent;
       cursor: pointer;
+      width: 100%;
     }
     .review-btn.primary {
       background: #0095f6;
-      border-color: #0095f6;
+      border-color: #0084db;
       color: #fff;
     }
-    .review-btn.secondary {
-      color: #374151;
+    .review-btn.primary:hover {
+      opacity: 1;
+      background: #0084db;
     }
-    .review-btn.tertiary {
-      color: #0095f6;
-      border-color: #bfdbfe;
-      background: #eff6ff;
+    .review-btn.secondary {
+      border-color: #d6dde8;
+      color: #334155;
+      background: #fff;
+    }
+    .review-btn.secondary:hover {
+      background: #f8fafc;
     }
 
     /* ── Scan limit ──────────────────────────────── */
@@ -732,6 +796,13 @@
             <ul class="help-list">
               <li>If followers stay at 0, close and reopen the side panel.</li>
               <li>If hidden reels remain after Reset, refresh the Instagram page.</li>
+              <li id="review-dev-mode-row" class="help-dev-row">
+                <span class="help-dev-label">Review modal dev mode</span>
+                <button id="review-dev-mode-btn" class="help-dev-btn" type="button">
+                  <span id="review-dev-mode-label">AUTO</span>
+                </button>
+              </li>
+              <li id="review-dev-debug" class="help-dev-debug"></li>
             </ul>
           </div>
         </div>
@@ -816,13 +887,14 @@
   </div>
 
   <p id="status" class="status-msg"></p>
-  <div id="review-prompt" aria-live="polite">
-    <div class="review-prompt-title">Loving Outliers?</div>
-    <p class="review-prompt-body">If this helped you find winning Reels fast, a 5-star review helps a lot.</p>
-    <div class="review-prompt-actions">
-      <button id="review-prompt-rate-btn" class="review-btn primary" type="button">Leave a 5-star review</button>
-      <button id="review-prompt-dismiss-btn" class="review-btn secondary" type="button">Not now</button>
-      <button id="review-prompt-feedback-btn" class="review-btn tertiary" type="button">Send feedback</button>
+  <div id="review-prompt" aria-live="polite" role="dialog" aria-modal="true" aria-label="Review request">
+    <div class="review-prompt-card">
+      <p class="review-prompt-body">Loving Outliers?</p>
+      <p class="review-prompt-subtitle">If this helped you find winning Reels fast, leave us a review.</p>
+      <div class="review-prompt-actions">
+        <button id="review-prompt-rate-btn" class="review-btn primary" type="button">Leave a review</button>
+        <button id="review-prompt-dismiss-btn" class="review-btn secondary" type="button">Not now</button>
+      </div>
     </div>
   </div>
 
