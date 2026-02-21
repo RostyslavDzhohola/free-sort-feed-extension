@@ -426,6 +426,68 @@
       cursor: pointer;
     }
     #export-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .results-tools {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .results-tool-btn {
+      position: relative;
+      border: 1px solid #d3dbe6;
+      background: #fff;
+      color: #1f2937;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .results-tool-btn:hover {
+      background: #f8fafc;
+    }
+    .results-tool-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .results-tool-btn[data-tooltip]::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: calc(100% + 7px);
+      left: 50%;
+      transform: translateX(-50%) translateY(2px);
+      background: #0f172a;
+      color: #fff;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.25;
+      text-align: center;
+      width: 210px;
+      max-width: 210px;
+      padding: 7px 8px;
+      white-space: normal;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.16s ease, transform 0.16s ease;
+      z-index: 30;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.26);
+    }
+    .results-tool-btn[data-tooltip]:hover::after,
+    .results-tool-btn[data-tooltip]:focus-visible::after {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    .results-tool-btn.tooltip-right[data-tooltip]::after {
+      left: auto;
+      right: 0;
+      transform: translateY(2px);
+    }
+    .results-tool-btn.tooltip-right[data-tooltip]:hover::after,
+    .results-tool-btn.tooltip-right[data-tooltip]:focus-visible::after {
+      transform: translateY(0);
+    }
 
     /* ── Review prompt ───────────────────────────── */
     #review-prompt {
@@ -510,6 +572,68 @@
     }
     .review-btn.secondary:hover {
       background: #f8fafc;
+    }
+
+    /* ── Share modal ─────────────────────────────── */
+    #share-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 1002;
+      background: rgba(15, 23, 42, 0.46);
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+    }
+    .share-modal-card {
+      width: 100%;
+      max-width: 390px;
+      background: #fff;
+      border: 1px solid #e6ebf2;
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 14px 36px rgba(15, 23, 42, 0.24);
+    }
+    .share-modal-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #0f172a;
+      margin-bottom: 4px;
+    }
+    .share-modal-subtitle {
+      font-size: 13px;
+      color: #475569;
+      line-height: 1.4;
+      margin-bottom: 12px;
+    }
+    .share-modal-actions {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+    .share-modal-btn {
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      padding: 10px 12px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      width: 100%;
+    }
+    .share-modal-btn.primary {
+      background: #0095f6;
+      border-color: #0084db;
+      color: #fff;
+    }
+    .share-modal-btn.secondary {
+      border-color: #d6dde8;
+      color: #334155;
+      background: #fff;
+    }
+    .share-modal-btn.ghost {
+      border-color: #bfdbfe;
+      color: #0369a1;
+      background: #f0f9ff;
     }
 
     /* ── Scan limit ──────────────────────────────── */
@@ -879,7 +1003,32 @@
       <div class="results-header">
         <div class="results-headline">
           <span>Outliers <span class="results-meta" id="results-meta"></span></span>
-          <button id="export-btn" disabled>Export CSV</button>
+          <div class="results-tools">
+            <button
+              id="export-btn"
+              class="results-tool-btn"
+              type="button"
+              disabled
+              aria-label="Download CSV"
+              data-tooltip="Download all current outliers as CSV for spreadsheet tracking."
+            >CSV</button>
+            <button
+              id="share-outliers-btn"
+              class="results-tool-btn"
+              type="button"
+              disabled
+              aria-label="Open share kit"
+              data-tooltip="Open share kit to download a Story card and copy a caption or links."
+            >Share</button>
+            <button
+              id="copy-outliers-btn"
+              class="results-tool-btn tooltip-right"
+              type="button"
+              disabled
+              aria-label="Copy outliers"
+              data-tooltip="Copy your current outliers as plain text for external review or coaching."
+            >Copy</button>
+          </div>
         </div>
       </div>
       <div class="results-list" id="results-list"></div>
@@ -894,6 +1043,19 @@
       <div class="review-prompt-actions">
         <button id="review-prompt-rate-btn" class="review-btn primary" type="button">Leave a review</button>
         <button id="review-prompt-dismiss-btn" class="review-btn secondary" type="button">Not now</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="share-modal" role="dialog" aria-modal="true" aria-label="Share outliers">
+    <div class="share-modal-card">
+      <div class="share-modal-title">Share Your Outliers</div>
+      <p class="share-modal-subtitle">Turn your top-performing reels into a quick share package for social and portfolio use.</p>
+      <div class="share-modal-actions">
+        <button id="share-download-story-btn" class="share-modal-btn primary" type="button">Download Story Card (Top 5)</button>
+        <button id="share-copy-caption-btn" class="share-modal-btn ghost" type="button">Copy Caption</button>
+        <button id="share-copy-links-btn" class="share-modal-btn ghost" type="button">Copy Top 5 Links</button>
+        <button id="share-close-btn" class="share-modal-btn secondary" type="button">Close</button>
       </div>
     </div>
   </div>

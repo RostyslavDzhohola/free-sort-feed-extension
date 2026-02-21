@@ -33,6 +33,8 @@ const resultsArea = document.getElementById("results-area") as HTMLDivElement;
 const resultsMeta = document.getElementById("results-meta") as HTMLSpanElement;
 const resultsList = document.getElementById("results-list") as HTMLDivElement;
 const exportBtn = document.getElementById("export-btn") as HTMLButtonElement;
+const copyOutliersBtn = document.getElementById("copy-outliers-btn") as HTMLButtonElement;
+const shareOutliersBtn = document.getElementById("share-outliers-btn") as HTMLButtonElement;
 const savedList = document.getElementById("saved-list") as HTMLDivElement;
 const savedClearBtn = document.getElementById("saved-clear-btn") as HTMLButtonElement;
 const savedExportBtn = document.getElementById("saved-export-btn") as HTMLButtonElement;
@@ -45,6 +47,11 @@ const reviewDevModeRow = document.getElementById("review-dev-mode-row") as HTMLL
 const reviewDevModeBtn = document.getElementById("review-dev-mode-btn") as HTMLButtonElement | null;
 const reviewDevModeLabel = document.getElementById("review-dev-mode-label") as HTMLSpanElement | null;
 const reviewDevDebugEl = document.getElementById("review-dev-debug") as HTMLLIElement | null;
+const shareModalEl = document.getElementById("share-modal") as HTMLDivElement;
+const shareDownloadStoryBtn = document.getElementById("share-download-story-btn") as HTMLButtonElement;
+const shareCopyCaptionBtn = document.getElementById("share-copy-caption-btn") as HTMLButtonElement;
+const shareCopyLinksBtn = document.getElementById("share-copy-links-btn") as HTMLButtonElement;
+const shareCloseBtn = document.getElementById("share-close-btn") as HTMLButtonElement;
 
 const scanLimitInput = document.getElementById("scan-limit-input") as HTMLInputElement;
 const scanPresetBtns = document.querySelectorAll(".preset-btn") as NodeListOf<HTMLButtonElement>;
@@ -121,6 +128,7 @@ function clearElement(el: HTMLElement): void {
 function switchPanelView(view: "outliers" | "saved"): void {
   activePanelView = view;
   if (view === "outliers") {
+    closeShareModal();
     mainView.style.display = "block";
     savedView.style.display = "none";
     statusEl.style.display = "block";
@@ -128,6 +136,7 @@ function switchPanelView(view: "outliers" | "saved"): void {
     viewOutliersBtn.classList.add("active");
     viewSavedBtn.classList.remove("active");
   } else {
+    closeShareModal();
     mainView.style.display = "none";
     savedView.style.display = "block";
     statusEl.style.display = "none";
@@ -885,6 +894,153 @@ function hideProgress(): void {
   progressFill.style.animation = "";
 }
 
+function getShareableState(): OutliersState | null {
+  if (!currentRenderedState || currentRenderedState.outliers.length === 0) return null;
+  return currentRenderedState;
+}
+
+function setShareButtonsEnabled(enabled: boolean): void {
+  copyOutliersBtn.disabled = !enabled;
+  shareOutliersBtn.disabled = !enabled;
+}
+
+function formatOutlierLine(reel: OutliersEntry, rank: number): string {
+  return "#" + rank + " | " + formatCount(reel.views) + " views | " + reel.ratio.toFixed(1) + "x";
+}
+
+function buildOutliersPlainText(state: OutliersState, limit: number | null = null): string {
+  const outliers = limit == null ? state.outliers : state.outliers.slice(0, Math.max(0, limit));
+  const profileLabel = lastKnownProfile ? lastKnownProfile.replace(/^\//, "@") : "profile";
+  const lines: string[] = [];
+  lines.push("Outliers report for " + profileLabel + " (" + state.activeThresholdLabel + ")");
+  lines.push("");
+  for (let i = 0; i < outliers.length; i++) {
+    const reel = outliers[i]!;
+    lines.push(formatOutlierLine(reel, i + 1));
+    lines.push(reel.url);
+    lines.push("");
+  }
+  return lines.join("\n").trim();
+}
+
+function buildShareCaption(state: OutliersState): string {
+  const profileLabel = lastKnownProfile ? lastKnownProfile.replace(/^\//, "@") : "this profile";
+  const top = state.outliers.slice(0, 5);
+  const lines: string[] = [];
+  lines.push("Outliers portfolio for " + profileLabel);
+  lines.push("Threshold: " + state.activeThresholdLabel);
+  lines.push("");
+  for (let i = 0; i < top.length; i++) {
+    lines.push(formatOutlierLine(top[i]!, i + 1));
+  }
+  lines.push("");
+  lines.push("Built with Outliers extension.");
+  return lines.join("\n");
+}
+
+function buildTopLinksText(state: OutliersState): string {
+  return state.outliers.slice(0, 5).map(function (r) {
+    return r.url;
+  }).join("\n");
+}
+
+function copyTextWithStatus(text: string, successMessage: string): void {
+  navigator.clipboard.writeText(text).then(function () {
+    statusEl.textContent = successMessage;
+    statusEl.className = "status-msg";
+  }).catch(function () {
+    statusEl.textContent = "Copy failed. Please try again.";
+    statusEl.className = "status-msg error";
+  });
+}
+
+function openShareModal(): void {
+  shareModalEl.style.display = "flex";
+}
+
+function closeShareModal(): void {
+  shareModalEl.style.display = "none";
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function downloadStoryCard(state: OutliersState): void {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1080;
+  canvas.height = 1920;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    statusEl.textContent = "Could not create story card.";
+    statusEl.className = "status-msg error";
+    return;
+  }
+
+  // High-contrast vertical canvas for quick Instagram Story uploads.
+  const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  gradient.addColorStop(0, "#0b1020");
+  gradient.addColorStop(1, "#131f3b");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "#7dd3fc";
+  ctx.font = "700 40px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
+  ctx.fillText("OUTLIERS", 80, 130);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "800 74px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
+  ctx.fillText("Top 5 Reels", 80, 220);
+
+  const profileLabel = lastKnownProfile ? lastKnownProfile.replace(/^\//, "@") : "Profile";
+  ctx.fillStyle = "#cbd5e1";
+  ctx.font = "500 34px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
+  ctx.fillText(profileLabel + " • " + state.activeThresholdLabel, 80, 280);
+
+  const top = state.outliers.slice(0, 5);
+  let y = 400;
+  for (let i = 0; i < top.length; i++) {
+    const reel = top[i]!;
+    ctx.fillStyle = "rgba(255,255,255,0.08)";
+    ctx.fillRect(70, y - 64, 940, 166);
+
+    ctx.fillStyle = "#7dd3fc";
+    ctx.font = "800 46px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
+    ctx.fillText("#" + (i + 1), 100, y);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "700 52px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
+    ctx.fillText(formatCount(reel.views) + " views", 200, y);
+
+    ctx.fillStyle = "#cbd5e1";
+    ctx.font = "600 34px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
+    ctx.fillText(reel.ratio.toFixed(1) + "x follower reach", 200, y + 50);
+    y += 210;
+  }
+
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "500 28px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
+  ctx.fillText("Generated with Outliers", 80, 1840);
+
+  canvas.toBlob(function (blob) {
+    if (!blob) {
+      statusEl.textContent = "Could not export story card.";
+      statusEl.className = "status-msg error";
+      return;
+    }
+    downloadBlob(blob, "outliers_story_card_" + getLocalTimestampForFilename() + ".png");
+    statusEl.textContent = "Story card downloaded.";
+    statusEl.className = "status-msg";
+  }, "image/png");
+}
+
 function copyToClipboard(text: string, button: HTMLButtonElement): void {
   const isIconCopyButton = button.classList.contains("action-copy");
 
@@ -938,6 +1094,7 @@ function renderResults(outliers: OutliersEntry[], scannedCount: number, state: O
       : "No Reels reached the 5× threshold.";
     resultsList.appendChild(empty);
     exportBtn.disabled = true;
+    setShareButtonsEnabled(false);
     return;
   }
 
@@ -1007,12 +1164,14 @@ function renderResults(outliers: OutliersEntry[], scannedCount: number, state: O
   }
 
   exportBtn.disabled = false;
+  setShareButtonsEnabled(true);
 }
 
 function hideResults(): void {
   resultsArea.style.display = "none";
   clearElement(resultsList);
   exportBtn.disabled = true;
+  setShareButtonsEnabled(false);
 }
 
 function setButtonsForIdle(): void {
@@ -1032,6 +1191,7 @@ function setButtonsForScanning(): void {
   setScanLimitControlsDisabled(true);
   setFilterControlsDisabled(true);
   exportBtn.disabled = true;
+  setShareButtonsEnabled(false);
 }
 
 function setButtonsForDone(): void {
@@ -1473,6 +1633,7 @@ document.addEventListener("click", function (ev) {
 document.addEventListener("keydown", function (ev) {
   if (ev.key === "Escape") {
     setHelpTooltipOpen(false);
+    closeShareModal();
   }
 });
 
@@ -1493,6 +1654,49 @@ reviewPromptRateBtn.addEventListener("click", function () {
   clearReviewPromptDelayState();
   hideReviewPrompt();
   window.open(REVIEW_URL, "_blank", "noopener,noreferrer");
+});
+
+copyOutliersBtn.addEventListener("click", function () {
+  const state = getShareableState();
+  if (!state) {
+    statusEl.textContent = "No outliers available to copy yet.";
+    statusEl.className = "status-msg error";
+    return;
+  }
+  copyTextWithStatus(buildOutliersPlainText(state), "Outliers copied.");
+});
+
+shareOutliersBtn.addEventListener("click", function () {
+  const state = getShareableState();
+  if (!state) {
+    statusEl.textContent = "Run a scan first to share outliers.";
+    statusEl.className = "status-msg error";
+    return;
+  }
+  openShareModal();
+});
+
+shareCloseBtn.addEventListener("click", closeShareModal);
+shareModalEl.addEventListener("click", function (ev) {
+  if (ev.target === shareModalEl) closeShareModal();
+});
+
+shareDownloadStoryBtn.addEventListener("click", function () {
+  const state = getShareableState();
+  if (!state) return;
+  downloadStoryCard(state);
+});
+
+shareCopyCaptionBtn.addEventListener("click", function () {
+  const state = getShareableState();
+  if (!state) return;
+  copyTextWithStatus(buildShareCaption(state), "Share caption copied.");
+});
+
+shareCopyLinksBtn.addEventListener("click", function () {
+  const state = getShareableState();
+  if (!state) return;
+  copyTextWithStatus(buildTopLinksText(state), "Top links copied.");
 });
 
 viewOutliersBtn.addEventListener("click", function () {
@@ -1688,6 +1892,7 @@ exportBtn.addEventListener("click", exportCurrentResults);
 // ── Init ─────────────────────────────────────────────────────────────────
 async function init(): Promise<void> {
   setHelpTooltipOpen(false);
+  closeShareModal();
   switchPanelView("outliers");
   syncScanLimitUI(loadScanLimit());
   syncFilterModeUI(loadFilterMode());
