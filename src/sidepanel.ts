@@ -80,6 +80,7 @@ let reviewPromptClosedThisSession = false;
 let reviewPromptEligibleSinceMs: number | null = null;
 let reviewPromptDelayTimer: number | null = null;
 let reviewPromptDevMode: ReviewPromptDevMode = "auto";
+let storyCardGenerationInFlight = false;
 
 const savedByUrl = new Map<string, SavedReel>();
 
@@ -962,83 +963,632 @@ function closeShareModal(): void {
   shareModalEl.style.display = "none";
 }
 
-function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+function drawRoundedRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number
+): void {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + width, y, x + width, y + height, r);
+  ctx.arcTo(x + width, y + height, x, y + height, r);
+  ctx.arcTo(x, y + height, x, y, r);
+  ctx.arcTo(x, y, x + width, y, r);
+  ctx.closePath();
 }
 
-function downloadStoryCard(state: OutliersState): void {
+function canvasToBlob(canvas: HTMLCanvasElement, type: string): Promise<Blob | null> {
+  return new Promise(function (resolve) {
+    canvas.toBlob(function (blob) {
+      resolve(blob);
+    }, type);
+  });
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise(function (resolve, reject) {
+    const reader = new FileReader();
+    reader.onload = function () {
+      const out = reader.result;
+      if (typeof out === "string") resolve(out);
+      else reject(new Error("Failed to convert blob to data URL."));
+    };
+    reader.onerror = function () {
+      reject(new Error("Failed to read blob."));
+    };
+    reader.readAsDataURL(blob);
+  });
+}
+
+function drawTruncatedText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number
+): void {
+  if (ctx.measureText(text).width <= maxWidth) {
+    ctx.fillText(text, x, y);
+    return;
+  }
+  let output = text;
+  while (output.length > 1 && ctx.measureText(output + "…").width > maxWidth) {
+    output = output.slice(0, -1);
+  }
+  ctx.fillText(output + "…", x, y);
+}
+
+async function remoteUrlToBitmap(imageUrl: string): Promise<{ bitmap: ImageBitmap | null; error?: string }> {
+  try {
+    const response = await fetch(imageUrl, { credentials: "omit", cache: "force-cache" });
+    if (!response.ok) {
+      return { bitmap: null, error: "Image fetch failed with status " + response.status + "." };
+    }
+    const blob = await response.blob();
+    const bitmap = await createImageBitmap(blob);
+    return { bitmap };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { bitmap: null, error: "Image fetch failed: " + message };
+  }
+}
+
+interface ReelThumbLookupRow {
+  href: string;
+  imageUrl: string | null;
+  source: "img" | "background" | null;
+  reason?: string;
+}
+
+interface ReelThumbCaptureFailure {
+  rank: number;
+  href: string;
+  reason: string;
+}
+
+async function lookupTopOutlierThumbnailUrls(
+  tabId: number,
+  top: OutliersEntry[]
+): Promise<{ rows: ReelThumbLookupRow[]; failures: ReelThumbCaptureFailure[] }> {
+  const targetHrefs = top.map(function (reel) {
+    return reel.href;
+  });
+
+  try {
+    const injected = await chrome.scripting.executeScript({
+      target: { tabId },
+      args: [targetHrefs],
+      func: function (): ReelThumbLookupRow[] {
+        const requestedHrefs = (arguments[0] as string[] | undefined) ?? [];
+        const REEL_LINK_SELECTOR = 'a[href*="/reel/"], a[href*="/reels/"]';
+
+        function normalizeHref(href: string | null | undefined): string | null {
+          if (!href) return null;
+          try {
+            const u = new URL(href, window.location.origin);
+            return u.pathname.replace(/\/+$/, "") || "/";
+          } catch {
+            return null;
+          }
+        }
+
+        function absolutize(url: string | null): string | null {
+          if (!url) return null;
+          try {
+            return new URL(url, window.location.origin).href;
+          } catch {
+            return null;
+          }
+        }
+
+        function pickFirstSrcsetUrl(srcset: string | null): string | null {
+          if (!srcset) return null;
+          const first = srcset.split(",")[0]?.trim() ?? "";
+          if (!first) return null;
+          const firstUrl = first.split(/\s+/)[0]?.trim() ?? "";
+          return firstUrl || null;
+        }
+
+        function extractCssUrl(backgroundImage: string): string | null {
+          if (!backgroundImage || backgroundImage === "none") return null;
+          const m = backgroundImage.match(/url\((['"]?)(.*?)\1\)/i);
+          if (!m || !m[2]) return null;
+          return m[2];
+        }
+
+        function readImageUrl(anchor: HTMLAnchorElement): string | null {
+          const direct = anchor.querySelector("img") as HTMLImageElement | null;
+          const parent = (anchor.closest("article, li, [role='presentation']") as HTMLElement | null)
+            ?? (anchor.parentElement as HTMLElement | null);
+          const candidate = direct ?? (parent ? (parent.querySelector("img") as HTMLImageElement | null) : null);
+          if (!candidate) return null;
+          const current = (candidate.currentSrc ?? "").trim();
+          if (current) return current;
+          const src = (candidate.getAttribute("src") ?? "").trim();
+          if (src) return absolutize(src);
+          return absolutize(pickFirstSrcsetUrl(candidate.getAttribute("srcset")));
+        }
+
+        function readBackgroundImageUrl(anchor: HTMLAnchorElement): string | null {
+          const parent = (anchor.closest("article, li, [role='presentation']") as HTMLElement | null)
+            ?? (anchor.parentElement as HTMLElement | null);
+          const roots: HTMLElement[] = [anchor];
+          if (parent && parent !== anchor) roots.push(parent);
+
+          for (let ri = 0; ri < roots.length; ri++) {
+            const root = roots[ri]!;
+            const ownBg = extractCssUrl(window.getComputedStyle(root).backgroundImage);
+            const ownResolved = absolutize(ownBg);
+            if (ownResolved) return ownResolved;
+
+            const nodes = root.querySelectorAll("div, span, picture");
+            const limit = Math.min(nodes.length, 260);
+            for (let i = 0; i < limit; i++) {
+              const el = nodes[i] as HTMLElement;
+              const rect = el.getBoundingClientRect();
+              if (rect.width < 36 || rect.height < 36) continue;
+              const bg = extractCssUrl(window.getComputedStyle(el).backgroundImage);
+              const resolved = absolutize(bg);
+              if (resolved) return resolved;
+            }
+          }
+
+          return null;
+        }
+
+        const anchors = Array.from(document.querySelectorAll(REEL_LINK_SELECTOR)) as HTMLAnchorElement[];
+        const rows: ReelThumbLookupRow[] = [];
+
+        for (let i = 0; i < requestedHrefs.length; i++) {
+          const requestedHref = requestedHrefs[i]!;
+          const normalizedRequested = normalizeHref(requestedHref);
+          const exactMatches: HTMLAnchorElement[] = [];
+          const normalizedMatches: HTMLAnchorElement[] = [];
+
+          for (let ai = 0; ai < anchors.length; ai++) {
+            const anchor = anchors[ai]!;
+            const rawHref = anchor.getAttribute("href");
+            if (!rawHref) continue;
+            const normalized = normalizeHref(rawHref);
+            if (rawHref === requestedHref) exactMatches.push(anchor);
+            if (normalizedRequested != null && normalized === normalizedRequested) normalizedMatches.push(anchor);
+          }
+
+          const candidates = (exactMatches.length > 0 ? exactMatches : normalizedMatches).sort(function (a, b) {
+            const ra = a.getBoundingClientRect();
+            const rb = b.getBoundingClientRect();
+            return rb.width * rb.height - ra.width * ra.height;
+          });
+
+          if (candidates.length === 0) {
+            rows.push({
+              href: requestedHref,
+              imageUrl: null,
+              source: null,
+              reason: "No matching reel tile anchor found in page.",
+            });
+            continue;
+          }
+
+          let found: ReelThumbLookupRow | null = null;
+          let debug = "";
+          for (let ci = 0; ci < candidates.length; ci++) {
+            const anchor = candidates[ci]!;
+            const imgUrl = readImageUrl(anchor);
+            if (imgUrl) {
+              found = { href: requestedHref, imageUrl: imgUrl, source: "img" };
+              break;
+            }
+
+            const bgUrl = readBackgroundImageUrl(anchor);
+            if (bgUrl) {
+              found = { href: requestedHref, imageUrl: bgUrl, source: "background" };
+              break;
+            }
+
+            if (debug.length < 180) {
+              const rect = anchor.getBoundingClientRect();
+              debug += "[c" + (ci + 1) + " " + Math.round(rect.width) + "x" + Math.round(rect.height) + "] ";
+            }
+          }
+
+          rows.push(
+            found ?? {
+              href: requestedHref,
+              imageUrl: null,
+              source: null,
+              reason: "No image URL in matched tile candidates. " + debug.trim(),
+            }
+          );
+        }
+
+        return rows;
+      },
+    });
+
+    const rows = (injected as unknown as Array<{ result?: ReelThumbLookupRow[] }>)?.[0]?.result;
+    const safeRows = Array.isArray(rows) ? rows : [];
+    const failures: ReelThumbCaptureFailure[] = [];
+
+    for (let i = 0; i < top.length; i++) {
+      const reel = top[i]!;
+      const row = safeRows.find(function (r) {
+        return r.href === reel.href;
+      });
+      if (!row || !row.imageUrl) {
+        failures.push({
+          rank: i + 1,
+          href: reel.href,
+          reason: row?.reason ?? "No thumbnail URL returned by page extractor.",
+        });
+      }
+    }
+
+    return { rows: safeRows, failures };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      rows: [],
+      failures: top.map(function (reel, i) {
+        return {
+          rank: i + 1,
+          href: reel.href,
+          reason: "Thumbnail URL extraction failed: " + message,
+        };
+      }),
+    };
+  }
+}
+
+interface StoryCardBuildResultSuccess {
+  ok: true;
+  blob: Blob;
+  filename: string;
+}
+
+interface StoryCardBuildResultFailure {
+  ok: false;
+  reason: string;
+  failures: ReelThumbCaptureFailure[];
+}
+
+type StoryCardBuildResult = StoryCardBuildResultSuccess | StoryCardBuildResultFailure;
+
+async function buildStoryCardBlob(state: OutliersState): Promise<StoryCardBuildResult> {
   const canvas = document.createElement("canvas");
   canvas.width = 1080;
   canvas.height = 1920;
   const ctx = canvas.getContext("2d");
   if (!ctx) {
-    statusEl.textContent = "Could not create story card.";
-    statusEl.className = "status-msg error";
-    return;
+    return { ok: false, reason: "Could not create story card canvas.", failures: [] };
   }
 
-  // High-contrast vertical canvas for quick Instagram Story uploads.
-  const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  gradient.addColorStop(0, "#0b1020");
-  gradient.addColorStop(1, "#131f3b");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  ctx.fillStyle = "#7dd3fc";
-  ctx.font = "700 40px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
-  ctx.fillText("OUTLIERS", 80, 130);
-
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "800 74px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
-  ctx.fillText("Top 5 Reels", 80, 220);
-
-  const profileLabel = lastKnownProfile ? lastKnownProfile.replace(/^\//, "@") : "Profile";
-  ctx.fillStyle = "#cbd5e1";
-  ctx.font = "500 34px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
-  ctx.fillText(profileLabel + " • " + state.activeThresholdLabel, 80, 280);
+  statusEl.textContent = "Preparing story card preview…";
+  statusEl.className = "status-msg";
 
   const top = state.outliers.slice(0, 5);
-  let y = 400;
-  for (let i = 0; i < top.length; i++) {
-    const reel = top[i]!;
-    ctx.fillStyle = "rgba(255,255,255,0.08)";
-    ctx.fillRect(70, y - 64, 940, 166);
-
-    ctx.fillStyle = "#7dd3fc";
-    ctx.font = "800 46px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
-    ctx.fillText("#" + (i + 1), 100, y);
-
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "700 52px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
-    ctx.fillText(formatCount(reel.views) + " views", 200, y);
-
-    ctx.fillStyle = "#cbd5e1";
-    ctx.font = "600 34px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
-    ctx.fillText(reel.ratio.toFixed(1) + "x follower reach", 200, y + 50);
-    y += 210;
+  const tabId = cachedTabId ?? (await getActiveTabId());
+  if (tabId == null) {
+    return { ok: false, reason: "No active Instagram tab found.", failures: [] };
   }
 
-  ctx.fillStyle = "#94a3b8";
-  ctx.font = "500 28px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
-  ctx.fillText("Generated with Outliers", 80, 1840);
+  statusEl.textContent = "Reading thumbnail URLs…";
+  statusEl.className = "status-msg";
 
-  canvas.toBlob(function (blob) {
+  const lookup = await lookupTopOutlierThumbnailUrls(tabId, top);
+  const failures = lookup.failures.slice();
+  const rowByHref = new Map<string, ReelThumbLookupRow>();
+  for (let i = 0; i < lookup.rows.length; i++) {
+    const row = lookup.rows[i]!;
+    rowByHref.set(row.href, row);
+  }
+
+  const thumbnails: ImageBitmap[] = [];
+  for (let i = 0; i < top.length; i++) {
+    const reel = top[i]!;
+    const row = rowByHref.get(reel.href);
+    if (!row || !row.imageUrl) {
+      if (!failures.some(function (f) { return f.href === reel.href; })) {
+        failures.push({
+          rank: i + 1,
+          href: reel.href,
+          reason: row?.reason ?? "No thumbnail URL resolved.",
+        });
+      }
+      continue;
+    }
+
+    statusEl.textContent = "Loading thumbnails… " + (i + 1) + "/" + top.length;
+    statusEl.className = "status-msg";
+
+    const fetched = await remoteUrlToBitmap(row.imageUrl);
+    if (!fetched.bitmap) {
+      failures.push({
+        rank: i + 1,
+        href: reel.href,
+        reason: (fetched.error ?? "Unknown image fetch failure.") + " source=" + row.source,
+      });
+      continue;
+    }
+
+    thumbnails.push(fetched.bitmap);
+  }
+
+  if (failures.length > 0 || thumbnails.length !== top.length) {
+    for (let i = 0; i < thumbnails.length; i++) {
+      thumbnails[i]?.close();
+    }
+    return {
+      ok: false,
+      reason: "Failed to resolve all story thumbnails.",
+      failures,
+    };
+  }
+
+  try {
+    // High-contrast vertical canvas for quick Instagram Story uploads.
+    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    gradient.addColorStop(0, "#0a1024");
+    gradient.addColorStop(0.5, "#111b3b");
+    gradient.addColorStop(1, "#121e40");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "rgba(125, 211, 252, 0.12)";
+    drawRoundedRect(ctx, 740, -120, 480, 480, 240);
+    ctx.fill();
+    ctx.fillStyle = "rgba(56, 189, 248, 0.12)";
+    drawRoundedRect(ctx, -110, 1410, 420, 420, 210);
+    ctx.fill();
+
+    const profileLabel = lastKnownProfile ? lastKnownProfile.replace(/^\//, "@") : "@profile";
+    const followersLabel = state.followers ? formatCount(state.followers) + " followers" : "Followers unavailable";
+    ctx.fillStyle = "rgba(255,255,255,0.1)";
+    drawRoundedRect(ctx, 70, 86, 940, 88, 22);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "800 52px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
+    drawTruncatedText(ctx, profileLabel, 96, 145, 600);
+    ctx.fillStyle = "#cbd5e1";
+    ctx.font = "700 30px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
+    const followersWidth = ctx.measureText(followersLabel).width;
+    ctx.fillText(followersLabel, 980 - followersWidth, 145);
+
+    const cardX = 70;
+    const cardW = 940;
+    const cardH = 312;
+    const thumbX = cardX + 24;
+    const thumbW = 208;
+    const thumbH = 272;
+    let y = 190;
+    for (let i = 0; i < top.length; i++) {
+      const reel = top[i]!;
+      const bitmap = thumbnails[i]!;
+
+      ctx.fillStyle = "rgba(255,255,255,0.08)";
+      drawRoundedRect(ctx, cardX, y, cardW, cardH, 24);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(186, 230, 253, 0.22)";
+      ctx.lineWidth = 2;
+      drawRoundedRect(ctx, cardX, y, cardW, cardH, 24);
+      ctx.stroke();
+
+      ctx.save();
+      drawRoundedRect(ctx, thumbX, y + 18, thumbW, thumbH, 16);
+      ctx.clip();
+      const srcW = bitmap.width;
+      const srcH = bitmap.height;
+      const srcRatio = srcW / srcH;
+      const dstRatio = thumbW / thumbH;
+      let sx = 0;
+      let sy = 0;
+      let sw = srcW;
+      let sh = srcH;
+      if (srcRatio > dstRatio) {
+        sw = srcH * dstRatio;
+        sx = (srcW - sw) / 2;
+      } else {
+        sh = srcW / dstRatio;
+        sy = (srcH - sh) / 2;
+      }
+      ctx.drawImage(bitmap, sx, sy, sw, sh, thumbX, y + 18, thumbW, thumbH);
+      ctx.restore();
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "800 50px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
+      ctx.fillText(formatCount(reel.views) + " views", cardX + 256, y + 90);
+
+      ctx.fillStyle = "#dbeafe";
+      ctx.font = "700 34px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
+      ctx.fillText(reel.ratio.toFixed(1) + "x follower reach", cardX + 256, y + 152);
+
+      ctx.fillStyle = "#cbd5e1";
+      ctx.font = "500 24px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
+      const shortUrl = reel.url.replace(/^https?:\/\//, "").slice(0, 56);
+      ctx.fillText(shortUrl, cardX + 256, y + 214);
+      y += 324;
+    }
+
+    ctx.fillStyle = "#93c5fd";
+    ctx.font = "600 20px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
+    ctx.fillText("Generated with Outliers extension", 70, 1860);
+
+    const blob = await canvasToBlob(canvas, "image/png");
     if (!blob) {
-      statusEl.textContent = "Could not export story card.";
+      return { ok: false, reason: "Could not export story card blob.", failures: [] };
+    }
+
+    return {
+      ok: true,
+      blob,
+      filename: "outliers_story_card_" + getLocalTimestampForFilename() + ".png",
+    };
+  } finally {
+    for (let i = 0; i < thumbnails.length; i++) {
+      thumbnails[i]?.close();
+    }
+  }
+}
+
+async function showStoryCardPreview(state: OutliersState): Promise<void> {
+  if (storyCardGenerationInFlight) return;
+  storyCardGenerationInFlight = true;
+  shareDownloadStoryBtn.disabled = true;
+
+  try {
+    const result = await buildStoryCardBlob(state);
+    if (!result.ok) {
+      statusEl.textContent = "Story card preview failed. Open side panel console for details.";
+      statusEl.className = "status-msg error";
+      if (result.failures.length > 0) {
+        console.error("[outliers] Story thumbnail capture failures:", result.failures);
+      } else {
+        console.error("[outliers] Story preview failure:", result.reason);
+      }
+      return;
+    }
+    const tabId = cachedTabId ?? (await getActiveTabId());
+    if (tabId == null) {
+      statusEl.textContent = "No active Instagram tab found to preview the story card.";
       statusEl.className = "status-msg error";
       return;
     }
-    downloadBlob(blob, "outliers_story_card_" + getLocalTimestampForFilename() + ".png");
-    statusEl.textContent = "Story card downloaded.";
+    const dataUrl = await blobToDataUrl(result.blob);
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      args: [dataUrl, result.filename],
+      func: function (): void {
+        const storyDataUrl = (arguments[0] as string | undefined) ?? "";
+        const filename = (arguments[1] as string | undefined) ?? "outliers_story_card.png";
+        if (!storyDataUrl) return;
+
+        const ROOT_ID = "outliers-story-preview-root";
+        const STYLE_ID = "outliers-story-preview-style";
+        const EXISTING = document.getElementById(ROOT_ID);
+        if (EXISTING) EXISTING.remove();
+
+        const EXISTING_STYLE = document.getElementById(STYLE_ID);
+        if (!EXISTING_STYLE) {
+          const style = document.createElement("style");
+          style.id = STYLE_ID;
+          style.textContent = [
+            "#" + ROOT_ID + " {",
+            "  position: fixed;",
+            "  inset: 0;",
+            "  z-index: 2147483646;",
+            "  background: rgba(2, 6, 23, 0.82);",
+            "  display: flex;",
+            "  align-items: center;",
+            "  justify-content: center;",
+            "  padding: 20px;",
+            "}",
+            "#" + ROOT_ID + " .outliers-story-wrap {",
+            "  width: min(96vw, 860px);",
+            "  max-height: 96vh;",
+            "  display: flex;",
+            "  flex-direction: column;",
+            "  gap: 12px;",
+            "}",
+            "#" + ROOT_ID + " .outliers-story-actions {",
+            "  display: flex;",
+            "  justify-content: center;",
+            "  gap: 10px;",
+            "}",
+            "#" + ROOT_ID + " .outliers-story-btn {",
+            "  border: 1px solid rgba(255,255,255,0.28);",
+            "  border-radius: 10px;",
+            "  background: rgba(15, 23, 42, 0.8);",
+            "  color: #fff;",
+            "  padding: 9px 14px;",
+            "  font: 700 14px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;",
+            "  cursor: pointer;",
+            "}",
+            "#" + ROOT_ID + " .outliers-story-btn.primary {",
+            "  background: #22c55e;",
+            "  border-color: #16a34a;",
+            "  color: #052e16;",
+            "}",
+            "#" + ROOT_ID + " .outliers-story-frame {",
+            "  border-radius: 16px;",
+            "  overflow: hidden;",
+            "  background: #000;",
+            "  box-shadow: 0 22px 50px rgba(0,0,0,0.45);",
+            "}",
+            "#" + ROOT_ID + " .outliers-story-image {",
+            "  display: block;",
+            "  width: 100%;",
+            "  height: auto;",
+            "  max-height: 84vh;",
+            "  object-fit: contain;",
+            "}",
+          ].join("\n");
+          document.head.appendChild(style);
+        }
+
+        const root = document.createElement("div");
+        root.id = ROOT_ID;
+        root.innerHTML = [
+          '<div class="outliers-story-wrap">',
+          '  <div class="outliers-story-actions">',
+          '    <button class="outliers-story-btn primary" type="button" data-action="download">Download</button>',
+          '    <button class="outliers-story-btn" type="button" data-action="close">Close</button>',
+          "  </div>",
+          '  <div class="outliers-story-frame">',
+          '    <img class="outliers-story-image" alt="Story card preview" />',
+          "  </div>",
+          "</div>",
+        ].join("");
+
+        const img = root.querySelector(".outliers-story-image") as HTMLImageElement | null;
+        if (img) img.src = storyDataUrl;
+
+        function closePreview(): void {
+          root.remove();
+          document.removeEventListener("keydown", onKeyDown, true);
+        }
+
+        function onKeyDown(ev: KeyboardEvent): void {
+          if (ev.key === "Escape") closePreview();
+        }
+
+        root.addEventListener("click", function (ev) {
+          const target = ev.target as HTMLElement | null;
+          if (!target) return;
+          const action = target.getAttribute("data-action");
+          if (action === "close" || ev.target === root) {
+            closePreview();
+            return;
+          }
+          if (action === "download") {
+            const a = document.createElement("a");
+            a.href = storyDataUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            closePreview();
+          }
+        });
+
+        document.addEventListener("keydown", onKeyDown, true);
+        document.body.appendChild(root);
+      },
+    });
+    closeShareModal();
+    statusEl.textContent = "Story card preview opened on the Instagram page.";
     statusEl.className = "status-msg";
-  }, "image/png");
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    statusEl.textContent = "Failed to open story preview on page: " + message;
+    statusEl.className = "status-msg error";
+  } finally {
+    storyCardGenerationInFlight = false;
+    shareDownloadStoryBtn.disabled = false;
+  }
 }
 
 function copyToClipboard(text: string, button: HTMLButtonElement): void {
@@ -1684,7 +2234,7 @@ shareModalEl.addEventListener("click", function (ev) {
 shareDownloadStoryBtn.addEventListener("click", function () {
   const state = getShareableState();
   if (!state) return;
-  downloadStoryCard(state);
+  showStoryCardPreview(state);
 });
 
 shareCopyCaptionBtn.addEventListener("click", function () {

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Outliers",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Filter Instagram Reels to show only outliers with 5× or more views relative to followers.",
   "permissions": [
     "scripting",
@@ -9,7 +9,8 @@
     "storage"
   ],
   "host_permissions": [
-    "*://*.instagram.com/*"
+    "*://*.instagram.com/*",
+    "*://*.cdninstagram.com/*"
   ],
   "background": {
     "service_worker": "background.js"
