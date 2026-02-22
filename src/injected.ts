@@ -6,6 +6,7 @@ interface CollectedReel {
   href: string;
   views: number; // NaN if views could not be parsed
   cardHtml: string | null;
+  thumbnailUrl: string | null;
 }
 
 function init(): void {
@@ -211,6 +212,24 @@ function init(): void {
       tilesByHref.set(href, tileRoot);
     }
     return tilesByHref;
+  }
+
+  function pickFirstSrcsetUrl(srcset: string | null): string | null {
+    if (!srcset) return null;
+    const first = srcset.split(",")[0]?.trim() ?? "";
+    if (!first) return null;
+    const firstUrl = first.split(/\s+/)[0]?.trim() ?? "";
+    return firstUrl || null;
+  }
+
+  function readThumbnailUrl(link: HTMLAnchorElement): string | null {
+    const img = link.querySelector("img") as HTMLImageElement | null;
+    if (!img) return null;
+    const current = (img.currentSrc ?? "").trim();
+    if (current) return current;
+    const src = (img.getAttribute("src") ?? "").trim();
+    if (src) return src;
+    return pickFirstSrcsetUrl(img.getAttribute("srcset"));
   }
 
   function getFollowerCount(): number {
@@ -780,6 +799,7 @@ function init(): void {
       const fullUrl = href.startsWith("http")
         ? href
         : "https://www.instagram.com" + href;
+      const thumbnailUrl = readThumbnailUrl(link);
 
       let views = NaN;
 
@@ -864,6 +884,7 @@ function init(): void {
           href,
           views,
           cardHtml: snapshot,
+          thumbnailUrl,
         });
         continue;
       }
@@ -874,6 +895,9 @@ function init(): void {
       if (!existing.cardHtml && reelMap.size < MAX_CARD_SNAPSHOT_REELS) {
         const snapshot = resolveTileRoot(link)?.outerHTML ?? null;
         if (snapshot) existing.cardHtml = snapshot;
+      }
+      if (!existing.thumbnailUrl && thumbnailUrl) {
+        existing.thumbnailUrl = thumbnailUrl;
       }
     }
   }
@@ -921,6 +945,7 @@ function init(): void {
         href: reel.href,
         views: reel.views,
         ratio: followers ? reel.views / followers : 0,
+        thumbnailUrl: reel.thumbnailUrl,
       });
     }
 
@@ -982,6 +1007,7 @@ function init(): void {
         href: reel.href,
         views: reel.views,
         ratio: reel.views / followers,
+        thumbnailUrl: reel.thumbnailUrl,
       });
     }
 

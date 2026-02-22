@@ -4,6 +4,7 @@ export interface OutliersEntry {
   href: string;
   views: number;
   ratio: number;
+  thumbnailUrl?: string | null;
 }
 
 export type FilterMode = "ratio5x" | "minViews";
