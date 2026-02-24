@@ -93,7 +93,11 @@ const REVIEW_PROMPT_STATE_KEY = "outliers_review_prompt_state";
 // Persisted in localStorage so you can flip modal testing modes quickly.
 const REVIEW_PROMPT_DEV_MODE_KEY = "outliers_review_prompt_dev_mode";
 
-const REVIEW_PROMPT_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
+const REVIEW_PROMPT_POST_REVIEW_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
+const REVIEW_PROMPT_NOT_NOW_BASE_COOLDOWN_MS = 30 * 60 * 1000;
+const REVIEW_PROMPT_NOT_NOW_SECOND_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+const REVIEW_PROMPT_NOT_NOW_MAX_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const REVIEW_PROMPT_MAX_PROMPTS_PER_DAY = 2;
 const REVIEW_URL = "https://chromewebstore.google.com/detail/outliers/heogkfpbeagpoodininnfhdgjmpdalgj/reviews";
 // Keep activation broad: show after the first successful 5x result set.
 const REVIEW_PROMPT_MIN_OUTLIERS = 1;
@@ -103,8 +107,11 @@ const REVIEW_PROMPT_DELAY_MS = 20_000;
 interface ReviewPromptState {
   firstSuccessfulScanAt: string | null;
   lastPromptAt: string | null;
+  lastPromptDay: string | null;
+  promptsShownToday: number;
   lastDismissedAt: string | null;
-  reviewClickedAt: string | null;
+  dismissCount: number;
+  lastReviewVisitAt: string | null;
   promptCount: number;
 }
 
@@ -162,8 +169,11 @@ function createDefaultReviewPromptState(): ReviewPromptState {
   return {
     firstSuccessfulScanAt: null,
     lastPromptAt: null,
+    lastPromptDay: null,
+    promptsShownToday: 0,
     lastDismissedAt: null,
-    reviewClickedAt: null,
+    dismissCount: 0,
+    lastReviewVisitAt: null,
     promptCount: 0,
   };
 }
@@ -171,12 +181,25 @@ function createDefaultReviewPromptState(): ReviewPromptState {
 function normalizeReviewPromptState(raw: unknown): ReviewPromptState {
   const base = createDefaultReviewPromptState();
   if (!raw || typeof raw !== "object") return base;
-  const candidate = raw as Partial<ReviewPromptState>;
+  const candidate = raw as Partial<ReviewPromptState> & { reviewClickedAt?: unknown };
+  const legacyReviewClickedAt = typeof candidate.reviewClickedAt === "string" ? candidate.reviewClickedAt : null;
   return {
     firstSuccessfulScanAt: typeof candidate.firstSuccessfulScanAt === "string" ? candidate.firstSuccessfulScanAt : null,
     lastPromptAt: typeof candidate.lastPromptAt === "string" ? candidate.lastPromptAt : null,
+    lastPromptDay: typeof candidate.lastPromptDay === "string" ? candidate.lastPromptDay : null,
+    promptsShownToday:
+      Number.isFinite(candidate.promptsShownToday) && (candidate.promptsShownToday ?? 0) >= 0
+        ? Math.floor(candidate.promptsShownToday as number)
+        : 0,
     lastDismissedAt: typeof candidate.lastDismissedAt === "string" ? candidate.lastDismissedAt : null,
-    reviewClickedAt: typeof candidate.reviewClickedAt === "string" ? candidate.reviewClickedAt : null,
+    dismissCount:
+      Number.isFinite(candidate.dismissCount) && (candidate.dismissCount ?? 0) >= 0
+        ? Math.floor(candidate.dismissCount as number)
+        : (typeof candidate.lastDismissedAt === "string" ? 1 : 0),
+    lastReviewVisitAt:
+      typeof candidate.lastReviewVisitAt === "string"
+        ? candidate.lastReviewVisitAt
+        : legacyReviewClickedAt,
     promptCount: Number.isFinite(candidate.promptCount) && (candidate.promptCount ?? 0) >= 0
       ? Math.floor(candidate.promptCount as number)
       : 0,
@@ -265,19 +288,58 @@ async function saveReviewPromptState(state: ReviewPromptState): Promise<void> {
   }
 }
 
-function isWithinCooldown(isoDate: string | null, nowMs: number): boolean {
+function isWithinCooldown(isoDate: string | null, nowMs: number, cooldownMs: number): boolean {
   if (!isoDate) return false;
   const thenMs = Date.parse(isoDate);
   if (!Number.isFinite(thenMs)) return false;
-  return nowMs - thenMs < REVIEW_PROMPT_COOLDOWN_MS;
+  return nowMs - thenMs < cooldownMs;
+}
+
+function getLocalDayKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return year + "-" + month + "-" + day;
+}
+
+function getNotNowCooldownMs(dismissCount: number): number {
+  if (dismissCount <= 1) return REVIEW_PROMPT_NOT_NOW_BASE_COOLDOWN_MS;
+  if (dismissCount === 2) return REVIEW_PROMPT_NOT_NOW_SECOND_COOLDOWN_MS;
+  return REVIEW_PROMPT_NOT_NOW_MAX_COOLDOWN_MS;
+}
+
+function getRemainingNotNowCooldownMs(now: Date, state: ReviewPromptState): number {
+  if (!state.lastDismissedAt || state.dismissCount <= 0) return 0;
+  const lastDismissedMs = Date.parse(state.lastDismissedAt);
+  if (!Number.isFinite(lastDismissedMs)) return 0;
+  const cooldownMs = getNotNowCooldownMs(state.dismissCount);
+  return Math.max(0, lastDismissedMs + cooldownMs - now.getTime());
+}
+
+function getPromptsShownToday(now: Date, state: ReviewPromptState): number {
+  const dayKey = getLocalDayKey(now);
+  if (state.lastPromptDay !== dayKey) return 0;
+  return state.promptsShownToday;
+}
+
+function hasReachedDailyPromptCap(now: Date, state: ReviewPromptState): boolean {
+  return getPromptsShownToday(now, state) >= REVIEW_PROMPT_MAX_PROMPTS_PER_DAY;
+}
+
+function formatCooldownForDebug(ms: number): string {
+  if (ms <= 0) return "0m";
+  const roundedMinutes = Math.ceil(ms / (60 * 1000));
+  if (roundedMinutes < 60) return roundedMinutes + "m";
+  const roundedHours = Math.ceil(roundedMinutes / 60);
+  return roundedHours + "h";
 }
 
 function isReviewPromptEligible(now: Date, state: ReviewPromptState): boolean {
   const nowMs = now.getTime();
-  if (state.reviewClickedAt) return false;
   if (!state.firstSuccessfulScanAt) return false;
-  // Cooldown should only apply after an explicit "Not now"/feedback action.
-  if (isWithinCooldown(state.lastDismissedAt, nowMs)) return false;
+  if (isWithinCooldown(state.lastReviewVisitAt, nowMs, REVIEW_PROMPT_POST_REVIEW_COOLDOWN_MS)) return false;
+  if (hasReachedDailyPromptCap(now, state)) return false;
+  if (getRemainingNotNowCooldownMs(now, state) > 0) return false;
   return true;
 }
 
@@ -288,9 +350,15 @@ function persistReviewPromptState(): void {
 }
 
 function markPromptShown(now: Date): void {
+  const dayKey = getLocalDayKey(now);
+  const nextPromptsToday = reviewPromptState.lastPromptDay === dayKey
+    ? reviewPromptState.promptsShownToday + 1
+    : 1;
   reviewPromptState = {
     ...reviewPromptState,
     lastPromptAt: now.toISOString(),
+    lastPromptDay: dayKey,
+    promptsShownToday: nextPromptsToday,
     promptCount: reviewPromptState.promptCount + 1,
   };
   persistReviewPromptState();
@@ -300,6 +368,7 @@ function markDismissed(now: Date): void {
   reviewPromptState = {
     ...reviewPromptState,
     lastDismissedAt: now.toISOString(),
+    dismissCount: reviewPromptState.dismissCount + 1,
   };
   persistReviewPromptState();
 }
@@ -307,7 +376,8 @@ function markDismissed(now: Date): void {
 function markReviewClicked(now: Date): void {
   reviewPromptState = {
     ...reviewPromptState,
-    reviewClickedAt: now.toISOString(),
+    lastReviewVisitAt: now.toISOString(),
+    dismissCount: 0,
   };
   persistReviewPromptState();
 }
@@ -840,10 +910,13 @@ function updateReviewPromptVisibility(state: OutliersState | null): void {
 
   if (!isReviewPromptEligible(now, reviewPromptState)) {
     clearReviewPromptDelayState();
-    if (reviewPromptState.reviewClickedAt) {
-      setReviewPromptDebug("blocked (review already clicked on this device)");
-    } else if (isWithinCooldown(reviewPromptState.lastDismissedAt, now.getTime())) {
-      setReviewPromptDebug("blocked (30-day cooldown after dismiss)");
+    if (isWithinCooldown(reviewPromptState.lastReviewVisitAt, now.getTime(), REVIEW_PROMPT_POST_REVIEW_COOLDOWN_MS)) {
+      setReviewPromptDebug("blocked (30-day cooldown after review visit)");
+    } else if (hasReachedDailyPromptCap(now, reviewPromptState)) {
+      setReviewPromptDebug("blocked (daily prompt cap reached)");
+    } else if (getRemainingNotNowCooldownMs(now, reviewPromptState) > 0) {
+      const remaining = getRemainingNotNowCooldownMs(now, reviewPromptState);
+      setReviewPromptDebug("blocked (Not now cooldown " + formatCooldownForDebug(remaining) + " left)");
     } else {
       setReviewPromptDebug("blocked (not eligible)");
     }
@@ -2271,7 +2344,8 @@ savedClearBtn.addEventListener("click", function () {
 
 runBtn.addEventListener("click", async function () {
   setButtonsDisabled();
-  if (reviewPromptShownThisSession) reviewPromptClosedThisSession = true;
+  reviewPromptShownThisSession = false;
+  reviewPromptClosedThisSession = false;
   clearReviewPromptDelayState();
   hideReviewPrompt();
   statusEl.textContent = "";
