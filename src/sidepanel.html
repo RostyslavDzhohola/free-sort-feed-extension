@@ -1063,7 +1063,7 @@
         inset 0 -1px 0 rgba(64, 34, 108, 0.1),
         0 3px 0 rgba(112, 8, 160, 0.3),
         0 10px 14px rgba(92, 6, 131, 0.14);
-      transform: none;
+      transform: translateY(-1px);
     }
     button:active:not(:disabled),
     .btn-sm:active,
@@ -1115,14 +1115,13 @@
     .btn-sm.open,
     .review-btn.primary,
     .share-modal-btn.primary {
-      background: var(--purple-key);
+      background: linear-gradient(180deg, #b315ef 0%, #930ccc 100%);
       color: #fff;
-      border-color: #7c0cad;
+      border-color: #8d0fc3;
       box-shadow:
-        inset 0 1px 0 rgba(227, 189, 255, 0.42),
-        inset 0 -1px 0 rgba(62, 7, 88, 0.16),
-        0 3px 0 rgba(92, 6, 131, 0.36),
-        0 8px 12px rgba(92, 6, 131, 0.14);
+        inset 0 1px 0 rgba(250, 234, 255, 0.25),
+        0 3px 0 rgba(112, 8, 160, 0.28),
+        0 2px 8px rgba(92, 6, 131, 0.22);
     }
     .view-btn.active:hover,
     .filter-mode-btn.active:hover,
@@ -1130,8 +1129,27 @@
     .btn-sm.open:hover,
     .review-btn.primary:hover,
     .share-modal-btn.primary:hover {
-      background: #860bb8;
-      border-color: #730aa6;
+      background: linear-gradient(180deg, #c324f7 0%, #a10fd8 100%);
+      border-color: #9913cd;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.28),
+        0 3px 0 rgba(112, 8, 160, 0.3),
+        0 6px 14px rgba(92, 6, 131, 0.24);
+      transform: translateY(-1px);
+    }
+    .view-btn.active:active,
+    .filter-mode-btn.active:active,
+    #run-btn:active,
+    .btn-sm.open:active,
+    .review-btn.primary:active,
+    .share-modal-btn.primary:active {
+      background: linear-gradient(180deg, #9a0fd1 0%, #840bb7 100%);
+      border-color: #7e0caf;
+      box-shadow:
+        inset 0 1px 2px rgba(70, 12, 98, 0.28),
+        0 1px 0 rgba(112, 8, 160, 0.24),
+        0 2px 6px rgba(92, 6, 131, 0.2);
+      transform: translateY(1px);
     }
     #stop-btn,
     #reset-btn,
