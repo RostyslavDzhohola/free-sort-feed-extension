@@ -8,7 +8,6 @@ export interface OutliersEntry {
 }
 
 export type FilterMode = "ratio5x" | "minViews";
-export type MinViewsPreset = 10000 | 100000 | 1000000 | null;
 
 export interface SavedReel extends OutliersEntry {
   savedAt: string;

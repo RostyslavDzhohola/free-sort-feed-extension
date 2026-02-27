@@ -3,15 +3,44 @@
 <head>
   <meta charset="UTF-8">
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f7f0ff;
+      --bg-glow: #ffe7c7;
+      --surface: #ffffff;
+      --surface-soft: #f6f1ff;
+      --line: #ddcef8;
+      --text: #2b1943;
+      --muted: #7c6a9a;
+      --purple-key: #950acc;
+      --purple-key-strong: #7008a0;
+      --purple-key-soft: #eed8fa;
+      --purple-shadow: #5c0683;
+      --orange-accent: #f99b21;
+      --orange-accent-strong: #d87e08;
+      --orange-accent-soft: #fff1de;
+      --danger: #d84a5f;
+      --danger-soft: #ffe8ec;
+      --focus-ring: 0 0 0 3px rgba(149, 10, 204, 0.24);
+      --app-font: "Comic Sans MS", "Comic Sans", "Chalkboard SE", "Chalkboard", "Arial Rounded MT Bold", "Trebuchet MS", sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: var(--app-font) !important; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: var(--app-font) !important;
       padding: 20px;
-      background: #fafafa;
-      color: #262626;
+      background:
+        radial-gradient(circle at 15% -5%, var(--bg-glow) 0, transparent 38%),
+        radial-gradient(circle at 88% 6%, #ebddff 0, transparent 30%),
+        var(--bg);
+      color: var(--text);
       display: flex;
       flex-direction: column;
       min-height: 100vh;
+    }
+    body, button, input, textarea, select {
+      font-family: inherit;
+    }
+    body {
+      font-variant-numeric: tabular-nums;
     }
 
     /* ── Header ───────────────────────────────────── */
@@ -636,79 +665,133 @@
       background: #f0f9ff;
     }
 
-    /* ── Scan limit ──────────────────────────────── */
-    #scan-limit-area {
-      margin-bottom: 16px;
+    /* ── Scan / Filter controls ──────────────────── */
+    #scan-limit-area,
+    #filter-mode-area,
+    #min-views-area {
+      margin-bottom: 14px;
     }
-    .scan-limit-label {
-      display: block;
-      font-size: 13px;
-      color: #8e8e8e;
+    #min-views-area {
+      display: none;
+    }
+    .control-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
       margin-bottom: 8px;
     }
-    .scan-limit-controls {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .preset-buttons {
-      display: flex;
-      gap: 4px;
-    }
-    .preset-btn {
-      flex: 1;
-      padding: 6px 0;
-      border: 1px solid #dbdbdb;
-      border-radius: 6px;
-      background: #fff;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      color: #262626;
-      transition: background 0.15s, color 0.15s;
-    }
-    .preset-btn:hover { background: #f0f0f0; }
-    .preset-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .preset-btn.active {
-      background: #0095f6;
-      color: #fff;
-      border-color: #0095f6;
-    }
-    .scan-limit-input {
-      width: 100%;
-      padding: 8px 12px;
-      border: 1px dashed #c7c7c7;
-      border-radius: 8px;
-      background: #f5f5f5;
+    .scan-limit-label,
+    .filter-mode-label,
+    .min-views-label {
+      display: block;
       font-size: 13px;
-      font-weight: 400;
-      color: #262626;
-      text-align: center;
-      outline: none;
-    }
-    .scan-limit-input::placeholder {
-      color: #b0b0b0;
-      font-style: italic;
-    }
-    .scan-limit-input:focus {
-      border-color: #0095f6;
-      border-style: solid;
-      background: #fff;
-    }
-    .scan-limit-input:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
-
-    /* ── Filter mode ─────────────────────────────── */
-    #filter-mode-area {
-      margin-bottom: 16px;
+      color: var(--muted);
+      font-weight: 700;
+      letter-spacing: 0.01em;
     }
     .filter-mode-label {
-      display: block;
-      font-size: 13px;
-      color: #8e8e8e;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
+    }
+    .value-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 24px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--surface-soft);
+      color: var(--purple-key-strong);
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .slider-wrap {
+      padding: 8px 0 4px;
+    }
+    .range-slider {
+      --range-progress: 0%;
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--purple-key-soft);
+      outline: none;
+      cursor: pointer;
+      box-shadow: inset 0 2px 4px rgba(60, 39, 120, 0.12);
+    }
+    .range-slider:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .range-slider::-webkit-slider-runnable-track {
+      -webkit-appearance: none;
+      background: var(--purple-key-soft);
+      height: 8px;
+    }
+    .range-slider::-moz-range-track {
+      background: var(--purple-key-soft);
+      height: 8px;
+      border: none;
+    }
+    .range-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 2px solid #fff;
+      background: var(--orange-accent);
+      box-shadow: 0 3px 0 var(--orange-accent-strong), 0 0 0 1px rgba(58, 29, 101, 0.12);
+      margin-top: -6px;
+      transition: transform 0.1s ease, box-shadow 0.1s ease;
+    }
+    .range-slider::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 2px solid #fff;
+      background: var(--orange-accent);
+      box-shadow: 0 3px 0 var(--orange-accent-strong), 0 0 0 1px rgba(58, 29, 101, 0.12);
+      transition: transform 0.1s ease, box-shadow 0.1s ease;
+    }
+    .range-slider:active::-webkit-slider-thumb {
+      transform: translateY(2px);
+      box-shadow: 0 1px 0 var(--orange-accent-strong), 0 0 0 1px rgba(58, 29, 101, 0.12);
+    }
+    .range-slider:active::-moz-range-thumb {
+      transform: translateY(2px);
+      box-shadow: 0 1px 0 var(--orange-accent-strong), 0 0 0 1px rgba(58, 29, 101, 0.12);
+    }
+    .range-slider:focus-visible {
+      box-shadow: var(--focus-ring);
+    }
+    .scale-marks {
+      position: relative;
+      height: 16px;
+      margin-top: 3px;
+    }
+    .scale-mark {
+      position: absolute;
+      left: var(--mark);
+      transform: translateX(-50%);
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--muted);
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+      line-height: 1;
+      user-select: none;
+    }
+    .scale-mark.start {
+      transform: translateX(0);
+    }
+    .scale-mark.end {
+      transform: translateX(-100%);
     }
     .filter-mode-buttons {
       display: flex;
@@ -717,74 +800,24 @@
     .filter-mode-btn {
       flex: 1;
       padding: 8px 10px;
-      border: 1px solid #dbdbdb;
-      border-radius: 8px;
-      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface);
       font-size: 12px;
-      font-weight: 700;
-      color: #262626;
+      font-weight: 800;
+      color: var(--text);
       cursor: pointer;
+      transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
     }
     .filter-mode-btn.active {
-      background: #0095f6;
+      background: var(--purple-key);
       color: #fff;
-      border-color: #0095f6;
+      border-color: #4a2e91;
     }
-    .filter-mode-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-    /* ── Min views ───────────────────────────────── */
-    #min-views-area {
-      margin-bottom: 16px;
-      display: none;
+    .filter-mode-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
     }
-    .min-views-label {
-      display: block;
-      font-size: 13px;
-      color: #8e8e8e;
-      margin-bottom: 8px;
-    }
-    .min-views-controls {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .min-preset-buttons {
-      display: flex;
-      gap: 4px;
-    }
-    .min-preset-btn {
-      flex: 1;
-      padding: 6px 0;
-      border: 1px solid #dbdbdb;
-      border-radius: 6px;
-      background: #fff;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      color: #262626;
-    }
-    .min-preset-btn.active {
-      background: #0095f6;
-      color: #fff;
-      border-color: #0095f6;
-    }
-    .min-preset-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .min-views-input {
-      width: 100%;
-      padding: 8px 12px;
-      border: 1px dashed #c7c7c7;
-      border-radius: 8px;
-      background: #f5f5f5;
-      font-size: 13px;
-      text-align: center;
-      outline: none;
-    }
-    .min-views-input:focus {
-      border-color: #0095f6;
-      border-style: solid;
-      background: #fff;
-    }
-    .min-views-input:disabled { opacity: 0.4; cursor: not-allowed; }
 
     /* ── Saved view ──────────────────────────────── */
     #saved-view {
@@ -898,6 +931,261 @@
       height: 18px;
       display: block;
     }
+
+    /* ── Purple/Orange theme overrides ──────────── */
+    .header h1,
+    .saved-title,
+    .results-header,
+    .result-views,
+    .share-modal-title {
+      color: var(--text);
+      letter-spacing: 0.01em;
+    }
+    .header .subtitle,
+    .status-msg,
+    .progress-text,
+    .results-meta,
+    .result-rank,
+    .saved-meta,
+    .footer-text {
+      color: var(--muted);
+    }
+    .help-tooltip,
+    .stats,
+    .review-prompt-card,
+    .share-modal-card {
+      border-color: var(--line);
+      background: var(--surface);
+      box-shadow: 0 8px 22px rgba(92, 6, 131, 0.1);
+    }
+    .stats {
+      border-width: 1px;
+      border-left: 0;
+      padding: 13px 14px;
+      box-shadow: none;
+    }
+    .help-title,
+    .review-prompt-body {
+      color: var(--text);
+    }
+    .help-dev-label,
+    .help-dev-debug,
+    .review-prompt-subtitle,
+    .share-modal-subtitle {
+      color: var(--muted);
+    }
+    .stat-label {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      text-transform: none;
+    }
+    .stat-value {
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .stat-value.threshold,
+    .result-ratio {
+      color: var(--purple-key-strong);
+      font-weight: 700;
+    }
+    .value-pill {
+      min-height: auto;
+      padding: 0;
+      border: none;
+      background: transparent;
+      color: var(--orange-accent-strong);
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+    .divider,
+    .result-item,
+    .results-header,
+    .saved-item,
+    .footer {
+      border-color: var(--line);
+    }
+    .spinner {
+      border-color: #e8d9fb;
+      border-top-color: var(--purple-key);
+    }
+    .progress-bar-track {
+      background: var(--purple-key-soft);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      height: 6px;
+    }
+    .progress-bar-fill {
+      background: var(--purple-key);
+      border-radius: 999px;
+    }
+
+    button,
+    .btn-sm,
+    .results-tool-btn,
+    .saved-export-btn,
+    .saved-clear-btn,
+    .review-btn,
+    .share-modal-btn,
+    .icon-link,
+    .help-btn,
+    .help-dev-btn,
+    .view-btn,
+    .filter-mode-btn {
+      border: 1px solid #b991e6;
+      border-radius: 12px;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.92),
+        inset 0 -1px 0 rgba(64, 34, 108, 0.09),
+        0 3px 0 rgba(112, 8, 160, 0.26),
+        0 8px 12px rgba(92, 6, 131, 0.1);
+      transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease, box-shadow 0.14s ease, transform 0.12s ease;
+    }
+    button:hover:not(:disabled),
+    .btn-sm:hover,
+    .results-tool-btn:hover,
+    .saved-export-btn:hover:not(:disabled),
+    .saved-clear-btn:hover:not(:disabled),
+    .review-btn:hover,
+    .share-modal-btn:hover,
+    .icon-link:hover,
+    .help-btn:hover,
+    .help-dev-btn:hover,
+    .view-btn:hover,
+    .filter-mode-btn:hover {
+      opacity: 1;
+      border-color: #aa7fe3;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.96),
+        inset 0 -1px 0 rgba(64, 34, 108, 0.1),
+        0 3px 0 rgba(112, 8, 160, 0.3),
+        0 10px 14px rgba(92, 6, 131, 0.14);
+      transform: none;
+    }
+    button:active:not(:disabled),
+    .btn-sm:active,
+    .results-tool-btn:active,
+    .saved-export-btn:active:not(:disabled),
+    .saved-clear-btn:active:not(:disabled),
+    .review-btn:active,
+    .share-modal-btn:active,
+    .icon-link:active,
+    .help-btn:active,
+    .help-dev-btn:active,
+    .view-btn:active,
+    .filter-mode-btn:active {
+      transform: translateY(2px);
+      box-shadow:
+        inset 0 1px 2px rgba(57, 39, 113, 0.22),
+        inset 0 -1px 0 rgba(64, 34, 108, 0.08),
+        0 1px 0 rgba(112, 8, 160, 0.24),
+        0 4px 8px rgba(92, 6, 131, 0.12);
+    }
+    button:disabled,
+    .results-tool-btn:disabled,
+    .saved-export-btn:disabled,
+    .saved-clear-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      box-shadow: none;
+      transform: none;
+    }
+
+    .view-btn,
+    .filter-mode-btn,
+    .btn-sm,
+    #export-btn,
+    .results-tool-btn,
+    .saved-export-btn,
+    .saved-clear-btn,
+    .review-btn.secondary,
+    .share-modal-btn.secondary,
+    .help-btn,
+    .help-dev-btn,
+    .icon-link {
+      background: var(--surface-soft);
+      color: var(--purple-key-strong);
+    }
+    .view-btn.active,
+    .filter-mode-btn.active,
+    #run-btn,
+    .btn-sm.open,
+    .review-btn.primary,
+    .share-modal-btn.primary {
+      background: var(--purple-key);
+      color: #fff;
+      border-color: #7c0cad;
+      box-shadow:
+        inset 0 1px 0 rgba(227, 189, 255, 0.42),
+        inset 0 -1px 0 rgba(62, 7, 88, 0.16),
+        0 3px 0 rgba(92, 6, 131, 0.36),
+        0 8px 12px rgba(92, 6, 131, 0.14);
+    }
+    .view-btn.active:hover,
+    .filter-mode-btn.active:hover,
+    #run-btn:hover,
+    .btn-sm.open:hover,
+    .review-btn.primary:hover,
+    .share-modal-btn.primary:hover {
+      background: #860bb8;
+      border-color: #730aa6;
+    }
+    #stop-btn,
+    #reset-btn,
+    .btn-sm.save,
+    .share-modal-btn.ghost {
+      background: var(--orange-accent-soft);
+      color: var(--orange-accent-strong);
+      border-color: #e6a145;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.95),
+        inset 0 -1px 0 rgba(155, 90, 5, 0.22),
+        0 3px 0 rgba(201, 120, 11, 0.36),
+        0 10px 14px rgba(217, 126, 8, 0.18);
+    }
+    .btn-sm.remove,
+    .saved-clear-btn {
+      border-color: #d25e71;
+      background: var(--danger-soft);
+      color: var(--danger);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.95),
+        inset 0 -1px 0 rgba(133, 36, 53, 0.2),
+        0 3px 0 rgba(181, 67, 86, 0.3),
+        0 8px 12px rgba(216, 74, 95, 0.16);
+    }
+
+    #review-prompt,
+    #share-modal {
+      background: rgba(49, 22, 88, 0.42);
+    }
+    .footer {
+      margin-top: auto;
+      padding-top: 14px;
+      position: sticky;
+      bottom: 0;
+      background: var(--bg);
+      z-index: 12;
+    }
+    .icon-link {
+      width: 34px;
+      height: 34px;
+    }
+
+    button:focus-visible,
+    .icon-link:focus-visible,
+    .btn-sm:focus-visible,
+    .results-tool-btn:focus-visible,
+    .help-btn:focus-visible,
+    .help-dev-btn:focus-visible,
+    .view-btn:focus-visible,
+    .filter-mode-btn:focus-visible {
+      outline: none;
+      box-shadow: var(--focus-ring);
+    }
   </style>
 </head>
 <body>
@@ -953,16 +1241,29 @@
     </div>
 
     <div id="scan-limit-area">
-      <label class="scan-limit-label">Scan limit</label>
-      <div class="scan-limit-controls">
-        <div class="preset-buttons">
-          <button class="preset-btn" data-limit="50">50</button>
-          <button class="preset-btn active" data-limit="100">100</button>
-          <button class="preset-btn" data-limit="200">200</button>
-          <button class="preset-btn" data-limit="500">500</button>
-          <button class="preset-btn" data-limit="all">All</button>
-        </div>
-        <input type="number" id="scan-limit-input" class="scan-limit-input" placeholder="Custom limit…" min="1" step="1" />
+      <div class="control-head">
+        <label class="scan-limit-label" for="scan-limit-slider">Scan limit</label>
+        <span id="scan-limit-value" class="value-pill">100 reels</span>
+      </div>
+      <div class="slider-wrap">
+        <input
+          type="range"
+          id="scan-limit-slider"
+          class="range-slider"
+          min="0"
+          max="1000"
+          step="1"
+          value="0"
+          aria-label="Scan limit slider"
+        />
+      </div>
+      <div class="scale-marks" aria-hidden="true">
+        <span class="scale-mark start" style="--mark:0%;">1</span>
+        <span class="scale-mark" style="--mark:20%;">100</span>
+        <span class="scale-mark" style="--mark:40%;">150</span>
+        <span class="scale-mark" style="--mark:60%;">200</span>
+        <span class="scale-mark" style="--mark:80%;">500</span>
+        <span class="scale-mark end" style="--mark:100%;">All</span>
       </div>
     </div>
 
@@ -975,14 +1276,27 @@
     </div>
 
     <div id="min-views-area">
-      <label class="min-views-label">Minimum views</label>
-      <div class="min-views-controls">
-        <div class="min-preset-buttons">
-          <button class="min-preset-btn" data-min-views="10000">10K</button>
-          <button class="min-preset-btn" data-min-views="100000">100K</button>
-          <button class="min-preset-btn" data-min-views="1000000">1M</button>
-        </div>
-        <input type="number" id="min-views-input" class="min-views-input" placeholder="Custom minimum views…" min="1" step="1" />
+      <div class="control-head">
+        <label class="min-views-label" for="min-views-slider">Minimum views</label>
+        <span id="min-views-value" class="value-pill">10,000 views</span>
+      </div>
+      <div class="slider-wrap">
+        <input
+          type="range"
+          id="min-views-slider"
+          class="range-slider"
+          min="0"
+          max="1000"
+          step="1"
+          value="0"
+          aria-label="Minimum views slider"
+        />
+      </div>
+      <div class="scale-marks" aria-hidden="true">
+        <span class="scale-mark start" style="--mark:0%;">1K</span>
+        <span class="scale-mark" style="--mark:33.33%;">10K</span>
+        <span class="scale-mark" style="--mark:66.66%;">100K</span>
+        <span class="scale-mark end" style="--mark:100%;">1M</span>
       </div>
     </div>
 

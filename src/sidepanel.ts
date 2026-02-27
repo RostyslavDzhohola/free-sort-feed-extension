@@ -53,13 +53,13 @@ const shareCopyCaptionBtn = document.getElementById("share-copy-caption-btn") as
 const shareCopyLinksBtn = document.getElementById("share-copy-links-btn") as HTMLButtonElement;
 const shareCloseBtn = document.getElementById("share-close-btn") as HTMLButtonElement;
 
-const scanLimitInput = document.getElementById("scan-limit-input") as HTMLInputElement;
-const scanPresetBtns = document.querySelectorAll(".preset-btn") as NodeListOf<HTMLButtonElement>;
+const scanLimitSlider = document.getElementById("scan-limit-slider") as HTMLInputElement;
+const scanLimitValue = document.getElementById("scan-limit-value") as HTMLSpanElement;
 
 const filterModeBtns = document.querySelectorAll(".filter-mode-btn") as NodeListOf<HTMLButtonElement>;
 const minViewsArea = document.getElementById("min-views-area") as HTMLDivElement;
-const minViewsInput = document.getElementById("min-views-input") as HTMLInputElement;
-const minPresetBtns = document.querySelectorAll(".min-preset-btn") as NodeListOf<HTMLButtonElement>;
+const minViewsSlider = document.getElementById("min-views-slider") as HTMLInputElement;
+const minViewsValue = document.getElementById("min-views-value") as HTMLSpanElement;
 
 // ── Local state ───────────────────────────────────────────────────────────
 let cachedTabId: number | null = null;
@@ -103,6 +103,28 @@ const REVIEW_URL = "https://chromewebstore.google.com/detail/outliers/heogkfpbea
 const REVIEW_PROMPT_MIN_OUTLIERS = 1;
 // Delay the ask so users can scan results first before we interrupt them.
 const REVIEW_PROMPT_DELAY_MS = 20_000;
+const DEFAULT_MIN_VIEWS = 10_000;
+
+const SCAN_LIMIT_MIN = 1;
+const SCAN_LIMIT_MAX = 975;
+const SCAN_SLIDER_MAX = 1000;
+const SCAN_LIMIT_ANCHORS = [1, 100, 150, 200, 500] as const;
+const SCAN_LIMIT_SNAP_VALUES = [
+  1, 100, 150, 200,
+  500, 525, 550, 575, 600, 625, 650, 675, 700, 725, 750, 775, 800, 825, 850, 875, 900, 925, 950, 975,
+] as const;
+const SCAN_LIMIT_SNAP_DISTANCE = 16;
+const SCAN_SEGMENT_WIDTH = SCAN_SLIDER_MAX / SCAN_LIMIT_ANCHORS.length;
+const SCAN_PRE_ALL_START_POSITION = SCAN_SEGMENT_WIDTH * (SCAN_LIMIT_ANCHORS.length - 1);
+const SCAN_PRE_ALL_END_POSITION = SCAN_SLIDER_MAX - 1;
+const SCAN_PRE_ALL_MIN = 500;
+const SCAN_PRE_ALL_MAX = 975;
+
+const MIN_VIEWS_MIN = 1_000;
+const MIN_VIEWS_MAX = 1_000_000;
+const MIN_VIEWS_SLIDER_MAX = 1000;
+const MIN_VIEWS_MARKERS = [1_000, 10_000, 100_000, 1_000_000] as const;
+const MIN_VIEWS_SNAP_DISTANCE = 24;
 
 interface ReviewPromptState {
   firstSuccessfulScanAt: string | null;
@@ -127,6 +149,174 @@ function formatCount(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
   if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "K";
   return String(n);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function ratioToLogValue(ratio: number, min: number, max: number): number {
+  if (min <= 0 || max <= 0) return min;
+  const safeRatio = clamp(ratio, 0, 1);
+  const minLog = Math.log(min);
+  const maxLog = Math.log(max);
+  return Math.exp(minLog + (maxLog - minLog) * safeRatio);
+}
+
+function logValueToRatio(value: number, min: number, max: number): number {
+  if (min <= 0 || max <= 0 || min === max) return 0;
+  const safeValue = clamp(value, min, max);
+  const minLog = Math.log(min);
+  const maxLog = Math.log(max);
+  return (Math.log(safeValue) - minLog) / (maxLog - minLog);
+}
+
+function getRangeValue(slider: HTMLInputElement): number {
+  const parsed = parseInt(slider.value, 10);
+  const min = parseInt(slider.min || "0", 10);
+  const max = parseInt(slider.max || "100", 10);
+  if (!Number.isFinite(parsed)) return min;
+  return clamp(parsed, min, max);
+}
+
+function paintRange(slider: HTMLInputElement): void {
+  const min = parseInt(slider.min || "0", 10);
+  const max = parseInt(slider.max || "100", 10);
+  const val = getRangeValue(slider);
+  const pct = max <= min ? 0 : ((val - min) / (max - min)) * 100;
+  slider.style.setProperty("--range-progress", pct.toFixed(2) + "%");
+}
+
+function formatScanLimitValue(limit: number | null): string {
+  return limit === null ? "All reels" : formatExact(limit) + " reels";
+}
+
+function normalizeScanLimit(limit: number | null): number | null {
+  if (limit == null) return null;
+  return clamp(Math.round(limit), SCAN_LIMIT_MIN, SCAN_LIMIT_MAX);
+}
+
+function roundScanLimitValue(raw: number): number {
+  const value = clamp(raw, SCAN_LIMIT_MIN, SCAN_LIMIT_MAX);
+  if (value <= 20) return Math.round(value);
+  if (value <= 200) return Math.round(value / 5) * 5;
+  return Math.round(value / 25) * 25;
+}
+
+function interpolateGeometric(start: number, end: number, t: number): number {
+  if (start <= 0 || end <= 0 || start === end) return start;
+  return start * Math.pow(end / start, clamp(t, 0, 1));
+}
+
+function inverseGeometric(value: number, start: number, end: number): number {
+  if (start <= 0 || end <= 0 || start === end) return 0;
+  const safe = clamp(value, Math.min(start, end), Math.max(start, end));
+  return Math.log(safe / start) / Math.log(end / start);
+}
+
+function scanLimitToSliderPosition(limit: number | null): number {
+  if (limit == null) return SCAN_SLIDER_MAX;
+  const safe = normalizeScanLimit(limit) ?? SCAN_LIMIT_MIN;
+
+  if (safe > SCAN_PRE_ALL_MIN) {
+    const t = (safe - SCAN_PRE_ALL_MIN) / (SCAN_PRE_ALL_MAX - SCAN_PRE_ALL_MIN);
+    return Math.round(
+      SCAN_PRE_ALL_START_POSITION + (t * (SCAN_PRE_ALL_END_POSITION - SCAN_PRE_ALL_START_POSITION))
+    );
+  }
+
+  for (let i = 0; i < SCAN_LIMIT_ANCHORS.length - 1; i++) {
+    const start = SCAN_LIMIT_ANCHORS[i]!;
+    const end = SCAN_LIMIT_ANCHORS[i + 1]!;
+    if (safe >= start && safe <= end) {
+      const t = inverseGeometric(safe, start, end);
+      return Math.round((i * SCAN_SEGMENT_WIDTH) + (t * SCAN_SEGMENT_WIDTH));
+    }
+  }
+
+  return SCAN_PRE_ALL_START_POSITION;
+}
+
+function sliderPositionToScanLimit(position: number): number | null {
+  const safePosition = Math.round(clamp(position, 0, SCAN_SLIDER_MAX));
+  if (safePosition >= SCAN_SLIDER_MAX) return null;
+
+  let rawLimit: number;
+  if (safePosition >= SCAN_PRE_ALL_START_POSITION) {
+    const localT =
+      (safePosition - SCAN_PRE_ALL_START_POSITION) /
+      (SCAN_PRE_ALL_END_POSITION - SCAN_PRE_ALL_START_POSITION);
+    rawLimit = SCAN_PRE_ALL_MIN + (localT * (SCAN_PRE_ALL_MAX - SCAN_PRE_ALL_MIN));
+  } else {
+    const segmentIndex = Math.min(
+      SCAN_LIMIT_ANCHORS.length - 2,
+      Math.floor(safePosition / SCAN_SEGMENT_WIDTH)
+    );
+    const segmentStartPosition = segmentIndex * SCAN_SEGMENT_WIDTH;
+    const localT = (safePosition - segmentStartPosition) / SCAN_SEGMENT_WIDTH;
+    const segmentStartValue = SCAN_LIMIT_ANCHORS[segmentIndex]!;
+    const segmentEndValue = SCAN_LIMIT_ANCHORS[segmentIndex + 1]!;
+    rawLimit = interpolateGeometric(segmentStartValue, segmentEndValue, localT);
+  }
+
+  let closestAnchor = roundScanLimitValue(rawLimit);
+  let closestDistance = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < SCAN_LIMIT_SNAP_VALUES.length; i++) {
+    const anchor = SCAN_LIMIT_SNAP_VALUES[i]!;
+    const anchorPosition = scanLimitToSliderPosition(anchor);
+    const distance = Math.abs(safePosition - anchorPosition);
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closestAnchor = anchor;
+    }
+  }
+  if (closestAnchor != null && closestDistance <= SCAN_LIMIT_SNAP_DISTANCE) {
+    return closestAnchor;
+  }
+
+  return roundScanLimitValue(rawLimit);
+}
+
+function normalizeMinViews(value: number | null): number | null {
+  if (value == null || !Number.isFinite(value) || value <= 0) return null;
+  return clamp(Math.round(value), MIN_VIEWS_MIN, MIN_VIEWS_MAX);
+}
+
+function roundMinViewsValue(raw: number): number {
+  const safe = clamp(raw, MIN_VIEWS_MIN, MIN_VIEWS_MAX);
+  if (safe < 10_000) return Math.round(safe / 100) * 100;
+  if (safe < 100_000) return Math.round(safe / 1_000) * 1_000;
+  return Math.round(safe / 10_000) * 10_000;
+}
+
+function minViewsToSliderPosition(value: number): number {
+  const safe = clamp(Math.round(value), MIN_VIEWS_MIN, MIN_VIEWS_MAX);
+  const ratio = logValueToRatio(safe, MIN_VIEWS_MIN, MIN_VIEWS_MAX);
+  return Math.round(ratio * MIN_VIEWS_SLIDER_MAX);
+}
+
+function sliderPositionToMinViews(position: number): number {
+  const safePosition = Math.round(clamp(position, 0, MIN_VIEWS_SLIDER_MAX));
+  let closestMarker: number | null = null;
+  let closestDistance = Number.POSITIVE_INFINITY;
+
+  for (let i = 0; i < MIN_VIEWS_MARKERS.length; i++) {
+    const marker = MIN_VIEWS_MARKERS[i]!;
+    const markerPosition = minViewsToSliderPosition(marker);
+    const distance = Math.abs(safePosition - markerPosition);
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closestMarker = marker;
+    }
+  }
+
+  if (closestMarker != null && closestDistance <= MIN_VIEWS_SNAP_DISTANCE) {
+    return closestMarker;
+  }
+
+  const ratio = safePosition / MIN_VIEWS_SLIDER_MAX;
+  const raw = ratioToLogValue(ratio, MIN_VIEWS_MIN, MIN_VIEWS_MAX);
+  return roundMinViewsValue(raw);
 }
 
 function clearElement(el: HTMLElement): void {
@@ -404,7 +594,7 @@ function getLocalTimestampForFilename(): string {
 
 function getThresholdLabel(mode: FilterMode, followers: number | null, minViews: number | null): string {
   if (mode === "minViews") {
-    const resolved = minViews && minViews > 0 ? minViews : 10000;
+    const resolved = minViews && minViews > 0 ? minViews : DEFAULT_MIN_VIEWS;
     return formatExact(resolved) + " views";
   }
   if (followers && followers > 0) {
@@ -421,7 +611,7 @@ function loadScanLimit(): number | null {
     if (raw === "all") return null;
     const val = parseInt(raw, 10);
     if (!Number.isFinite(val) || val <= 0) return 100;
-    return val;
+    return normalizeScanLimit(val);
   } catch {
     return 100;
   }
@@ -429,41 +619,31 @@ function loadScanLimit(): number | null {
 
 function saveScanLimit(limit: number | null): void {
   try {
-    if (limit === null) localStorage.setItem(SCAN_LIMIT_KEY, "all");
-    else localStorage.setItem(SCAN_LIMIT_KEY, String(limit));
+    if (limit === null) {
+      localStorage.setItem(SCAN_LIMIT_KEY, "all");
+    } else {
+      localStorage.setItem(SCAN_LIMIT_KEY, String(normalizeScanLimit(limit)));
+    }
   } catch {
     // Non-fatal
   }
 }
 
 function syncScanLimitUI(limit: number | null): void {
-  if (limit === null) {
-    scanLimitInput.value = "";
-    scanLimitInput.placeholder = "Custom limit…";
-  } else {
-    scanLimitInput.value = String(limit);
-  }
-
-  for (let i = 0; i < scanPresetBtns.length; i++) {
-    const btn = scanPresetBtns[i]!;
-    const btnLimit = btn.getAttribute("data-limit");
-    if (limit === null && btnLimit === "all") btn.classList.add("active");
-    else if (btnLimit !== "all" && limit === Number(btnLimit)) btn.classList.add("active");
-    else btn.classList.remove("active");
-  }
+  const normalized = normalizeScanLimit(limit);
+  scanLimitSlider.value = String(scanLimitToSliderPosition(normalized));
+  scanLimitValue.textContent = formatScanLimitValue(normalized);
+  scanLimitSlider.setAttribute("aria-valuetext", formatScanLimitValue(normalized));
+  paintRange(scanLimitSlider);
 }
 
 function getScanLimitFromUI(): number | null {
-  const raw = parseInt(scanLimitInput.value, 10);
-  if (isNaN(raw) || raw <= 0) return null;
-  return raw;
+  const position = getRangeValue(scanLimitSlider);
+  return sliderPositionToScanLimit(position);
 }
 
 function setScanLimitControlsDisabled(disabled: boolean): void {
-  scanLimitInput.disabled = disabled;
-  for (let i = 0; i < scanPresetBtns.length; i++) {
-    scanPresetBtns[i]!.disabled = disabled;
-  }
+  scanLimitSlider.disabled = disabled;
 }
 
 // ── Filter mode helpers ───────────────────────────────────────────────────
@@ -489,7 +669,7 @@ function loadMinViews(): number | null {
     if (!raw) return null;
     const num = parseInt(raw, 10);
     if (!Number.isFinite(num) || num <= 0) return null;
-    return num;
+    return normalizeMinViews(num);
   } catch {
     return null;
   }
@@ -497,17 +677,21 @@ function loadMinViews(): number | null {
 
 function saveMinViews(minViews: number | null): void {
   try {
-    if (minViews == null) localStorage.removeItem(MIN_VIEWS_KEY);
-    else localStorage.setItem(MIN_VIEWS_KEY, String(minViews));
+    if (minViews == null) {
+      localStorage.removeItem(MIN_VIEWS_KEY);
+    } else {
+      localStorage.setItem(MIN_VIEWS_KEY, String(normalizeMinViews(minViews)));
+    }
   } catch {
     // Non-fatal
   }
 }
 
 function resolveMinViewsForRun(): number {
-  const value = selectedMinViews ?? parseInt(minViewsInput.value, 10);
-  if (!Number.isFinite(value) || value <= 0) return 10000;
-  return value;
+  if (selectedMinViews && selectedMinViews > 0) {
+    return normalizeMinViews(selectedMinViews) ?? DEFAULT_MIN_VIEWS;
+  }
+  return sliderPositionToMinViews(getRangeValue(minViewsSlider));
 }
 
 function syncFilterModeUI(mode: FilterMode): void {
@@ -521,25 +705,20 @@ function syncFilterModeUI(mode: FilterMode): void {
 }
 
 function syncMinViewsUI(minViews: number | null): void {
-  selectedMinViews = minViews;
-  minViewsInput.value = minViews ? String(minViews) : "";
-
-  for (let i = 0; i < minPresetBtns.length; i++) {
-    const btn = minPresetBtns[i]!;
-    const candidate = parseInt(btn.getAttribute("data-min-views") ?? "", 10);
-    if (candidate === minViews) btn.classList.add("active");
-    else btn.classList.remove("active");
-  }
+  const normalized = normalizeMinViews(minViews);
+  selectedMinViews = normalized;
+  const resolved = normalized ?? DEFAULT_MIN_VIEWS;
+  minViewsSlider.value = String(minViewsToSliderPosition(resolved));
+  minViewsValue.textContent = formatExact(resolved) + " views";
+  minViewsSlider.setAttribute("aria-valuetext", formatExact(resolved) + " views");
+  paintRange(minViewsSlider);
 }
 
 function setFilterControlsDisabled(disabled: boolean): void {
   for (let i = 0; i < filterModeBtns.length; i++) {
     filterModeBtns[i]!.disabled = disabled;
   }
-  minViewsInput.disabled = disabled || selectedFilterMode !== "minViews";
-  for (let i = 0; i < minPresetBtns.length; i++) {
-    minPresetBtns[i]!.disabled = disabled || selectedFilterMode !== "minViews";
-  }
+  minViewsSlider.disabled = disabled || selectedFilterMode !== "minViews";
 }
 
 // ── Saved reels helpers ───────────────────────────────────────────────────
@@ -750,7 +929,9 @@ function isContentPermalink(url: string): boolean {
 // ── State normalization ───────────────────────────────────────────────────
 function normalizeState(raw: OutliersState): OutliersState {
   const mode: FilterMode = raw.filterMode === "minViews" ? "minViews" : "ratio5x";
-  const minViews = Number.isFinite(raw.minViews) && (raw.minViews ?? 0) > 0 ? raw.minViews : null;
+  const minViews = normalizeMinViews(
+    Number.isFinite(raw.minViews) && (raw.minViews ?? 0) > 0 ? raw.minViews : null
+  );
   const followers = raw.followers && raw.followers > 0 ? raw.followers : null;
   const threshold = Number.isFinite(raw.threshold) && (raw.threshold ?? 0) > 0
     ? raw.threshold
@@ -779,39 +960,23 @@ function normalizeState(raw: OutliersState): OutliersState {
 }
 
 // ── UI rendering ──────────────────────────────────────────────────────────
-function showStats(followers: number, thresholdLabel: string): void {
+function showStats(thresholdLabel: string): void {
   clearElement(statsArea);
   const box = document.createElement("div");
   box.className = "stats";
 
-  const row1 = document.createElement("div");
-  row1.className = "stat-row";
-  const label1 = document.createElement("span");
-  label1.className = "stat-label";
-  label1.textContent = "Followers";
-  const val1 = document.createElement("span");
-  val1.className = "stat-value followers";
-  val1.textContent = formatExact(followers);
-  row1.appendChild(label1);
-  row1.appendChild(val1);
+  const row = document.createElement("div");
+  row.className = "stat-row";
+  const label = document.createElement("span");
+  label.className = "stat-label";
+  label.textContent = "Active threshold";
+  const value = document.createElement("span");
+  value.className = "stat-value threshold";
+  value.textContent = thresholdLabel;
+  row.appendChild(label);
+  row.appendChild(value);
 
-  const divider = document.createElement("div");
-  divider.className = "divider";
-
-  const row2 = document.createElement("div");
-  row2.className = "stat-row";
-  const label2 = document.createElement("span");
-  label2.className = "stat-label";
-  label2.textContent = "Active threshold";
-  const val2 = document.createElement("span");
-  val2.className = "stat-value threshold";
-  val2.textContent = thresholdLabel;
-  row2.appendChild(label2);
-  row2.appendChild(val2);
-
-  box.appendChild(row1);
-  box.appendChild(divider);
-  box.appendChild(row2);
+  box.appendChild(row);
   statsArea.appendChild(box);
 }
 
@@ -1848,7 +2013,7 @@ function renderState(rawState: OutliersState): void {
   statusEl.className = "status-msg";
 
   if (state.followers) {
-    showStats(state.followers, state.activeThresholdLabel);
+    showStats(state.activeThresholdLabel);
   }
 
   switch (state.status) {
@@ -2017,18 +2182,18 @@ async function rehydrate(tabId: number): Promise<void> {
 
     if (followers && followers > 0) {
       latestFollowers = followers;
-      showStats(followers, getThresholdLabel(selectedFilterMode, followers, selectedMinViews));
+      showStats(getThresholdLabel(selectedFilterMode, followers, selectedMinViews));
       runBtn.disabled = false;
       updateReviewPromptVisibility(currentRenderedState);
     } else {
       latestFollowers = null;
-      showStats(0, "—");
+      showStats("—");
       runBtn.disabled = true;
       hideReviewPrompt();
     }
   } catch {
     latestFollowers = null;
-    showStats(0, "—");
+    showStats("—");
     runBtn.disabled = true;
     hideReviewPrompt();
   }
@@ -2458,19 +2623,8 @@ resetBtn.addEventListener("click", async function () {
   }
 });
 
-for (let i = 0; i < scanPresetBtns.length; i++) {
-  scanPresetBtns[i]!.addEventListener("click", function () {
-    const val = this.getAttribute("data-limit");
-    const limit = val === "all" ? null : parseInt(val ?? "", 10);
-    const resolved = limit !== null && (isNaN(limit) || limit <= 0) ? null : limit;
-    syncScanLimitUI(resolved);
-    saveScanLimit(resolved);
-  });
-}
-
-scanLimitInput.addEventListener("input", function () {
-  const raw = parseInt(scanLimitInput.value, 10);
-  const limit = isNaN(raw) || raw <= 0 ? null : raw;
+scanLimitSlider.addEventListener("input", function () {
+  const limit = sliderPositionToScanLimit(getRangeValue(scanLimitSlider));
   syncScanLimitUI(limit);
   saveScanLimit(limit);
 });
@@ -2480,33 +2634,20 @@ for (let i = 0; i < filterModeBtns.length; i++) {
     const mode = this.getAttribute("data-mode") === "minViews" ? "minViews" : "ratio5x";
     syncFilterModeUI(mode);
     if (mode === "minViews" && (!selectedMinViews || selectedMinViews <= 0)) {
-      syncMinViewsUI(10000);
-      saveMinViews(10000);
+      syncMinViewsUI(DEFAULT_MIN_VIEWS);
+      saveMinViews(DEFAULT_MIN_VIEWS);
     }
     saveFilterMode(mode);
     setFilterControlsDisabled(false);
 
-    if (currentRenderedState?.status !== "done" && latestFollowers) {
-      showStats(
-        latestFollowers,
-        getThresholdLabel(mode, latestFollowers, selectedMinViews)
-      );
+    if (currentRenderedState?.status !== "done") {
+      showStats(getThresholdLabel(mode, latestFollowers, selectedMinViews));
     }
   });
 }
 
-for (let i = 0; i < minPresetBtns.length; i++) {
-  minPresetBtns[i]!.addEventListener("click", function () {
-    const value = parseInt(this.getAttribute("data-min-views") ?? "", 10);
-    const resolved = Number.isFinite(value) && value > 0 ? value : 10000;
-    syncMinViewsUI(resolved);
-    saveMinViews(resolved);
-  });
-}
-
-minViewsInput.addEventListener("input", function () {
-  const raw = parseInt(minViewsInput.value, 10);
-  const minViews = isNaN(raw) || raw <= 0 ? null : raw;
+minViewsSlider.addEventListener("input", function () {
+  const minViews = sliderPositionToMinViews(getRangeValue(minViewsSlider));
   syncMinViewsUI(minViews);
   saveMinViews(minViews);
 });

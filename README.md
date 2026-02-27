@@ -44,10 +44,12 @@ pnpm build
 2. Click the extension icon in your toolbar — a **side panel** opens
 3. The side panel shows the detected **follower count** and **5x threshold**
 4. Click **Run Outliers Scan**
-   - Default scan limit is **100** reels (you can still switch to **All**)
+   - Scan limit uses a compact non-linear slider: **1 → 100 → 150 → 200 → 500 → All**
+   - Between **500** and **All**, the slider keeps going in **25-point** steps up to **975** (`...900, 925, 950, 975`), then reaches unlimited mode at `1000` (`All`)
+   - Left edge = **1 reel**, right edge = **All reels** (unlimited scan)
 5. Choose your filter mode:
    - **5× Outliers** (default): `views >= followers × 5`
-   - **Min Views**: choose `10K`, `100K`, `1M`, or enter a custom minimum
+   - **Min Views**: log-scale slider from **1,000** to **1,000,000** with smart snap near `1K`, `10K`, `100K`, and `1M`
 6. The extension auto-scrolls through Reels, showing live progress in the side panel, then:
    - Blocks page interaction during scan so user actions cannot interrupt collection
    - Renders a custom outliers grid on the page (responsive 4/3/2 columns)
