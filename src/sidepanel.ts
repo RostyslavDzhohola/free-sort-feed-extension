@@ -1,5 +1,6 @@
 import { startHotReload } from "./hot-reload";
 import { buildOutliersCsv, buildSavedCsv } from "./shared/export-csv";
+import { buildEmptyStateCopy } from "./shared/empty-state-copy";
 import type {
   FilterMode,
   OutliersEntry,
@@ -1875,11 +1876,22 @@ function renderResults(outliers: OutliersEntry[], scannedCount: number, state: O
   clearElement(resultsList);
 
   if (outliers.length === 0) {
+    const copy = buildEmptyStateCopy({
+      filterMode: state.filterMode,
+      followers: state.followers,
+      threshold: state.threshold,
+      minViews: state.minViews,
+      scanLimit: state.scanLimit,
+    });
     const empty = document.createElement("div");
     empty.className = "empty-msg";
-    empty.textContent = state.filterMode === "minViews"
-      ? "No Reels reached the minimum views threshold."
-      : "No Reels reached the 5× threshold.";
+    const title = document.createElement("strong");
+    title.textContent = copy.title;
+    const detail = document.createElement("div");
+    detail.textContent = copy.detail;
+    empty.appendChild(title);
+    empty.appendChild(document.createElement("br"));
+    empty.appendChild(detail);
     resultsList.appendChild(empty);
     exportBtn.disabled = true;
     setShareButtonsEnabled(false);
@@ -2048,8 +2060,7 @@ function renderState(rawState: OutliersState): void {
       updateReviewPromptVisibility(state);
       setButtonsForDone();
       if (state.outliers.length === 0) {
-        statusEl.textContent =
-          "No reels matched this filter. Click Reset to restore the native Instagram view.";
+        statusEl.textContent = "";
         statusEl.className = "status-msg";
       } else {
         statusEl.textContent = "";

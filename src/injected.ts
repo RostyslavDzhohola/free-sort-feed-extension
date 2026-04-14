@@ -1,4 +1,5 @@
 import { parseCount } from "./shared/parse-count";
+import { buildEmptyStateCopy } from "./shared/empty-state-copy";
 import type { OutliersState, OutliersEntry, FilterMode } from "./types/state";
 
 interface CollectedReel {
@@ -330,6 +331,27 @@ function init(): void {
       "  grid-template-columns: repeat(2, minmax(0, 1fr));",
       "  gap: 8px;",
       "}",
+      "#" + APP_ROOT_ID + " .outliers-empty {",
+      "  max-width: 720px;",
+      "  margin: 24px auto 0;",
+      "  padding: 22px 24px;",
+      "  border: 1px solid rgba(0, 0, 0, 0.08);",
+      "  border-radius: 18px;",
+      "  background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(247,247,247,0.92));",
+      "  text-align: center;",
+      "  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.06);",
+      "}",
+      "#" + APP_ROOT_ID + " .outliers-empty-title {",
+      "  font-size: 22px;",
+      "  font-weight: 700;",
+      "  line-height: 1.25;",
+      "}",
+      "#" + APP_ROOT_ID + " .outliers-empty-detail {",
+      "  margin-top: 10px;",
+      "  font-size: 17px;",
+      "  line-height: 1.5;",
+      "  color: #5b5b5b;",
+      "}",
       "@media (min-width: 760px) {",
       "  #" + APP_ROOT_ID + " .outliers-app-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }",
       "}",
@@ -657,7 +679,13 @@ function init(): void {
     return template.content;
   }
 
-  function renderCustomGrid(outliers: OutliersEntry[], scannedCount: number, thresholdLabel: string): void {
+  function renderCustomGrid(
+    outliers: OutliersEntry[],
+    scannedCount: number,
+    thresholdLabel: string,
+    followers: number,
+    threshold: number
+  ): void {
     ensureAppStyle();
     restoreMovedTiles();
     const liveTilesByHref = collectTileRootsByHref();
@@ -684,6 +712,36 @@ function init(): void {
     header.appendChild(meta);
 
     shell.appendChild(header);
+
+    if (outliers.length === 0) {
+      const copy = buildEmptyStateCopy({
+        filterMode: FILTER_MODE,
+        followers,
+        threshold,
+        minViews: FILTER_MODE === "minViews" ? MIN_VIEWS : null,
+        scanLimit: SCAN_LIMIT,
+      });
+
+      const empty = document.createElement("div");
+      empty.className = "outliers-empty";
+
+      const emptyTitle = document.createElement("div");
+      emptyTitle.className = "outliers-empty-title";
+      emptyTitle.textContent = copy.title;
+
+      const emptyDetail = document.createElement("div");
+      emptyDetail.className = "outliers-empty-detail";
+      emptyDetail.textContent = copy.detail;
+
+      empty.appendChild(emptyTitle);
+      empty.appendChild(emptyDetail);
+      shell.appendChild(empty);
+      root.appendChild(shell);
+      pruneHiddenReelsContent();
+      runCtx.reelMap.clear();
+      _movedTiles.clear();
+      return;
+    }
 
     const grid = document.createElement("div");
     grid.className = "outliers-app-grid";
@@ -1015,7 +1073,7 @@ function init(): void {
       });
     }
 
-    renderCustomGrid(outliers, allReels.length, activeThresholdLabel);
+    renderCustomGrid(outliers, allReels.length, activeThresholdLabel, followers, threshold);
     hideInteractionLock();
 
     updateState({
