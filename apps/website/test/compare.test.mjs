@@ -1,19 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { build } from "esbuild";
-import { fileURLToPath } from "node:url";
-
-async function loadTs(relativeUrl) {
-  const result = await build({
-    entryPoints: [fileURLToPath(new URL(relativeUrl, import.meta.url))],
-    bundle: true,
-    format: "esm",
-    platform: "node",
-    write: false,
-    logLevel: "silent",
-  });
-  return import("data:text/javascript;base64," + Buffer.from(result.outputFiles[0].text).toString("base64"));
-}
+import { loadTs } from "./load-ts.mjs";
 
 const { caseView, formatTimes, barWidth } = await loadTs("../src/lib/compare.ts");
 

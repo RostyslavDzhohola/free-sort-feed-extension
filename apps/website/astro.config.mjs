@@ -1,7 +1,8 @@
 // @ts-check
 import { defineConfig } from "astro/config";
 import sitemap from "@astrojs/sitemap";
-import { SITE_URL } from "./site.config.mjs";
+import { SHOW_PENDING_DEMO_PROFILES, SITE_URL } from "./site.config.mjs";
+import { prunePendingDemoProfiles } from "./integrations/prune-pending-demo.mjs";
 
 export default defineConfig({
   site: SITE_URL,
@@ -16,7 +17,10 @@ export default defineConfig({
   devToolbar: {
     enabled: false,
   },
-  integrations: [sitemap({ filter: (page) => !page.includes("/404") })],
+  integrations: [
+    sitemap({ filter: (page) => !page.includes("/404") }),
+    prunePendingDemoProfiles({ keep: SHOW_PENDING_DEMO_PROFILES }),
+  ],
   vite: {
     environments: {
       prerender: {

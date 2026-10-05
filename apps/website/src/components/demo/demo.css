@@ -1,0 +1,56 @@
+/* Chapter I: scan replay. C's printed card (ink outline + offset paper shadow) framing a mini browser:
+   the Instagram Reels tab on the left, the side panel on the right (stacked on narrow screens). */
+.demo-lede { max-width: 720px; margin: -28px 0 40px; font-size: 18px; text-wrap: pretty; }
+
+.demo-profiles { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
+.demo-profile {
+  display: grid; justify-items: start; gap: 5px; min-width: 0; padding: 12px 18px 13px; text-align: left; cursor: pointer;
+  border: 1.5px solid var(--rule); border-radius: 14px; background: var(--card); color: var(--ink-2); transition: border-color 0.2s, box-shadow 0.2s;
+}
+.demo-profile:hover { border-color: var(--ink-2); }
+.demo-profile[aria-checked="true"] { border-color: var(--ink); box-shadow: 4px 4px 0 var(--orange); }
+.demo-profile-handle { font: italic 500 22px/1.1 var(--serif); color: var(--ink); font-variation-settings: "SOFT" 100, "WONK" 1; }
+.demo-profile-meta { font-size: 13px; color: var(--muted); }
+.demo-tag { padding: 3px 8px; border-radius: 999px; background: var(--orange-soft); color: var(--ink); font: 600 10.5px/1.2 var(--sans); letter-spacing: 0.12em; text-transform: uppercase; }
+.demo-tag-dev { background: #fff3c4; border: 1px dashed #8a6a00; letter-spacing: 0.06em; }
+
+.demo-card { overflow: hidden; border: 1.5px solid var(--ink); border-radius: 18px; background: #fff; box-shadow: 10px 10px 0 var(--paper-3), 10px 10px 0 1.5px var(--ink); }
+.demo-chrome { display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-bottom: 1px solid #ececec; background: #f6f4f1; }
+.demo-dots { display: flex; gap: 6px; flex: none; }
+.demo-dots i { width: 10px; height: 10px; border-radius: 50%; background: #d9d3c7; }
+.demo-omni { flex: 1; min-width: 0; padding: 6px 12px; overflow: hidden; border: 1px solid #e6e1d8; border-radius: 999px; background: #fff; color: #5f5f5f; font: 13px/1.2 var(--sans); white-space: nowrap; text-overflow: ellipsis; }
+.demo-omni b { color: var(--ink); font-weight: 600; }
+
+.demo-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 340px); }
+.demo-page { position: relative; min-width: 0; padding: 14px 16px 0; border-right: 1px solid #ececec; }
+.demo-viewport { position: relative; height: 470px; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 14px; }
+.demo-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; }
+.demo-grid .tile { aspect-ratio: 3 / 4; }
+.demo-grid.ranked { gap: 6px; }
+.demo-grid.ranked .tile { border-radius: 8px; }
+.demo-grid-empty { padding: 48px 16px; text-align: center; color: var(--muted); }
+
+/* The extension's interaction lock: a translucent green layer over the page while it scans. */
+.demo-lock { position: absolute; inset: 0; z-index: 3; display: grid; place-items: end center; padding-bottom: 18px; background: rgba(34, 197, 94, 0.13); box-shadow: inset 0 0 0 2px rgba(22, 163, 74, 0.45); cursor: wait; }
+.demo-lock span { padding: 6px 12px; border-radius: 999px; background: #dcfce7; color: #14532d; font: 600 12.5px/1.2 var(--sans); }
+
+.demo-side { min-width: 0; padding: 14px; background: #faf7ff; }
+
+.demo-foot { display: grid; gap: 12px; max-width: 760px; margin-top: 30px; }
+.demo-hint { min-height: 3.3em; font-size: 15px; color: var(--ink-2); }
+.demo-hint b { color: var(--ink); }
+.demo-honesty { font: italic 400 18px/1.4 var(--serif); color: var(--ink); font-variation-settings: "SOFT" 100, "WONK" 1; }
+.demo-notice { justify-self: start; padding: 8px 14px; border-radius: 10px; background: var(--orange-soft); color: var(--ink); font-size: 14.5px; }
+
+@media (max-width: 900px) {
+  .demo-body { grid-template-columns: minmax(0, 1fr); }
+  .demo-page { border-right: 0; border-bottom: 1px solid #ececec; }
+  .demo-viewport { height: 390px; }
+}
+
+@media (max-width: 560px) {
+  .demo-lede { margin-top: -16px; font-size: 17px; }
+  .demo-profile { flex: 1 1 100%; }
+  .demo-viewport { height: 340px; }
+  .demo-side { padding: 10px; }
+}

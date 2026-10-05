@@ -1,7 +1,7 @@
-// The panel illustration the home page tour shows. To switch to the redesigned side panel, add its
-// component and data next to these (honouring the contract in ./types.ts) and repoint these exports.
-// Nothing in the page or the tour needs to change.
-export { default as PanelIllustration } from "./PanelIllustration.astro";
-export { samplePanel, panelNotes } from "./sample-panel";
-export { PANEL_ZONES } from "./types";
-export type { PanelIllustrationData, PanelNote, PanelZoneId } from "./types";
+// The side panel the home page demo shows. To switch to the redesigned panel, add its component next to
+// DemoPanel.astro (honouring the contract in ./types.ts) and repoint the export below.
+// Neither the demo section nor the page needs to change.
+export { default as DemoPanel } from "./DemoPanel.astro";
+export { panelHints } from "./hints";
+export { PANEL_HOOKS, PANEL_ZONES } from "./types";
+export type { PanelHint, PanelInitialState, PanelZoneId } from "./types";

@@ -2,12 +2,12 @@
 import Chapter from "../Chapter.astro";
 import Faq from "../Faq.astro";
 import { homeFaq } from "../../data/faq";
-import "./questions.css";
+import "./faq-section.css";
 ---
 
 <section class="section" id="faq" aria-labelledby="faq-title">
   <div class="wrap faq-wrap">
-    <Chapter numeral="V." kicker="Questions" title="Asked, answered." id="faq-title" tight />
+    <Chapter numeral="V." kicker="FAQ" title="Asked, answered." id="faq-title" tight />
     <Faq items={homeFaq} />
   </div>
 </section>

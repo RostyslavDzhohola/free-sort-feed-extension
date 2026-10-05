@@ -1,4 +1,5 @@
 import { SITE_INDEXABLE } from "../../site.config.mjs";
+import type { IconId } from "../components/icons";
 
 export const site = {
   name: "Outliers",
@@ -12,23 +13,36 @@ export const site = {
   indexable: SITE_INDEXABLE,
 } as const;
 
-// The owner must confirm these are the intended public links before launch.
-export const socialLinks = [
-  { label: "Email", href: `mailto:${site.contactEmail}`, external: false },
-  { label: "GitHub", href: "https://github.com/RostyslavDzhohola/free-sort-feed-extension", external: true },
-  { label: "X", href: "https://x.com/dzhohola", external: true },
-  { label: "Instagram", href: "https://www.instagram.com/heyrostyslav/", external: true },
-] as const;
+/** A footer icon link. `href: null` hides the link, e.g. while a URL is pending. */
+export interface SocialLink {
+  icon: IconId;
+  /** Accessible name and tooltip. */
+  label: string;
+  href: string | null;
+}
+
+// Every public identity link on the site lives here (DESIGN-SPEC §0.4). Confirmed by the owner, except TikTok.
+export const socialLinks: SocialLink[] = [
+  { icon: "email", label: `Email ${site.contactEmail}`, href: `mailto:${site.contactEmail}` },
+  { icon: "instagram", label: "Instagram · @heyrostyslav", href: "https://www.instagram.com/heyrostyslav/" },
+  { icon: "x", label: "X · @dzhohola", href: "https://x.com/dzhohola" },
+  // TikTok URL is pending from the owner. Leave null until it's confirmed; never guess the handle.
+  { icon: "tiktok", label: "TikTok", href: null },
+  { icon: "github", label: "GitHub · RostyslavDzhohola", href: "https://github.com/RostyslavDzhohola" },
+  { icon: "youtube", label: "YouTube · @RostyslavDzhohola", href: "https://www.youtube.com/@RostyslavDzhohola" },
+  { icon: "linkedin", label: "LinkedIn · Rostyslav Dzhohola", href: "https://www.linkedin.com/in/rostyslav-dzhohola/" },
+  { icon: "portfolio", label: "Portfolio · rostyslav.dev", href: "https://rostyslav.dev" },
+];
 
 export const pageLinks = [
   { label: "Privacy", href: "/privacy/" },
   { label: "Support", href: "/support/" },
 ] as const;
 
+// Masthead anchors (DESIGN-SPEC §0.1). The Privacy section stays on the page but isn't in the nav.
 export const sectionLinks = [
+  { label: "Demo", id: "demo" },
   { label: "Setup", id: "setup" },
   { label: "Setting the bar", id: "bar" },
-  { label: "The panel", id: "tour" },
-  { label: "Privacy", id: "privacy" },
-  { label: "Questions", id: "faq" },
+  { label: "FAQ", id: "faq" },
 ] as const;

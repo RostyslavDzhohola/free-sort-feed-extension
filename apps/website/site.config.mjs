@@ -12,3 +12,10 @@ export const SITE_URL = process.env.SITE_URL ?? "https://outliers.example";
  * <meta name="robots" content="noindex, nofollow">.
  */
 export const SITE_INDEXABLE = process.env.SITE_INDEXABLE === "true";
+
+/**
+ * Demo profiles whose creator hasn't granted permission (permission: "pending" in
+ * src/data/demo/profiles.json) always show in `astro dev`. Set this to true only for a local
+ * preview build; production builds must leave it false.
+ */
+export const SHOW_PENDING_DEMO_PROFILES = process.env.SHOW_PENDING_DEMO_PROFILES === "true";

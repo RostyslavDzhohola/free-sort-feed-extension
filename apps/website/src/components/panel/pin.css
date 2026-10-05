@@ -1,9 +1,8 @@
-/* Numbered annotation pin, shared by the panel illustration and the tour notes.
-   Ink numerals: white on --orange-bright is only 3.2:1; ink is 5.5:1. */
+/* Numbered annotation pin. Ink numerals: white on --orange-bright is only 3.2:1; ink is 5.5:1. */
 .pin {
-  display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; flex: none;
-  background: var(--orange-bright); color: var(--ink); font: italic 600 15px/1 var(--serif); font-variation-settings: "SOFT" 100, "WONK" 1;
+  display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; flex: none;
+  background: var(--orange-bright); color: var(--ink); font: italic 600 14px/1 var(--serif); font-variation-settings: "SOFT" 100, "WONK" 1;
   box-shadow: 0 0 0 3px var(--paper), 0 6px 12px -4px rgba(201, 88, 10, 0.6); transition: scale 0.2s;
 }
+button.pin { cursor: help; }
 [data-zone].active > .pin { scale: 1.18; }
-[data-note].active .pin { scale: 1.12; }

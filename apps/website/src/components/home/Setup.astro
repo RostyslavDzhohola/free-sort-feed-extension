@@ -1,13 +1,17 @@
 ---
 import Chapter from "../Chapter.astro";
 import icon128 from "../../assets/icon-128.png";
-import { sampleRun } from "../../data/sample";
+import { MULTIPLIER, thresholdLabel } from "@outliers/core";
+import { sampleProfile } from "../../data/demo/profiles";
 import "./setup.css";
+
+// Illustrative bar for the step-3 mini panel, from the fictional sample profile (18,400 × 5).
+const barLabel = thresholdLabel((sampleProfile?.snapshot.followers ?? 18_400) * MULTIPLIER);
 ---
 
 <section class="section" id="setup" aria-labelledby="setup-title">
   <div class="wrap">
-    <Chapter numeral="I." kicker="Setup" title="Three steps, then you're researching." id="setup-title" />
+    <Chapter numeral="II." kicker="Setup" title="Three steps, then you're researching." id="setup-title" />
     <ol class="steps">
       <li>
         <div class="step-fig" aria-hidden="true">
@@ -35,7 +39,7 @@ import "./setup.css";
       <li>
         <div class="step-fig" aria-hidden="true">
           <div class="fig-card fig-run">
-            <span class="fig-row"><span>Active threshold</span><b>{sampleRun.thresholdLabel}</b></span>
+            <span class="fig-row"><span>Active threshold</span><b>{barLabel}</b></span>
             <span class="fig-run-btn">Run Outliers Scan</span>
           </div>
         </div>

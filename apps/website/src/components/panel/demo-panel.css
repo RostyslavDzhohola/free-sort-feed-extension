@@ -1,0 +1,85 @@
+/* v1.0.7 side panel replica for the demo. Colours and the Comic-style font stack follow the real
+   extension UI (apps/extension/src/sidepanel.html); a few text colours are darkened to meet WCAG AA. */
+.sp {
+  --sp-text: #2b1943;
+  --sp-muted: #6d5a8c;
+  --sp-line: #ddcef8;
+  --sp-purple: #950acc;
+  --sp-purple-strong: #7008a0;
+  --sp-purple-soft: #eed8fa;
+  --sp-orange: #f99b21;
+  --sp-orange-text: #9a5700;
+  --sp-orange-soft: #fff1de;
+  position: relative; width: 100%; padding: 16px 16px 14px; border-radius: 14px;
+  font-family: var(--panel-font); color: var(--sp-text); font-variant-numeric: tabular-nums;
+  background: radial-gradient(circle at 15% -5%, #ffe7c7 0, transparent 38%), radial-gradient(circle at 88% 6%, #ebddff 0, transparent 30%), #f7f0ff;
+  border: 1px solid var(--sp-line);
+}
+.sp button, .sp input { font-family: inherit; }
+.sp :focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+.sp-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.sp-head b { display: block; font-size: 17px; }
+.sp-head small { font-size: 12px; color: var(--sp-muted); }
+.sp-head img { border-radius: 10px; }
+.sp-switch, .sp-modes { display: flex; gap: 6px; }
+.sp-switch { margin-bottom: 12px; }
+.sp-switch span, .sp-modes button {
+  flex: 1; text-align: center; padding: 7px; border-radius: 11px; background: #fff; border: 1px solid #b991e6;
+  font-size: 12.5px; font-weight: 700; color: var(--sp-text); box-shadow: 0 3px 0 rgba(112, 8, 160, 0.22);
+}
+.sp-modes button { cursor: pointer; }
+.sp-switch .on, .sp-modes .on { background: var(--sp-purple); color: #fff; border-color: #4a2e91; }
+.sp-modes button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Annotated zones: the demo toggles .active while a hint is shown. */
+.sp-zone { position: relative; border-radius: 12px; padding: 4px; margin: 0 -4px 8px; outline: 2px dashed transparent; outline-offset: 2px; transition: outline-color 0.2s, background-color 0.2s; }
+.sp-zone.active { outline-color: var(--orange-bright); background: rgba(229, 111, 18, 0.07); }
+.sp-zone-inline { display: inline-flex; gap: 6px; margin: 0; padding: 2px; }
+.sp-zone > .pin { position: absolute; top: -9px; right: -9px; z-index: 2; }
+
+.sp-stats { display: flex; justify-content: space-between; gap: 8px; padding: 10px 12px; background: #fff; border: 1px solid var(--sp-line); border-radius: 12px; font-size: 13px; }
+.sp-stats span { color: var(--sp-muted); font-weight: 600; }
+.sp-stats b { color: var(--sp-purple-strong); }
+.sp-ctl { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 700; color: var(--sp-muted); margin-bottom: 4px; }
+.sp-ctl b { color: var(--sp-orange-text); font-weight: 700; }
+.sp-minviews { margin-top: 10px; }
+
+.sp-range {
+  -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 8px; margin: 8px 0 4px;
+  border-radius: 999px; border: 1px solid var(--sp-line); cursor: pointer;
+  background: linear-gradient(90deg, #d9b6f2 var(--fill, 0%), var(--sp-purple-soft) var(--fill, 0%));
+}
+.sp-range:disabled { opacity: 0.5; cursor: not-allowed; }
+.sp-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; border: 2px solid #fff; background: var(--sp-orange); box-shadow: 0 3px 0 #d87e08, 0 0 0 1px rgba(58, 29, 101, 0.12); }
+.sp-range::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #fff; background: var(--sp-orange); box-shadow: 0 3px 0 #d87e08; }
+.sp-marks { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--sp-muted); }
+
+.sp-controls { display: grid; margin: 4px 0 6px; }
+.sp-btn { padding: 10px; border-radius: 12px; font-size: 14px; font-weight: 700; cursor: pointer; transition: transform 0.12s ease, box-shadow 0.12s ease; }
+.sp-btn:active { transform: translateY(2px); }
+.sp-run { background: linear-gradient(180deg, #b315ef 0%, #930ccc 100%); color: #fff; border: 1px solid #8d0fc3; box-shadow: 0 3px 0 rgba(112, 8, 160, 0.4); }
+.sp-soft { background: var(--sp-orange-soft); color: var(--sp-orange-text); border: 1px solid #e6a145; box-shadow: 0 3px 0 rgba(201, 120, 11, 0.36); }
+.sp-status { min-height: 1.3em; font-size: 12px; color: var(--sp-muted); }
+
+.sp-progress { margin: 2px 0 8px; }
+.sp-progress-track { height: 6px; border-radius: 999px; overflow: hidden; background: var(--sp-purple-soft); border: 1px solid var(--sp-line); }
+.sp-progress-track i { display: block; height: 100%; width: 0; background: var(--sp-purple); border-radius: inherit; transition: width 0.3s ease; }
+.sp-progress-track i.pulse { opacity: 0.45; animation: sp-pulse 1.5s ease-in-out infinite; }
+@keyframes sp-pulse { 50% { opacity: 0.85; } }
+.sp-progress p { margin-top: 6px; font-size: 12px; color: var(--sp-muted); }
+
+.sp-results-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 0 6px; border-bottom: 1px solid var(--sp-line); margin-bottom: 4px; font-size: 14px; font-weight: 700; }
+.sp-results-head small { font-weight: 400; color: var(--sp-muted); font-size: 12px; }
+.sp-tool { padding: 3px 8px; border-radius: 8px; background: #fff; border: 1px solid #b991e6; font-size: 11.5px; font-weight: 700; color: var(--sp-text); cursor: pointer; box-shadow: 0 2px 0 rgba(112, 8, 160, 0.2); }
+.sp-list { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
+.sp-list li { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--sp-line); font-size: 13px; }
+.sp-list li:last-child { border-bottom: 0; }
+.sp-list .r { min-width: 26px; color: var(--sp-muted); font-weight: 700; }
+.sp-list .i { flex: 1; min-width: 0; }
+.sp-list .v { display: block; font-weight: 600; }
+.sp-list .x { display: block; font-size: 11.5px; font-weight: 700; color: var(--sp-purple-strong); }
+.sp-list .a { display: flex; gap: 4px; flex: none; }
+.sp-act { padding: 3px 7px; border-radius: 7px; border: 1px solid #b991e6; background: #fff; font-size: 11px; font-weight: 700; color: var(--sp-text); text-decoration: none; cursor: pointer; }
+.sp-open { background: var(--sp-purple); color: #fff; border-color: #4a2e91; }
+.sp-empty { padding: 10px 2px 4px; font-size: 13px; }
+.sp-empty p { margin-top: 4px; color: var(--sp-muted); font-size: 12.5px; }

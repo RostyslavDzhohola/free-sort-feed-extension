@@ -3,7 +3,9 @@
 .hero h1 { margin-top: 20px; font-size: clamp(54px, 7.6vw, 112px); font-weight: 380; line-height: 0.96; letter-spacing: -0.035em; font-variation-settings: "SOFT" 30, "WONK" 0, "opsz" 144; text-wrap: balance; }
 .hero h1 em { font-weight: 360; }
 .lede { margin-top: 28px; max-width: 560px; font-size: clamp(18px, 1.5vw, 20px); color: var(--ink-2); text-wrap: pretty; }
-.ctas { display: flex; flex-wrap: wrap; align-items: center; gap: 22px 28px; margin-top: 36px; }
+.free-badge { display: inline-flex; align-items: center; gap: 8px; margin-top: 30px; padding: 7px 14px 7px 11px; border: 1.5px solid var(--ink); border-radius: 999px; background: var(--card); color: var(--ink); font: 600 14px/1.2 var(--sans); letter-spacing: 0.01em; }
+.free-badge svg { flex: none; color: var(--orange-ink); }
+.ctas { display: flex; flex-wrap: wrap; align-items: center; gap: 22px 28px; margin-top: 22px; }
 .facts { display: grid; grid-template-columns: repeat(3, auto); justify-content: start; gap: 0; margin: 44px 0 0; border-top: 1px solid var(--rule); }
 .facts div { padding: 14px 28px 0 0; margin-right: 28px; border-right: 1px solid var(--rule); }
 .facts div:last-child { border-right: 0; }

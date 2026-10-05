@@ -3,9 +3,22 @@ import "./pin.css";
 
 interface Props {
   n: number;
+  /** Interactive pin: a focusable button that shows hint `n` (used inside the demo panel). */
+  hint?: boolean;
+  label?: string;
 }
 
-const { n } = Astro.props;
+const { n, hint = false, label } = Astro.props;
 ---
 
-<span class="pin" aria-hidden="true">{n}</span>
+{
+  hint ? (
+    <button class="pin" type="button" data-hint={n} aria-label={`Hint ${n}: ${label ?? ""}`} aria-describedby={`demo-hint-${n}`}>
+      {n}
+    </button>
+  ) : (
+    <span class="pin" aria-hidden="true">
+      {n}
+    </span>
+  )
+}

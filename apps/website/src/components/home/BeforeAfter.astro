@@ -1,58 +1,45 @@
 ---
-// Before/after compare (DESIGN-SPEC §6.1). Both grids are rendered here; the island only moves the divider.
-import { formatCount, formatRatio } from "@outliers/core";
-import { coverStyle } from "../../data/covers";
-import { sampleProfile, sampleReels, sampleRun } from "../../data/sample";
+// Before/after compare (DESIGN-SPEC §6.1), drawn from a demo snapshot (data/demo/profiles.ts → heroProfile).
+// Both grids are rendered here; the island only moves the divider.
+import { findOutliers } from "@outliers/core";
+import { heroProfile } from "../../data/demo/profiles";
+import { initialsFor } from "../../data/demo/initials";
+import { tileHtml } from "../../lib/demo-render";
+import "../../styles/tiles.css";
 import "./before-after.css";
 
-const before = sampleReels.slice(0, 9);
-const after = sampleRun.outliers.slice(0, 6);
-const CIRCLED = 2; // #3 tile: its multiple sits in view at the resting 50% position.
-const summary = `${sampleRun.outliers.length} of ${sampleRun.scannedCount} reels • ${sampleRun.thresholdLabel}`;
-const followers = formatCount(sampleProfile.followers);
+const { snapshot, assetBase, kind, capturedLabel } = heroProfile;
+const run = findOutliers(snapshot.reels, { mode: "ratio5x", followers: snapshot.followers });
+const before = snapshot.reels.slice(0, 9);
+const after = run.outliers.slice(0, 6);
+// Circle the #3 multiple: it sits in view at the resting 50% position.
+const circled = Math.min(2, after.length - 1);
+const summary = `${run.outliers.length} of ${run.scannedCount} reels • ${run.thresholdLabel}`;
+// Grid position drives each tile's cover colours; ranked results are copies, so look them up by URL.
+const gridIndex = new Map(snapshot.reels.map((reel, i) => [reel.url, i]));
+const beforeHtml = before.map((reel, i) => tileHtml(reel, i, assetBase)).join("");
+const afterHtml = after
+  .map((reel, i) => tileHtml(reel, gridIndex.get(reel.url) ?? i, assetBase, { rank: i + 1, ratio: reel.ratio, circled: i === circled }))
+  .join("");
+const sourceNote = kind === "sample" ? "sample data from a fictional profile" : `real scan of @${snapshot.handle}, captured ${capturedLabel}`;
 ---
 
 <figure class="hero-figure">
   <div class="ba" data-ba style="--pos: 50%">
     <div class="ba-layer ba-before" aria-hidden="true">
       <div class="ig-head">
-        <span class="ig-av">{sampleProfile.initials}</span>
-        <div><b>{sampleProfile.handle}</b><small>{followers} followers</small></div>
+        <span class="ig-av">{initialsFor(snapshot.handle)}</span>
+        <div><b>{snapshot.handle}</b><small>{snapshot.followersText} followers</small></div>
       </div>
       <div class="ig-tabs"><span>Posts</span><span class="on">Reels</span><span>Tagged</span></div>
-      <div class="ba-grid">
-        {
-          before.map((reel) => (
-            <div class="tile" style={coverStyle(reel.index)}>
-              <span class="tv"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" /></svg>{formatCount(reel.views)}</span>
-            </div>
-          ))
-        }
-      </div>
+      <div class="ba-grid" set:html={beforeHtml} />
     </div>
     <div class="ba-layer ba-after" aria-hidden="true">
       <div class="og-head">
         <b>Outliers</b>
         <small>{summary}</small>
       </div>
-      <div class="ba-grid ba-grid-after">
-        {
-          after.map((reel, i) => (
-            <div class:list={["tile", { circled: i === CIRCLED }]} style={coverStyle(reel.index)}>
-              <span class="rk">{i + 1}</span>
-              <span class="rt">
-                {formatRatio(reel.ratio)}
-                {i === CIRCLED && (
-                  <svg class="scribble" viewBox="0 0 100 50" preserveAspectRatio="none">
-                    <path d="M16 31 C 9 13, 52 3, 82 9 S 101 37, 74 45 S 17 47, 11 27" />
-                  </svg>
-                )}
-              </span>
-              <span class="tv"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" /></svg>{formatCount(reel.views)}</span>
-            </div>
-          ))
-        }
-      </div>
+      <div class="ba-grid ba-grid-after" set:html={afterHtml} />
     </div>
     <div class="ba-handle" aria-hidden="true"><span>‹ ›</span></div>
     <input
@@ -70,7 +57,7 @@ const followers = formatCount(sampleProfile.followers);
     <span class="cap-l"><i>Before</i> · Instagram, newest first</span>
     <span class="cap-r"><i>After</i> · Outliers, biggest first</span>
   </figcaption>
-  <p class="sample-note">Drag the handle · sample data from a fictional profile</p>
+  <p class="sample-note">Drag the handle · {sourceNote}</p>
 </figure>
 
 <script>

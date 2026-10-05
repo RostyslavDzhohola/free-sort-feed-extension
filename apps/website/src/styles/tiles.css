@@ -1,0 +1,25 @@
+/* Instagram-like profile header and Reel tiles, shared by the hero before/after and the demo.
+   Real thumbnails sit under the view-count gradient; the fictional sample uses gradient covers
+   (data/covers.ts) instead. */
+.ig-head { display: flex; align-items: center; gap: 10px; padding: 2px 4px 10px; font-family: var(--sans); }
+.ig-av { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; color: #fff; background: var(--ink); font: 600 12px/1 var(--sans); box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--orange-bright); }
+.ig-head b { display: block; font-size: 14px; line-height: 1.2; }
+.ig-head small { font-size: 12px; color: #737373; }
+.ig-tabs { display: flex; justify-content: center; gap: 28px; border-top: 1px solid #ececec; margin-bottom: 6px; font: 600 10px/1 var(--sans); letter-spacing: 0.1em; text-transform: uppercase; color: #737373; }
+.ig-tabs span { padding: 10px 0 8px; border-top: 1px solid transparent; margin-top: -1px; }
+.ig-tabs .on { color: #111; border-top-color: #111; }
+.tile {
+  position: relative; overflow: hidden; border-radius: 3px; color: #fff;
+  background:
+    radial-gradient(70% 55% at var(--x, 40%) var(--y, 35%), rgba(255, 244, 220, 0.42), transparent 70%),
+    linear-gradient(var(--a, 165deg), var(--c1), var(--c2));
+}
+.tile::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--grain); opacity: 0.5; mix-blend-mode: overlay; }
+.tile.has-thumb::before { display: none; }
+.tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.tile::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(180deg, transparent 55%, rgba(0, 0, 0, 0.42)); }
+.tile.circled { overflow: visible; }
+.tile .tv { position: absolute; left: 6px; bottom: 6px; z-index: 1; display: inline-flex; align-items: center; gap: 3px; font: 600 11px/1 var(--sans); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4); }
+.tile .tv svg { width: 10px; height: 10px; fill: #fff; }
+.tile .rk { position: absolute; top: 7px; left: 7px; z-index: 1; font: italic 500 17px/1 var(--serif); font-variation-settings: "SOFT" 100, "WONK" 1; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4); }
+.tile .rt { position: absolute; top: 7px; right: 7px; z-index: 2; padding: 3px 6px; border-radius: 999px; background: var(--paper); color: var(--orange-ink); font: 700 11px/1 var(--sans); }

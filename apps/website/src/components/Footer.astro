@@ -1,23 +1,36 @@
 ---
 import { pageLinks, socialLinks } from "../config/site";
+import { icons } from "./icons";
+
+const visibleLinks = socialLinks.filter((link) => link.href !== null);
 ---
 
 <footer class="footer">
   <div class="wrap footer-inner">
     <p><span class="wordmark-sm">Outliers</span> is made by Rosty. Not affiliated with, endorsed by, or sponsored by Instagram or Meta.</p>
-    <nav aria-label="Contact and site links">
-      {
-        socialLinks.map((link) =>
-          link.external ? (
-            <a href={link.href} target="_blank" rel="noopener noreferrer">
-              {link.label}
-            </a>
-          ) : (
-            <a href={link.href}>{link.label}</a>
-          )
-        )
-      }
-      {pageLinks.map((link) => <a href={link.href}>{link.label}</a>)}
-    </nav>
+    <div class="footer-links">
+      <nav class="footer-pages" aria-label="Site">
+        {pageLinks.map((link) => <a href={link.href}>{link.label}</a>)}
+      </nav>
+      <ul class="footer-icons" aria-label="Rosty elsewhere">
+        {
+          visibleLinks.map((link) => {
+            const external = !link.href!.startsWith("mailto:");
+            return (
+              <li>
+                <a
+                  href={link.href}
+                  aria-label={link.label}
+                  title={link.label}
+                  {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                >
+                  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" set:html={icons[link.icon]} />
+                </a>
+              </li>
+            );
+          })
+        }
+      </ul>
+    </div>
   </div>
 </footer>

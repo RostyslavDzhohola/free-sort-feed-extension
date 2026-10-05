@@ -7,7 +7,8 @@ const PALETTES: ReadonlyArray<readonly [string, string]> = [
 
 /** Inline custom properties for a tile cover, deterministic per grid index. */
 export function coverStyle(index: number): string {
-  const [c1, c2] = PALETTES[(index * 3) % PALETTES.length]!;
+  const n = PALETTES.length;
+  const [c1, c2] = PALETTES[(((index * 3) % n) + n) % n]!;
   const angle = 150 + ((index * 23) % 50);
   const x = 25 + ((index * 31) % 50);
   const y = 20 + ((index * 17) % 40);
