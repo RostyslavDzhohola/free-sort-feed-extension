@@ -7,6 +7,7 @@ import { loadTs } from "./load-ts.mjs";
 const core = await loadTs("../src/index.ts");
 const extCount = await loadTs("../../../apps/extension/src/shared/parse-count.ts");
 const extCsv = await loadTs("../../../apps/extension/src/shared/export-csv.ts");
+const extEmpty = await loadTs("../../../apps/extension/src/shared/empty-state-copy.ts");
 
 test("parseCount matches the extension", () => {
   const inputs = ["0", "999", "1,234", "12.3K", "12.3k", "1.2M", "1M", "2.5B", " 96.3K ", "1 234", "1,2M", "1.234", "12..3K", "abc", "", null, undefined, 4200];
@@ -34,4 +35,15 @@ test("CSV builders match the extension byte for byte", () => {
   const saved = outliers.map((r) => ({ ...r, savedAt: "2026-10-04T11:00:00.000Z", profilePath: ctx.profilePath }));
   const savedCtx = { exportedAt: ctx.exportedAt };
   assert.equal(core.buildSavedCsv(saved, savedCtx), extCsv.buildSavedCsv(saved, savedCtx));
+});
+
+test("empty-state copy matches the extension", () => {
+  const inputs = [
+    { filterMode: "ratio5x", followers: 648, threshold: 3240, minViews: null, scanLimit: 100 },
+    { filterMode: "ratio5x", followers: 648, threshold: 3240, minViews: null, scanLimit: null },
+    { filterMode: "ratio5x", followers: null, threshold: null, minViews: null, scanLimit: 12 },
+    { filterMode: "minViews", followers: 648, threshold: 10000, minViews: 1000000, scanLimit: 1 },
+    { filterMode: "minViews", followers: 648, threshold: null, minViews: null, scanLimit: null },
+  ];
+  for (const input of inputs) assert.deepEqual(core.buildEmptyStateCopy(input), extEmpty.buildEmptyStateCopy(input), JSON.stringify(input));
 });

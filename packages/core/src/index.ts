@@ -20,6 +20,7 @@ export {
   minViewsToSliderPosition,
   sliderPositionToMinViews,
 } from "./sliders";
+export { buildEmptyStateCopy, type EmptyStateCopy } from "./empty-state";
 export {
   buildOutliersCsv,
   buildSavedCsv,
