@@ -1,7 +1,4 @@
 [
-  {
-    "handle": "sample.studio",
-    "kind": "sample",
-    "permission": "granted"
-  }
+  { "handle": "benaratame", "kind": "real", "permission": "pending", "featured": true },
+  { "handle": "sample.studio", "kind": "sample", "permission": "granted" }
 ]
