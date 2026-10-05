@@ -1,0 +1,38 @@
+{
+  "handle": "heyrostyslav",
+  "snapshotFollowers": 648,
+  "snapshotThreshold": 3240,
+  "extensionThreshold": 3240,
+  "extensionImpliedFollowers": 648,
+  "snapshotOutliers": [
+    {
+      "shortcode": "DaR-JSwNnKP",
+      "url": "https://www.instagram.com/heyrostyslav/reel/DaR-JSwNnKP/",
+      "viewsText": "11.1K",
+      "views": 11100
+    },
+    {
+      "shortcode": "DcZ2-GYsSSP",
+      "url": "https://www.instagram.com/heyrostyslav/reel/DcZ2-GYsSSP/",
+      "viewsText": "3,329",
+      "views": 3329
+    }
+  ],
+  "extensionOutlierCount": 6,
+  "allSnapshotOutliersMatchCsvUrlsAndViews": true,
+  "csvOnlyBeyondSnapshot": [
+    { "url": "https://www.instagram.com/heyrostyslav/reel/DYVKI2dtyza/", "views": 10700 },
+    { "url": "https://www.instagram.com/heyrostyslav/reel/DYJEWh5sEPY/", "views": 6517 },
+    { "url": "https://www.instagram.com/heyrostyslav/reel/DYlkOxQsLdw/", "views": 4968 },
+    { "url": "https://www.instagram.com/heyrostyslav/reel/DYLgU3oM61B/", "views": 4508 }
+  ],
+  "snapshotOutliersMissingFromCsv": [],
+  "viewMismatches": [],
+  "status": "verified",
+  "notes": [
+    "Snapshot: a partial capture of the 24 most recent Reels (2026-10-05 01:07 CDT). Concurrent Chrome activity stopped the pass before 60.",
+    "Ground truth: the real Outliers v1.0.7 5x export from the Oct 4 live audit (docs/audits/2026-10-04/instagram-5x-results.csv, exported 2026-10-04 20:26 CDT, 69 Reels scanned, 6 outliers, bar 3,240). The extension scan in the snapshot session didn't run.",
+    "Both snapshot outliers (DaR-JSwNnKP 11,100 and DcZ2-GYsSSP 3,329) match that export exactly by URL and views. Its other 4 outliers are beyond the 24-Reel snapshot.",
+    "Followers: 648 in the header title, and 648 implied by the export's multiples (11,100 / 17.1296)."
+  ]
+}

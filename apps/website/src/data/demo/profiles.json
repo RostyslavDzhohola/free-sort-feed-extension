@@ -1,4 +1,5 @@
 [
   { "handle": "benaratame", "kind": "real", "permission": "pending", "featured": true },
+  { "handle": "heyrostyslav", "kind": "real", "permission": "granted", "owner": true },
   { "handle": "sample.studio", "kind": "sample", "permission": "granted" }
 ]

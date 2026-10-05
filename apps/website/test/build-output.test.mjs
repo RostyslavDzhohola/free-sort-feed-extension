@@ -110,6 +110,19 @@ test("revision 2: demo replays snapshots through the panel hooks", () => {
   for (const p of profiles) assert.equal(p.reels.length > 0, true, p.handle);
 });
 
+test("the owner's real profile ships in the production demo, with no third-party credit", () => {
+  if (process.env.SHOW_PENDING_DEMO_PROFILES === "true") return;
+  const home = html["/"];
+  const { profiles } = JSON.parse(home.match(/<script type="application\/json" data-demo-data>([\s\S]*?)<\/script>/)[1]);
+  const owner = profiles.find((p) => p.handle === "heyrostyslav");
+  assert.ok(owner, "@heyrostyslav is in the demo");
+  assert.equal(owner.kind, "real");
+  assert.equal(owner.owner, true);
+  assert.equal(profiles[0].handle, "heyrostyslav", "with pending creators left out, the owner's profile opens the demo");
+  assert.ok(/<p class="demo-credit" data-demo-credit hidden[\s>]/.test(home), "no creator credit for the owner's own profile");
+  assert.ok(home.includes("Replay of a real scan captured"), "real-scan honesty label");
+});
+
 test("every page carries the disclaimer, page links and footer icon links", () => {
   const icons = [
     "mailto:rosty.build@gmail.com",
