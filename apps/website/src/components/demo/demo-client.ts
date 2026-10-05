@@ -34,6 +34,7 @@ import {
   type ScanState,
 } from "../../lib/demo-engine";
 import { escapeHtml, limitNote, resultRowHtml, tileHtml } from "../../lib/demo-render";
+import { creditFor, honestyLabel } from "../../lib/demo-copy";
 import { prefersReducedMotion } from "../../lib/motion";
 import { stepByValue } from "../../lib/range-keys";
 import { PANEL_HOOKS } from "../panel/types";
@@ -95,6 +96,11 @@ function mount(root: HTMLElement): void {
     lock: el("data-demo-lock"),
     hint: el("data-demo-hint"),
     honesty: el("data-demo-honesty"),
+    credit: el("data-demo-credit"),
+    creditLead: el("data-demo-credit-lead"),
+    creditLink: el<HTMLAnchorElement>("data-demo-credit-link"),
+    creditHandle: el("data-demo-credit-handle"),
+    creditDetail: el("data-demo-credit-detail"),
     notice: el("data-demo-notice"),
     followWrap: el("data-demo-follow-wrap"),
     follow: el<HTMLAnchorElement>("data-demo-follow"),
@@ -207,11 +213,15 @@ function mount(root: HTMLElement): void {
     page.avatar.textContent = initialsFor(profile.handle);
     page.handle.textContent = profile.handle;
     page.followers.textContent = profile.followersText + " followers";
-    page.honesty.textContent =
-      profile.kind === "sample"
-        ? `Sample data from a fictional profile, @${profile.handle}.`
-        : `Replay of a real scan captured ${profile.capturedLabel}. Live numbers on Instagram will differ.` +
-          (profile.permission === "granted" && !profile.owner ? " Featured with permission." : "");
+    page.honesty.textContent = honestyLabel(profile);
+    const credit = creditFor(profile);
+    page.credit.hidden = !credit;
+    if (credit) {
+      page.creditLead.textContent = credit.lead;
+      page.creditLink.href = credit.href;
+      page.creditHandle.textContent = credit.handle;
+      page.creditDetail.textContent = credit.detail;
+    }
     page.follow.href = `https://www.instagram.com/${profile.handle}/`;
     page.followHandle.textContent = profile.handle;
     for (const button of page.profiles) {

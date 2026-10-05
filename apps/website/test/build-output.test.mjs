@@ -119,6 +119,7 @@ test("every page carries the disclaimer, page links and footer icon links", () =
     "https://www.youtube.com/@RostyslavDzhohola",
     "https://www.linkedin.com/in/rostyslav-dzhohola/",
     "https://rostyslav.dev",
+    "https://www.tiktok.com/@rostyslavdzhohola",
   ];
   for (const [route, page] of Object.entries(html)) {
     assert.ok(page.includes("Not affiliated with, endorsed by, or sponsored by Instagram or Meta."), `${route} disclaimer`);
@@ -131,7 +132,7 @@ test("every page carries the disclaimer, page links and footer icon links", () =
       assert.ok(/aria-label="[^"]+"/.test(tag) && /title="[^"]+"/.test(tag), `${href} has a label and tooltip`);
       if (!href.startsWith("mailto:")) assert.ok(tag.includes('target="_blank"') && tag.includes('rel="noopener noreferrer"'), href);
     }
-    assert.ok(!/tiktok\.com/i.test(page), "TikTok stays hidden until its URL is confirmed");
+    assert.equal(footer.match(/tiktok\.com/gi)?.length, 1, `${route} links TikTok exactly once`);
   }
 });
 

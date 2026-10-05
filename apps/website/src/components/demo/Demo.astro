@@ -19,6 +19,7 @@ import { demoProfiles } from "../../data/demo/profiles";
 import { initialsFor } from "../../data/demo/initials";
 import { DEFAULT_SETTINGS, capScanLimit } from "../../lib/demo-engine";
 import { limitNote, tileHtml } from "../../lib/demo-render";
+import { creditFor, honestyLabel, type CopyProfile } from "../../lib/demo-copy";
 import "../../styles/tiles.css";
 import "./demo.css";
 
@@ -59,11 +60,14 @@ const payloadJson = JSON.stringify(payload).replace(/</g, "\\u003c");
 const meta = (p: (typeof profiles)[number]) =>
   `${p.snapshot.followersText} followers · bar ${formatCount(p.snapshot.followers * MULTIPLIER)} · ` +
   (p.kind === "sample" ? "sample data" : `Snapshot · ${p.capturedLabel}`);
-const honesty = (p: (typeof profiles)[number]) =>
-  p.kind === "sample"
-    ? `Sample data from a fictional profile, @${p.snapshot.handle}.`
-    : `Replay of a real scan captured ${p.capturedLabel}. Live numbers on Instagram will differ.` +
-      (p.permission === "granted" && !p.owner ? " Featured with permission." : "");
+const copyOf = (p: (typeof profiles)[number]): CopyProfile => ({
+  handle: p.snapshot.handle,
+  kind: p.kind,
+  permission: p.permission,
+  owner: !!p.owner,
+  capturedLabel: p.capturedLabel,
+});
+const firstCredit = creditFor(copyOf(first));
 ---
 
 <section class="section" id="demo" aria-labelledby="demo-title">
@@ -139,7 +143,12 @@ const honesty = (p: (typeof profiles)[number]) =>
             </p>
           ))
         }
-        <p class="demo-honesty" data-demo-honesty>{honesty(first)}</p>
+        <p class="demo-honesty" data-demo-honesty>{honestyLabel(copyOf(first))}</p>
+        <p class="demo-credit" data-demo-credit hidden={!firstCredit}>
+          <span data-demo-credit-lead>{firstCredit?.lead ?? "Featured creator:"}</span>
+          <a data-demo-credit-link href={firstCredit?.href ?? "https://www.instagram.com/"} target="_blank" rel="noopener noreferrer">@<span data-demo-credit-handle>{firstCredit?.handle ?? ""}</span><span aria-hidden="true"> ↗</span></a>.
+          <span data-demo-credit-detail>{firstCredit?.detail ?? ""}</span>
+        </p>
         <p class="demo-notice" data-demo-notice hidden>New settings apply to your next scan. Press Reset, then Run.</p>
         <p class="demo-follow-wrap" data-demo-follow-wrap hidden>
           <a class="link-arrow" data-demo-follow href={`https://www.instagram.com/${first.snapshot.handle}/`} target="_blank" rel="noopener noreferrer">

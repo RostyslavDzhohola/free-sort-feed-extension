@@ -21,13 +21,12 @@ export interface SocialLink {
   href: string | null;
 }
 
-// Every public identity link on the site lives here (DESIGN-SPEC §0.4). Confirmed by the owner, except TikTok.
+// Every public identity link on the site lives here (DESIGN-SPEC §0.4). All confirmed by the owner.
 export const socialLinks: SocialLink[] = [
   { icon: "email", label: `Email ${site.contactEmail}`, href: `mailto:${site.contactEmail}` },
   { icon: "instagram", label: "Instagram · @heyrostyslav", href: "https://www.instagram.com/heyrostyslav/" },
   { icon: "x", label: "X · @dzhohola", href: "https://x.com/dzhohola" },
-  // TikTok URL is pending from the owner. Leave null until it's confirmed; never guess the handle.
-  { icon: "tiktok", label: "TikTok", href: null },
+  { icon: "tiktok", label: "TikTok · @rostyslavdzhohola", href: "https://www.tiktok.com/@rostyslavdzhohola" },
   { icon: "github", label: "GitHub · RostyslavDzhohola", href: "https://github.com/RostyslavDzhohola" },
   { icon: "youtube", label: "YouTube · @RostyslavDzhohola", href: "https://www.youtube.com/@RostyslavDzhohola" },
   { icon: "linkedin", label: "LinkedIn · Rostyslav Dzhohola", href: "https://www.linkedin.com/in/rostyslav-dzhohola/" },

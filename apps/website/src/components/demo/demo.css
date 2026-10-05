@@ -40,6 +40,10 @@
 .demo-hint { min-height: 3.3em; font-size: 15px; color: var(--ink-2); }
 .demo-hint b { color: var(--ink); }
 .demo-honesty { font: italic 400 18px/1.4 var(--serif); color: var(--ink); font-variation-settings: "SOFT" 100, "WONK" 1; }
+/* Creator credit + disclosure for third-party demo profiles */
+.demo-credit { font-size: 14px; line-height: 1.5; color: var(--muted); }
+.demo-credit a { color: var(--ink); font-weight: 600; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+.demo-credit a:hover { text-decoration-color: var(--orange); }
 .demo-notice { justify-self: start; padding: 8px 14px; border-radius: 10px; background: var(--orange-soft); color: var(--ink); font-size: 14.5px; }
 
 @media (max-width: 900px) {
