@@ -72,7 +72,8 @@ test("home page copy follows the spec", () => {
   assert.equal(home.match(/<details>/g)?.length, 7, "seven FAQ items");
   assert.ok(home.includes("I set a small scan limit, but it scanned more."), "scan-limit FAQ");
   assert.ok(home.includes("6 of 36 reels • 92,000 views"), "after-layer summary");
-  assert.ok(home.includes("sample data from a fictional profile"), "demo labelled as sample data");
+  assert.ok(home.includes("sample data from a fictional profile"), "before/after labelled as sample data");
+  assert.ok(home.includes("Sample data from a fictional profile, @sample.studio"), "panel illustration labelled as sample data");
   assert.ok(home.includes('href="/privacy/"'), "privacy policy link");
   assert.ok(!/testimonial|trusted by|★/i.test(home), "no social proof without owner approval");
 });

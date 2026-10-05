@@ -89,7 +89,7 @@ If the redesign drops or adds an annotated area, change `PANEL_ZONES` and the no
 
 ## Fonts and images
 
-- Fraunces (full axes, normal and italic) and Instrument Sans (wght) are self-hosted through `@fontsource-variable/*`. The latin files of both are preloaded. OFL licences are in `public/licenses/`.
+- Fraunces (full axes, normal and italic) and Instrument Sans (wght) are self-hosted through `@fontsource-variable/*`. The latin files used above the fold (Fraunces normal and italic, Instrument Sans) are preloaded. OFL licences are in `public/licenses/`.
 - `public/og-image.png` is a placeholder 1200×630 card in the site's style. To regenerate it after editing `og/template.html`, run `pnpm --filter @outliers/website og`. This needs Google Chrome; set `CHROME_PATH` if it isn't in the default macOS location.
 - Icons are copies of `apps/extension/icons/`.
 

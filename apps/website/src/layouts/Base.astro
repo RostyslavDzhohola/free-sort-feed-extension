@@ -3,6 +3,7 @@ import "@fontsource-variable/fraunces/full.css";
 import "@fontsource-variable/fraunces/full-italic.css";
 import "@fontsource-variable/instrument-sans/wght.css";
 import frauncesLatin from "@fontsource-variable/fraunces/files/fraunces-latin-full-normal.woff2?url";
+import frauncesLatinItalic from "@fontsource-variable/fraunces/files/fraunces-latin-full-italic.woff2?url";
 import instrumentLatin from "@fontsource-variable/instrument-sans/files/instrument-sans-latin-wght-normal.woff2?url";
 import "../styles/global.css";
 import Masthead from "../components/Masthead.astro";
@@ -40,7 +41,9 @@ const robots = site.indexable && !noindex ? "index, follow" : "noindex, nofollow
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="sitemap" href="/sitemap-index.xml" />
+    <!-- All three faces are above the fold (the hero's italic "broke out." and fact values use Fraunces italic). -->
     <link rel="preload" href={frauncesLatin} as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href={frauncesLatinItalic} as="font" type="font/woff2" crossorigin />
     <link rel="preload" href={instrumentLatin} as="font" type="font/woff2" crossorigin />
 
     <meta property="og:type" content="website" />

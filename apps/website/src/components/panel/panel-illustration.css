@@ -29,7 +29,7 @@
 .sp-slider { position: relative; height: 8px; border-radius: 999px; background: #eed8fa; border: 1px solid #ddcef8; margin: 8px 0 4px; }
 .sp-slider i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: inherit; background: #d9b6f2; }
 .sp-slider em { position: absolute; top: 50%; width: 16px; height: 16px; border-radius: 50%; transform: translate(-50%, -50%); background: #f99b21; border: 2px solid #fff; box-shadow: 0 2px 0 #d87e08; }
-.sp-run { margin: 6px 0 12px; padding: 10px; text-align: center; border-radius: 12px; background: #fff5f5; color: #d84a5f; border: 1px solid #f0a3ae; font-size: 14px; font-weight: 700; box-shadow: 0 3px 0 rgba(216, 74, 95, 0.2); }
+.sp-run { margin: 6px 0 12px; padding: 10px; text-align: center; border-radius: 12px; background: #fff5f5; color: #c43a50; border: 1px solid #f0a3ae; font-size: 14px; font-weight: 700; box-shadow: 0 3px 0 rgba(216, 74, 95, 0.2); }
 .sp-results-head { display: flex; justify-content: space-between; align-items: center; padding-bottom: 6px; border-bottom: 1px solid #ddcef8; margin-bottom: 4px; font-size: 14px; font-weight: 700; }
 .sp-results-head small { font-weight: 400; color: #7c6a9a; font-size: 12px; }
 .sp-tool { padding: 3px 8px; border-radius: 8px; background: #fff; border: 1px solid #b991e6; font-size: 11.5px; box-shadow: 0 2px 0 rgba(112, 8, 160, 0.2); }

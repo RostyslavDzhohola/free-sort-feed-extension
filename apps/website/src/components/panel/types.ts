@@ -31,6 +31,8 @@ export interface PanelResultRow {
 export interface PanelIllustrationData {
   /** Accessible description of the whole illustration. */
   alt: string;
+  /** Visible caption under the illustration. Must say it's sample data (DESIGN-SPEC §2.4). */
+  caption: string;
   title: string;
   tagline: string;
   tabs: Toggle[];

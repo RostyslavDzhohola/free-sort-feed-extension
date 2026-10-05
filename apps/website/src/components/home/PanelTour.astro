@@ -11,9 +11,10 @@ import "./tour.css";
   <div class="wrap">
     <Chapter numeral="III." kicker="The side panel, annotated" title="Everything lives in one panel." id="tour-title" />
     <div class="tour" data-tour>
-      <div class="tour-shot">
+      <figure class="tour-shot">
         <PanelIllustration data={samplePanel} />
-      </div>
+        <figcaption class="tour-caption">{samplePanel.caption}</figcaption>
+      </figure>
       <ol class="notes">
         {
           panelNotes.map((note, i) => (

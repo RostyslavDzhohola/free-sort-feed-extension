@@ -1,12 +1,13 @@
 // The v1.0.7 side panel after a 5× scan of the sample profile, plus the tour notes that describe it.
 import { SCAN_SLIDER_MAX, formatCount, formatRatio, formatScanLimit, scanLimitToSliderPosition } from "@outliers/core";
-import { sampleRun } from "../../data/sample";
+import { sampleProfile, sampleRun } from "../../data/sample";
 import type { PanelIllustrationData, PanelNote } from "./types";
 
 const SCAN_LIMIT = 100; // the extension's default
 
 export const samplePanel: PanelIllustrationData = {
   alt: "Illustration of the Outliers side panel with sample results",
+  caption: `Sample data from a fictional profile, @${sampleProfile.handle}`,
   title: "Outliers",
   tagline: "Find viral outlier Reels",
   tabs: [

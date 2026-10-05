@@ -13,7 +13,7 @@
 .fig-url { display: grid; gap: 12px; }
 .fig-omni { padding: 8px 12px; border-radius: 999px; background: var(--paper); font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fig-omni b { color: var(--ink); }
-.fig-tabs { display: flex; justify-content: center; gap: 20px; font: 600 10.5px/1 var(--sans); letter-spacing: 0.1em; text-transform: uppercase; color: #9a9a9a; }
+.fig-tabs { display: flex; justify-content: center; gap: 20px; font: 600 10.5px/1 var(--sans); letter-spacing: 0.1em; text-transform: uppercase; color: #737373; }
 .fig-tabs span { padding-top: 8px; border-top: 2px solid transparent; }
 .fig-tabs .on { color: var(--ink); border-top-color: var(--ink); }
 .fig-run { background: #f7f0ff; font-family: var(--panel-font); }
