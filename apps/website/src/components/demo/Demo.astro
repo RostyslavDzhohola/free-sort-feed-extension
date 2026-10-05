@@ -1,5 +1,5 @@
 ---
-// Chapter I: a replay of a real scan (DESIGN-SPEC §6.4). A website can't scan Instagram for visitors
+// Chapter I: a replay of a real snapshot (DESIGN-SPEC §6.4). A website can't scan Instagram for visitors
 // (cross-origin, login wall, Instagram's terms, and no server by design), so this replays snapshots
 // captured once through the extension, ranked by @outliers/core with the extension's exact rule.
 import {
@@ -41,15 +41,20 @@ const initial: PanelInitialState = {
 
 const gridHtml = first.snapshot.reels.map((reel, i) => tileHtml(reel, i, first.assetBase)).join("");
 
+// The label fields (CopyProfile) travel to the island inside each profile, so both render the same copy.
+const copyOf = (p: (typeof profiles)[number]): CopyProfile => ({
+  handle: p.snapshot.handle,
+  kind: p.kind,
+  permission: p.permission,
+  owner: !!p.owner,
+  capturedLabel: p.capturedLabel,
+});
+
 const payload = {
   profiles: profiles.map((p) => ({
-    handle: p.snapshot.handle,
+    ...copyOf(p),
     followers: p.snapshot.followers,
     followersText: p.snapshot.followersText,
-    capturedLabel: p.capturedLabel,
-    kind: p.kind,
-    permission: p.permission,
-    owner: !!p.owner,
     assetBase: p.assetBase,
     reels: p.snapshot.reels,
   })),
@@ -60,24 +65,17 @@ const payloadJson = JSON.stringify(payload).replace(/</g, "\\u003c");
 const meta = (p: (typeof profiles)[number]) =>
   `${p.snapshot.followersText} followers · bar ${formatCount(p.snapshot.followers * MULTIPLIER)} · ` +
   (p.kind === "sample" ? "sample data" : `Snapshot · ${p.capturedLabel}`);
-const copyOf = (p: (typeof profiles)[number]): CopyProfile => ({
-  handle: p.snapshot.handle,
-  kind: p.kind,
-  permission: p.permission,
-  owner: !!p.owner,
-  capturedLabel: p.capturedLabel,
-});
 const firstCredit = creditFor(copyOf(first));
 ---
 
 <section class="section" id="demo" aria-labelledby="demo-title">
   <div class="wrap">
-    <Chapter numeral="I." kicker="Demo" title={hasReal ? "A real scan, replayed." : "Watch a scan play out."} id="demo-title" />
+    <Chapter numeral="I." kicker="Demo" title={hasReal ? "Real Reels, replayed." : "Watch a scan play out."} id="demo-title" />
     <p class="demo-lede">
       {
         hasReal ? (
           <Fragment>
-            Pick a profile and press <b>Run Outliers Scan</b>. A website can't scan Instagram for you, and Outliers never sends your research to a server, so this replays a real scan captured once through the extension and ranked with its exact rule.
+            Pick a profile and press <b>Run Outliers Scan</b>. A website can't scan Instagram for you, and Outliers never sends your research to a server, so this replays a real snapshot of the profile's Reels, checked against the extension's own export and ranked with its exact rule.
           </Fragment>
         ) : (
           <Fragment>

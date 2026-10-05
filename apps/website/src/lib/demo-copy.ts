@@ -19,11 +19,14 @@ export interface Credit {
   detail: string;
 }
 
-/** Always-visible line naming the data source (DESIGN-SPEC §6.4). */
+/**
+ * Always-visible line naming the data source (DESIGN-SPEC §6.4). Says "snapshot", not "scan": a profile's
+ * snapshot and the extension export that verifies it may come from different sessions (see comparison.json).
+ */
 export function honestyLabel(p: CopyProfile): string {
   return p.kind === "sample"
     ? `Sample data from a fictional profile, @${p.handle}.`
-    : `Replay of a real scan captured ${p.capturedLabel}. Live numbers on Instagram will differ.`;
+    : `Replay of a real snapshot captured ${p.capturedLabel}, checked against the extension's own export. Live numbers on Instagram will differ.`;
 }
 
 /**

@@ -3,7 +3,7 @@
 // The demo island (components/demo/demo-client.ts) drives the panel only through these hooks, so a
 // redesigned panel can replace DemoPanel.astro as long as it renders:
 //   - every element in PANEL_HOOKS (attribute names below), with the noted element types;
-//   - a [data-zone="<PanelZoneId>"] wrapper around each annotated area, holding <Pin n={id} hint />.
+//   - a [data-zone="<PanelZoneId>"] wrapper around each annotated area, holding <Pin n={id} label=… />.
 // The island toggles `.active` on the zone being hinted and `hidden` on elements that change with state;
 // everything else about the look belongs to the panel component.
 import type { FilterMode } from "@outliers/core";

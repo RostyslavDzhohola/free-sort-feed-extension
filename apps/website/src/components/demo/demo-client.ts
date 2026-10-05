@@ -34,19 +34,15 @@ import {
   type ScanState,
 } from "../../lib/demo-engine";
 import { escapeHtml, limitNote, resultRowHtml, tileHtml } from "../../lib/demo-render";
-import { creditFor, honestyLabel } from "../../lib/demo-copy";
+import { creditFor, honestyLabel, type CopyProfile } from "../../lib/demo-copy";
 import { prefersReducedMotion } from "../../lib/motion";
 import { stepByValue } from "../../lib/range-keys";
 import { PANEL_HOOKS } from "../panel/types";
 
-interface DemoProfileData {
-  handle: string;
+/** One profile in Demo.astro's inline payload: the label fields (CopyProfile) plus what the replay needs. */
+interface DemoProfileData extends CopyProfile {
   followers: number;
   followersText: string;
-  capturedLabel: string;
-  kind: "real" | "sample";
-  permission: "pending" | "granted";
-  owner: boolean;
   assetBase: string;
   reels: SnapshotReel[];
 }

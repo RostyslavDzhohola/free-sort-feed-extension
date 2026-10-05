@@ -13,8 +13,12 @@ const owner = { ...base, handle: "heyrostyslav", kind: "real", permission: "gran
 
 test("honesty label names the data source", () => {
   assert.equal(honestyLabel(sample), "Sample data from a fictional profile, @sample.studio.");
+  // "Snapshot", not "scan": a snapshot isn't always captured in the same session as its verifying export.
   for (const p of [creatorPending, creatorGranted, owner]) {
-    assert.equal(honestyLabel(p), "Replay of a real scan captured Oct 4, 2026. Live numbers on Instagram will differ.");
+    assert.equal(
+      honestyLabel(p),
+      "Replay of a real snapshot captured Oct 4, 2026, checked against the extension's own export. Live numbers on Instagram will differ.",
+    );
   }
 });
 

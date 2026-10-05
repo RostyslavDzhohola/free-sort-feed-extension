@@ -21,7 +21,7 @@ const beforeHtml = before.map((reel, i) => tileHtml(reel, i, assetBase)).join(""
 const afterHtml = after
   .map((reel, i) => tileHtml(reel, gridIndex.get(reel.url) ?? i, assetBase, { rank: i + 1, ratio: reel.ratio, circled: i === circled }))
   .join("");
-const sourceNote = kind === "sample" ? "sample data from a fictional profile" : `real scan of @${snapshot.handle}, captured ${capturedLabel}`;
+const sourceNote = kind === "sample" ? "sample data from a fictional profile" : `real snapshot of @${snapshot.handle}, captured ${capturedLabel}`;
 ---
 
 <figure class="hero-figure">

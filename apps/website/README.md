@@ -78,15 +78,15 @@ The islands are plain `<script>` modules next to their markup:
 
 Every initial state is rendered on the server, so the page reads correctly without JavaScript and nothing shifts on load.
 
-## The demo: a replay of a real scan
+## The demo: a replay of a real snapshot
 
-A website can't scan Instagram for a visitor. Cross-origin reads are blocked, there's a login wall and Instagram's terms forbid it, and scanning would need a server, which would break "nothing leaves your browser". So chapter I replays snapshots captured once through the extension. `lib/demo-engine.ts` mirrors the v1.0.7 panel:
+A website can't scan Instagram for a visitor. Cross-origin reads are blocked, there's a login wall and Instagram's terms forbid it, and scanning would need a server, which would break "nothing leaves your browser". So chapter I replays snapshots of real Reels tabs, each verified against a real extension CSV export (`extension-5x.csv`). A snapshot and its export may come from different sessions; `comparison.json` records which. `lib/demo-engine.ts` mirrors the v1.0.7 panel:
 - it collects tiles in batches of 12 before checking the scan limit;
 - Stop finalizes what's been collected;
 - settings changed after a scan apply only after Reset → Run;
-- progress, empty-state and Copy text match the extension word for word.
+- progress and Copy text match the extension word for word. Empty-state text does too, with **one deliberate exception**: v1.0.7's scan-limit hint ("Scanned: first N reels only") names the limit even when a batch overshot it or Stop ended the scan early. That's a known extension bug, so the replay names the number of Reels actually collected, and only when the limit was reached.
 
-Results come from `findOutliers` in `@outliers/core`. Open and Copy link point at the real Reels, and a "Follow @handle on Instagram" link appears after results. The label "Replay of a real scan captured {date}. Live numbers on Instagram will differ." is always shown.
+Results come from `findOutliers` in `@outliers/core`. Open and Copy link point at the real Reels, and a "Follow @handle on Instagram" link appears after results. The label "Replay of a real snapshot captured {date}, checked against the extension's own export. Live numbers on Instagram will differ." is always shown (`lib/demo-copy.ts`). Third-party creators also get a credit and disclosure linking to their Instagram, which says "shown with permission" only once `permission` is `"granted"`.
 
 ### Adding the real snapshots (data drop)
 

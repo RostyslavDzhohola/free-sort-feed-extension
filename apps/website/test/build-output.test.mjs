@@ -71,8 +71,12 @@ test("home page copy follows the spec", () => {
   assert.ok(home.includes('<span class="mark">at least 5× more views than followers</span>'), "marked phrase");
   assert.equal(home.match(/<details>/g)?.length, 7, "seven FAQ items");
   assert.ok(home.includes("I set a small scan limit, but it scanned more."), "scan-limit FAQ");
-  assert.ok(/real scan of @[\w.]+, captured|sample data from a fictional profile/.test(home), "hero compare names its data source");
-  assert.ok(/Replay of a real scan captured .+\. Live numbers on Instagram will differ\.|Sample data from a fictional profile, @sample\.studio\./.test(home), "demo honesty label");
+  assert.ok(/real snapshot of @[\w.]+, captured|sample data from a fictional profile/.test(home), "hero compare names its data source");
+  assert.ok(
+    /Replay of a real snapshot captured .+, checked against the extension&#39;s own export\. Live numbers on Instagram will differ\.|Sample data from a fictional profile, @sample\.studio\./.test(home),
+    "demo honesty label",
+  );
+  assert.ok(!/real scan/i.test(home), "snapshots aren't called scans: the verifying export can come from another session");
   assert.ok(home.includes('href="/privacy/"'), "privacy policy link");
   assert.ok(!/testimonial|trusted by|★/i.test(home), "no social proof without owner approval");
 });
@@ -120,7 +124,7 @@ test("the owner's real profile ships in the production demo, with no third-party
   assert.equal(owner.owner, true);
   assert.equal(profiles[0].handle, "heyrostyslav", "with pending creators left out, the owner's profile opens the demo");
   assert.ok(/<p class="demo-credit" data-demo-credit hidden[\s>]/.test(home), "no creator credit for the owner's own profile");
-  assert.ok(home.includes("Replay of a real scan captured"), "real-scan honesty label");
+  assert.ok(home.includes("Replay of a real snapshot captured"), "real-snapshot honesty label");
 });
 
 test("every page carries the disclaimer, page links and footer icon links", () => {
