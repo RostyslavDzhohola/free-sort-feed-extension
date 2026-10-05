@@ -13,6 +13,7 @@ interface Props {
 
 const { initial } = Astro.props;
 const limitFill = ((initial.scanLimit.position / SCAN_SLIDER_MAX) * 100).toFixed(2) + "%";
+const limitCap = ((initial.scanLimit.capPosition / SCAN_SLIDER_MAX) * 100).toFixed(2) + "%";
 const minFill = ((initial.minViews.position / MIN_VIEWS_SLIDER_MAX) * 100).toFixed(2) + "%";
 const modes = [
   { value: "ratio5x", label: "5× Outliers" },
@@ -45,10 +46,11 @@ const modes = [
       max={SCAN_SLIDER_MAX}
       value={initial.scanLimit.position}
       aria-valuetext={initial.scanLimit.label}
-      style={`--fill: ${limitFill}`}
+      style={`--fill: ${limitFill}; --cap: ${limitCap}`}
       data-panel-limit
     />
     <div class="sp-marks" aria-hidden="true"><span>1</span><span>100</span><span>150</span><span>200</span><span>500</span><span>All</span></div>
+    <p class="sp-limit-note" data-panel-limit-note>{initial.scanLimit.note}</p>
     <Pin n={2} hint label={PANEL_ZONES[2]} />
   </div>
 

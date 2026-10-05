@@ -16,7 +16,9 @@ import type { SnapshotReel } from "../../data/demo/types";
 import { initialsFor } from "../../data/demo/initials";
 import {
   BATCH_SIZE,
+  DEFAULT_SETTINGS,
   activeThreshold,
+  capScanLimit,
   collectBatch,
   emptyState,
   finishScan,
@@ -31,7 +33,7 @@ import {
   updateSettings,
   type ScanState,
 } from "../../lib/demo-engine";
-import { escapeHtml, resultRowHtml, tileHtml } from "../../lib/demo-render";
+import { escapeHtml, limitNote, resultRowHtml, tileHtml } from "../../lib/demo-render";
 import { prefersReducedMotion } from "../../lib/motion";
 import { stepByValue } from "../../lib/range-keys";
 import { PANEL_HOOKS } from "../panel/types";
@@ -60,6 +62,7 @@ function mount(root: HTMLElement): void {
     threshold: el(PANEL_HOOKS.threshold),
     limit: el<HTMLInputElement>(PANEL_HOOKS.limit),
     limitValue: el(PANEL_HOOKS.limitValue),
+    limitNote: el(PANEL_HOOKS.limitNote),
     modes: Array.from(root.querySelectorAll<HTMLButtonElement>(`[${PANEL_HOOKS.mode}]`)),
     minViewsArea: el(PANEL_HOOKS.minViewsArea),
     minViews: el<HTMLInputElement>(PANEL_HOOKS.minViews),
@@ -103,7 +106,10 @@ function mount(root: HTMLElement): void {
 
   let profile = profiles[0]!;
   let gridIndex = indexByUrl(profile);
-  let state: ScanState<SnapshotReel> = initialState();
+  // The limit the visitor picked (null = All). The replay caps it at the Reels captured for each profile.
+  let requestedLimit: number | null = DEFAULT_SETTINGS.scanLimit;
+  const cappedLimit = (limit: number | null) => capScanLimit(limit, profile.reels.length);
+  let state: ScanState<SnapshotReel> = initialState({ ...DEFAULT_SETTINGS, scanLimit: cappedLimit(requestedLimit) });
   let timer = 0;
   let gridShowsResults = false;
 
@@ -120,8 +126,11 @@ function mount(root: HTMLElement): void {
     const scanning = phase === "scanning";
     panel.threshold.textContent = activeThreshold(state, profile.followers).label;
 
-    syncRange(panel.limit, scanLimitToSliderPosition(pending.scanLimit), SCAN_SLIDER_MAX, formatScanLimit(pending.scanLimit));
+    const note = limitNote(profile.kind, profile.reels.length);
+    syncRange(panel.limit, scanLimitToSliderPosition(pending.scanLimit), SCAN_SLIDER_MAX, `${formatScanLimit(pending.scanLimit)}. ${note}`);
+    panel.limit.style.setProperty("--cap", ((scanLimitToSliderPosition(profile.reels.length) / SCAN_SLIDER_MAX) * 100).toFixed(2) + "%");
     panel.limitValue.textContent = formatScanLimit(pending.scanLimit);
+    panel.limitNote.textContent = note;
     panel.limit.disabled = scanning;
 
     for (const button of panel.modes) {
@@ -285,7 +294,7 @@ function mount(root: HTMLElement): void {
     window.clearTimeout(timer);
     profile = next;
     gridIndex = indexByUrl(profile);
-    state = resetScan(state);
+    state = updateSettings(resetScan(state), { scanLimit: cappedLimit(requestedLimit) });
     gridShowsResults = true; // force a fresh grid
     renderProfile();
     render();
@@ -301,10 +310,12 @@ function mount(root: HTMLElement): void {
   }
 
   panel.limit.addEventListener("input", () => {
-    const position = Number(panel.limit.value);
-    state = updateSettings(state, { scanLimit: sliderPositionToScanLimit(position) });
+    const capPosition = scanLimitToSliderPosition(profile.reels.length);
+    const position = Math.min(Number(panel.limit.value), capPosition);
+    requestedLimit = sliderPositionToScanLimit(Number(panel.limit.value));
+    state = updateSettings(state, { scanLimit: cappedLimit(requestedLimit) });
     render();
-    panel.limit.value = String(position); // let the thumb follow the pointer; it snaps on release
+    panel.limit.value = String(position); // let the thumb follow the pointer up to the cap; it snaps on release
     setFill(panel.limit, position, SCAN_SLIDER_MAX);
   });
   panel.limit.addEventListener("change", () => render());
@@ -316,7 +327,7 @@ function mount(root: HTMLElement): void {
     setFill(panel.minViews, position, MIN_VIEWS_SLIDER_MAX);
   });
   panel.minViews.addEventListener("change", () => render());
-  stepByValue(panel.limit, sliderPositionToScanLimit, () => state.pending.scanLimit);
+  stepByValue(panel.limit, (position) => cappedLimit(sliderPositionToScanLimit(position)), () => state.pending.scanLimit);
   stepByValue(panel.minViews, sliderPositionToMinViews, () => state.pending.minViews);
 
   wireRadioGroup(panel.modes, (button) => setMode(button.dataset.panelMode as FilterMode));

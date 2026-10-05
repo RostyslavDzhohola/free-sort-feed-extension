@@ -90,17 +90,24 @@ Results come from `findOutliers` in `@outliers/core`. Open and Copy link point a
 
 ### Adding the real snapshots (data drop)
 
-The design thread captures each profile as `snapshot.json`, `thumbs/*.jpg` and `extension-5x.csv` (`{ handle, followersText, followers, capturedAt, reelCount, reels: [{ shortcode, url, viewsText, views, thumb }] }`, newest first). For each profile:
+The design thread captures each profile as `snapshot.json`, `thumbs/*.jpg`, `extension-5x.csv` and `comparison.json`. The snapshot's shape is `{ handle, followersText, followers, capturedAt, capturedAtLocal, reelCount, reels: [{ shortcode, url, viewsText, views, thumb }] }`, in grid order (newest first). For each profile:
 
-1. Copy `snapshot.json` and `extension-5x.csv` to `src/data/demo/<handle>/`.
-2. Copy the thumbnails to `public/demo/<handle>/thumbs/`. `thumb` in the JSON is relative to `public/demo/<handle>/`.
-3. Add the profile to `src/data/demo/profiles.json`:
+1. Run `pnpm --filter @outliers/website demo:import <capture-dir>`. It copies `snapshot.json`, `extension-5x.csv` and `comparison.json` to `src/data/demo/<handle>/`, and writes the thumbnails as WebP (q82, about 60% smaller) to `public/demo/<handle>/thumbs/`, rewriting the `thumb` paths.
+2. Add the profile to `src/data/demo/profiles.json`:
    ```json
    { "handle": "benaratame", "kind": "real", "permission": "pending", "featured": true },
    { "handle": "heyrostyslav", "kind": "real", "permission": "granted", "owner": true, "hero": true }
    ```
    `featured` is selected first in the demo. `hero` drives the hero before/after. `owner` skips the "Featured with permission" label.
-4. Run `pnpm --filter @outliers/website test`. For every real profile it checks the snapshot's shape, checks that every thumbnail exists, and checks that the 5× set computed by `@outliers/core` equals `extension-5x.csv` (same Reels, order, views and multiples).
+3. Run `pnpm --filter @outliers/website test`. For every real profile it checks the snapshot's shape and that every thumbnail exists. It also compares against the extension's CSV export, which can cover more Reels than the snapshot (it scanned to its own limit):
+   - every 5× outlier computed over the snapshot is in the CSV with the same views;
+   - every CSV row whose Reel is in the snapshot is computed, in the same order;
+   - the remaining CSV rows match `comparison.json`'s `csvOnlyBeyondSnapshot`;
+   - the follower count implied by the CSV's multiples gives the same set.
+
+   For @benaratame, the snapshot holds the first 60 Reels at 31,822 followers (bar 159,110). The extension read 32,000 (bar 160,000) and found 8 outliers in 102 Reels. 6 are in the snapshot; the other 2 are beyond it.
+
+The date label uses `capturedAtLocal` (the capture's own calendar date), because `capturedAt` may be UTC and fall on the next day. The replay can't scan past its snapshot, so the scan-limit slider stops at the number of Reels captured: the track beyond it is greyed out and a note reads "Snapshot of the 60 most recent Reels".
 
 When there's at least one real profile, the demo shows only real profiles. `@sample.studio` stays as the fallback dataset.
 

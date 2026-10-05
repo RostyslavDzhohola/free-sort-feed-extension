@@ -56,6 +56,11 @@ export function startScan<T extends ReelLike>(state: ScanState<T>, reels: readon
   return { ...state, phase: "scanning", applied: state.pending, collected: 0, result: analyze(reels, followers, state.pending, 0) };
 }
 
+/** A replay can't scan past its snapshot: All, or any limit above the Reels captured, becomes that count. */
+export function capScanLimit(limit: number | null, captured: number): number {
+  return limit === null || limit > captured ? captured : limit;
+}
+
 export function isComplete(collected: number, settings: ScanSettings, total: number): boolean {
   return collected >= total || (settings.scanLimit != null && collected >= settings.scanLimit);
 }

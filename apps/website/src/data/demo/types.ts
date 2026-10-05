@@ -16,10 +16,14 @@ export interface Snapshot {
   handle: string;
   followersText: string;
   followers: number;
-  /** ISO date or date-time of the capture. */
+  /** ISO date or date-time of the capture (may be UTC). */
   capturedAt: string;
+  /** The same moment in the capture's local time zone. Its calendar date is the one shown on the site. */
+  capturedAtLocal?: string;
   reelCount: number;
   reels: SnapshotReel[];
+  /** Capture notes from the design thread. Not shown on the site. */
+  notes?: string[];
 }
 
 /** One entry in profiles.json. */

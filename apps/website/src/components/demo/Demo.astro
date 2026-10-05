@@ -17,8 +17,8 @@ import Chapter from "../Chapter.astro";
 import { DemoPanel, panelHints, type PanelInitialState } from "../panel";
 import { demoProfiles } from "../../data/demo/profiles";
 import { initialsFor } from "../../data/demo/initials";
-import { DEFAULT_SETTINGS } from "../../lib/demo-engine";
-import { tileHtml } from "../../lib/demo-render";
+import { DEFAULT_SETTINGS, capScanLimit } from "../../lib/demo-engine";
+import { limitNote, tileHtml } from "../../lib/demo-render";
 import "../../styles/tiles.css";
 import "./demo.css";
 
@@ -29,7 +29,12 @@ const hasReal = profiles.some((p) => p.kind === "real");
 const initial: PanelInitialState = {
   thresholdLabel: thresholdLabel(thresholdFor(DEFAULT_SETTINGS.mode, first.snapshot.followers, DEFAULT_SETTINGS.minViews)),
   mode: DEFAULT_SETTINGS.mode,
-  scanLimit: { position: scanLimitToSliderPosition(DEFAULT_SETTINGS.scanLimit), label: formatScanLimit(DEFAULT_SETTINGS.scanLimit) },
+  scanLimit: {
+    position: scanLimitToSliderPosition(capScanLimit(DEFAULT_SETTINGS.scanLimit, first.snapshot.reels.length)),
+    label: formatScanLimit(capScanLimit(DEFAULT_SETTINGS.scanLimit, first.snapshot.reels.length)),
+    capPosition: scanLimitToSliderPosition(first.snapshot.reels.length),
+    note: limitNote(first.kind, first.snapshot.reels.length),
+  },
   minViews: { position: minViewsToSliderPosition(DEFAULT_MIN_VIEWS), label: formatExact(DEFAULT_MIN_VIEWS) + " views" },
 };
 

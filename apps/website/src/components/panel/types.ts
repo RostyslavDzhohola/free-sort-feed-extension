@@ -23,6 +23,7 @@ export const PANEL_HOOKS = {
   threshold: "data-panel-threshold", // text: "92,000 views"
   limit: "data-panel-limit", // <input type="range"> 0–1000 (scan-limit curve)
   limitValue: "data-panel-limit-value", // text: "100 reels"
+  limitNote: "data-panel-limit-note", // text: why the replay caps the limit ("Snapshot of the 60 most recent Reels")
   mode: "data-panel-mode", // two buttons, value "ratio5x" | "minViews", role="radio"
   minViewsArea: "data-panel-minviews-area", // shown only in Min Views mode
   minViews: "data-panel-minviews", // <input type="range"> 0–1000 (Min Views curve)
@@ -48,7 +49,8 @@ export const PANEL_HOOKS = {
 export interface PanelInitialState {
   thresholdLabel: string;
   mode: FilterMode;
-  scanLimit: { position: number; label: string };
+  /** capPosition: slider position (0–1000) of the replay's maximum, the number of Reels captured. */
+  scanLimit: { position: number; label: string; capPosition: number; note: string };
   minViews: { position: number; label: string };
 }
 

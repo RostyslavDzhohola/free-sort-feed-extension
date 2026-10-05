@@ -1,3 +1,7 @@
 [
-  { "handle": "sample.studio", "kind": "sample", "permission": "granted" }
+  {
+    "handle": "sample.studio",
+    "kind": "sample",
+    "permission": "granted"
+  }
 ]

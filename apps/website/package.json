@@ -11,7 +11,8 @@
     "lint": "eslint src/",
     "test": "pnpm run build && node --test \"test/**/*.test.mjs\"",
     "clean": "rm -rf dist .astro",
-    "og": "node og/render.mjs"
+    "og": "node og/render.mjs",
+    "demo:import": "node scripts/import-demo-snapshot.mjs"
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.7.4",
@@ -26,6 +27,7 @@
     "@typescript-eslint/parser": "^8.54.0",
     "esbuild": "^0.24.2",
     "eslint": "^9.39.2",
+    "sharp": "^0.35.5",
     "typescript": "^5.9.3"
   }
 }

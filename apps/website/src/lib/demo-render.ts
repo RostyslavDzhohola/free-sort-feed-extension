@@ -25,6 +25,11 @@ export function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
+/** Why the scan-limit slider stops short of All in the replay. */
+export function limitNote(kind: "real" | "sample", captured: number): string {
+  return kind === "sample" ? `Sample profile with ${captured} Reels` : `Snapshot of the ${captured} most recent Reels`;
+}
+
 /** A Reels-grid tile: thumbnail (or a gradient cover for the fictional sample) and its view count. */
 export function tileHtml(reel: TileReel, index: number, assetBase: string, ranked?: TileRank): string {
   const views = escapeHtml(reel.viewsText ?? formatCount(reel.views));

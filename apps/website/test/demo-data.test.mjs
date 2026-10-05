@@ -66,16 +66,40 @@ for (const entry of entries) {
   });
 
   if (entry.kind === "real") {
-    test(`@${entry.handle}: computed 5× set equals the extension's CSV export`, () => {
+    // The extension's export covers its own scan (e.g. 102 Reels at a 100 limit); the snapshot holds the
+    // first N Reels of the grid. So compare within the snapshot, and account for the rows beyond it.
+    test(`@${entry.handle}: computed 5× set matches the extension's CSV export`, () => {
       const csvUrl = new URL(`${entry.handle}/extension-5x.csv`, dataDir);
       assert.ok(existsSync(csvUrl), `real profiles need src/data/demo/${entry.handle}/extension-5x.csv as ground truth`);
-      const expected = parseCsv(readFileSync(csvUrl, "utf8"));
+      const csv = parseCsv(readFileSync(csvUrl, "utf8"));
       const s = snapshotOf(entry.handle);
+      const inSnapshot = new Map(s.reels.map((r) => [r.url, r]));
       const computed = core.findOutliers(s.reels, { mode: "ratio5x", followers: s.followers }).outliers;
-      assert.deepEqual(computed.map((r) => r.url), expected.map((r) => r.url), "same Reels, same order");
-      assert.deepEqual(computed.map((r) => r.views), expected.map((r) => Number(r.views)), "same views");
-      assert.deepEqual(computed.map((r) => r.ratio.toFixed(4)), expected.map((r) => r.ratio), "same multiples (same follower count)");
-      for (const row of expected) assert.equal(row.filter_mode, "ratio5x");
+      const csvByUrl = new Map(csv.map((row) => [row.url, row]));
+      for (const row of csv) assert.equal(row.filter_mode, "ratio5x");
+
+      // Every computed outlier is in the export, with the same views.
+      for (const reel of computed) {
+        assert.ok(csvByUrl.has(reel.url), `${reel.url} is an outlier here but not in the extension's CSV`);
+        assert.equal(Number(csvByUrl.get(reel.url).views), reel.views, reel.url);
+      }
+      // Every exported outlier that's in the snapshot is computed, in the same (views-descending) order.
+      const csvWithin = csv.filter((row) => inSnapshot.has(row.url));
+      assert.deepEqual(computed.map((r) => r.url), csvWithin.map((row) => row.url));
+
+      // The rest of the export lies beyond the snapshot, as the capture's comparison.json records.
+      const csvOnly = csv.filter((row) => !inSnapshot.has(row.url)).map((row) => row.url);
+      const comparisonUrl = new URL(`${entry.handle}/comparison.json`, dataDir);
+      if (existsSync(comparisonUrl)) {
+        const comparison = JSON.parse(readFileSync(comparisonUrl, "utf8"));
+        assert.deepEqual(csvOnly, (comparison.csvOnlyBeyondSnapshot ?? []).map((row) => row.url));
+      }
+
+      // The export's multiples imply the follower count the extension read. Same set under that bar too,
+      // i.e. no Reel in the snapshot falls between the two bars.
+      const implied = Math.round(Number(csv[0].views) / Number(csv[0].ratio));
+      const underImplied = core.findOutliers(s.reels, { mode: "ratio5x", followers: implied }).outliers;
+      assert.deepEqual(underImplied.map((r) => r.url), computed.map((r) => r.url), `bar ${implied * 5} vs ${s.followers * 5}`);
     });
   }
 }

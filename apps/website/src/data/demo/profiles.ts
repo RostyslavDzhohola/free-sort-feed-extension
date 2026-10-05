@@ -9,9 +9,12 @@ const snapshots = import.meta.glob<Snapshot>("./*/snapshot.json", { eager: true,
 /** Pending profiles render in `astro dev` (with a "Permission pending" badge) but never in a production build. */
 export const showPending: boolean = import.meta.env.DEV || SHOW_PENDING_DEMO_PROFILES;
 
-/** "2026-10-05T14:03:00-05:00" -> "Oct 5, 2026", using the capture's own calendar date. */
-export function formatCaptureDate(capturedAt: string): string {
-  const [y, m, d] = capturedAt.slice(0, 10).split("-").map(Number);
+/**
+ * The capture's calendar date where it was taken: "2026-10-04T22:25:51-05:00" -> "Oct 4, 2026".
+ * Prefer capturedAtLocal, since capturedAt may be UTC and already on the next day.
+ */
+export function formatCaptureDate(snapshot: Pick<Snapshot, "capturedAt" | "capturedAtLocal">): string {
+  const [y, m, d] = (snapshot.capturedAtLocal ?? snapshot.capturedAt).slice(0, 10).split("-").map(Number);
   return new Date(Date.UTC(y!, m! - 1, d!)).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 }
 
@@ -19,7 +22,7 @@ function load(entry: ProfileEntry): DemoProfile {
   const snapshot = snapshots[`./${entry.handle}/snapshot.json`];
   if (!snapshot) throw new Error(`Missing src/data/demo/${entry.handle}/snapshot.json`);
   if (snapshot.handle !== entry.handle) throw new Error(`snapshot.json handle "${snapshot.handle}" doesn't match "${entry.handle}"`);
-  return { ...entry, snapshot, assetBase: `/demo/${entry.handle}/`, capturedLabel: formatCaptureDate(snapshot.capturedAt) };
+  return { ...entry, snapshot, assetBase: `/demo/${entry.handle}/`, capturedLabel: formatCaptureDate(snapshot) };
 }
 
 const visible = (entries as ProfileEntry[]).filter((e) => e.permission === "granted" || showPending).map(load);
