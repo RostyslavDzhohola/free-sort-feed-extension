@@ -65,6 +65,7 @@ const valueText = formatExact(INITIAL_MIN_VIEWS) + " views";
 <script>
   import { MIN_VIEWS_SLIDER_MAX, formatExact, sliderPositionToMinViews } from "@outliers/core";
   import { caseView } from "../../lib/compare";
+  import { stepByValue } from "../../lib/range-keys";
 
   const root = document.querySelector<HTMLElement>("[data-compare]");
   const range = root?.querySelector<HTMLInputElement>("[data-compare-range]");
@@ -80,6 +81,7 @@ const valueText = formatExact(INITIAL_MIN_VIEWS) + " views";
       verdict: el.querySelector<HTMLElement>("[data-verdict]")!,
     }));
 
+    stepByValue(range, sliderPositionToMinViews);
     range.addEventListener("input", () => {
       const position = Number(range.value);
       const minViews = sliderPositionToMinViews(position);

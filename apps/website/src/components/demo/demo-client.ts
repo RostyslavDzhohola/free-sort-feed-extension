@@ -33,6 +33,7 @@ import {
 } from "../../lib/demo-engine";
 import { escapeHtml, resultRowHtml, tileHtml } from "../../lib/demo-render";
 import { prefersReducedMotion } from "../../lib/motion";
+import { stepByValue } from "../../lib/range-keys";
 import { PANEL_HOOKS } from "../panel/types";
 
 interface DemoProfileData {
@@ -315,6 +316,8 @@ function mount(root: HTMLElement): void {
     setFill(panel.minViews, position, MIN_VIEWS_SLIDER_MAX);
   });
   panel.minViews.addEventListener("change", () => render());
+  stepByValue(panel.limit, sliderPositionToScanLimit, () => state.pending.scanLimit);
+  stepByValue(panel.minViews, sliderPositionToMinViews, () => state.pending.minViews);
 
   wireRadioGroup(panel.modes, (button) => setMode(button.dataset.panelMode as FilterMode));
   wireRadioGroup(page.profiles, (button, viaKeyboard) => selectProfile(button.dataset.demoProfile!, viaKeyboard));
