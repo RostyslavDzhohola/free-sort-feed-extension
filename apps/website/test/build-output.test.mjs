@@ -127,6 +127,12 @@ test("the owner's real profile ships in the production demo, with no third-party
   assert.ok(home.includes("Replay of a real snapshot captured"), "real-snapshot honesty label");
 });
 
+test("the creator credit keeps spaces between its lead, link and detail", () => {
+  const credit = html["/"].match(/<p class="demo-credit"[\s\S]*?<\/p>/)[0];
+  assert.match(credit, /<\/span> <a data-demo-credit-link/, "space after the lead");
+  assert.match(credit, /<\/a>\. <span data-demo-credit-detail/, "space after the link");
+});
+
 test("every page carries the disclaimer, page links and footer icon links", () => {
   const icons = [
     "mailto:rosty.build@gmail.com",

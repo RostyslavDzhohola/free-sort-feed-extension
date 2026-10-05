@@ -148,9 +148,13 @@ function mount(root: HTMLElement): void {
     panel.minViewsValue.textContent = minLabel;
     panel.minViews.disabled = scanning;
 
+    // Run → Stop → Reset swap places; if the focused one disappears, hand focus to its replacement.
+    const actions = [panel.run, panel.stop, panel.reset];
+    const focused = actions.find((b) => b === document.activeElement);
     panel.run.hidden = phase !== "idle";
     panel.stop.hidden = phase !== "scanning";
     panel.reset.hidden = phase !== "done";
+    if (focused?.hidden) actions.find((b) => !b.hidden)?.focus();
   }
 
   function renderProgressAndResults(): void {

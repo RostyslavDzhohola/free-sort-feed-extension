@@ -5,7 +5,9 @@
 .steps h3 { font-size: 28px; margin-bottom: 10px; }
 .steps p { font-size: 16.5px; }
 .fig-card { width: 100%; background: #fff; border: 1px solid var(--rule); border-radius: 12px; padding: 14px; box-shadow: 0 14px 30px -18px rgba(28, 25, 21, 0.35); font-family: var(--sans); }
-.fig-store { display: flex; align-items: center; gap: 12px; }
+/* Wraps the pill onto its own line when the card is narrow (834px three-up, 320px) instead of overflowing. */
+.fig-store { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; }
+.fig-store > div { min-width: 0; }
 .fig-store img { border-radius: 10px; }
 .fig-store b { display: block; font-size: 15px; line-height: 1.2; }
 .fig-store small { font-size: 12px; color: var(--muted); }

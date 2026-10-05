@@ -143,9 +143,12 @@ const firstCredit = creditFor(copyOf(first));
         }
         <p class="demo-honesty" data-demo-honesty>{honestyLabel(copyOf(first))}</p>
         <p class="demo-credit" data-demo-credit hidden={!firstCredit}>
-          <span data-demo-credit-lead>{firstCredit?.lead ?? "Featured creator:"}</span>
-          <a data-demo-credit-link href={firstCredit?.href ?? "https://www.instagram.com/"} target="_blank" rel="noopener noreferrer">@<span data-demo-credit-handle>{firstCredit?.handle ?? ""}</span><span aria-hidden="true"> ↗</span></a>.
-          <span data-demo-credit-detail>{firstCredit?.detail ?? ""}</span>
+          <span data-demo-credit-lead>{firstCredit?.lead ?? "Featured creator:"}</span>{" "}<a
+            data-demo-credit-link
+            href={firstCredit?.href ?? "https://www.instagram.com/"}
+            target="_blank"
+            rel="noopener noreferrer">@<span data-demo-credit-handle>{firstCredit?.handle ?? ""}</span><span aria-hidden="true"> ↗</span></a
+          >.{" "}<span data-demo-credit-detail>{firstCredit?.detail ?? ""}</span>
         </p>
         <p class="demo-notice" data-demo-notice hidden>New settings apply to your next scan. Press Reset, then Run.</p>
         <p class="demo-follow-wrap" data-demo-follow-wrap hidden>
