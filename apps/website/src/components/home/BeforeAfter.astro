@@ -1,0 +1,142 @@
+---
+// Before/after compare (DESIGN-SPEC §6.1). Both grids are rendered here; the island only moves the divider.
+import { formatCount, formatRatio } from "@outliers/core";
+import { coverStyle } from "../../data/covers";
+import { sampleProfile, sampleReels, sampleRun } from "../../data/sample";
+import "./before-after.css";
+
+const before = sampleReels.slice(0, 9);
+const after = sampleRun.outliers.slice(0, 6);
+const CIRCLED = 2; // #3 tile: its multiple sits in view at the resting 50% position.
+const summary = `${sampleRun.outliers.length} of ${sampleRun.scannedCount} reels • ${sampleRun.thresholdLabel}`;
+const followers = formatCount(sampleProfile.followers);
+---
+
+<figure class="hero-figure">
+  <div class="ba" data-ba style="--pos: 50%">
+    <div class="ba-layer ba-before" aria-hidden="true">
+      <div class="ig-head">
+        <span class="ig-av">{sampleProfile.initials}</span>
+        <div><b>{sampleProfile.handle}</b><small>{followers} followers</small></div>
+      </div>
+      <div class="ig-tabs"><span>Posts</span><span class="on">Reels</span><span>Tagged</span></div>
+      <div class="ba-grid">
+        {
+          before.map((reel) => (
+            <div class="tile" style={coverStyle(reel.index)}>
+              <span class="tv"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" /></svg>{formatCount(reel.views)}</span>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+    <div class="ba-layer ba-after" aria-hidden="true">
+      <div class="og-head">
+        <b>Outliers</b>
+        <small>{summary}</small>
+      </div>
+      <div class="ba-grid ba-grid-after">
+        {
+          after.map((reel, i) => (
+            <div class:list={["tile", { circled: i === CIRCLED }]} style={coverStyle(reel.index)}>
+              <span class="rk">{i + 1}</span>
+              <span class="rt">
+                {formatRatio(reel.ratio)}
+                {i === CIRCLED && (
+                  <svg class="scribble" viewBox="0 0 100 50" preserveAspectRatio="none">
+                    <path d="M16 31 C 9 13, 52 3, 82 9 S 101 37, 74 45 S 17 47, 11 27" />
+                  </svg>
+                )}
+              </span>
+              <span class="tv"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" /></svg>{formatCount(reel.views)}</span>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+    <div class="ba-handle" aria-hidden="true"><span>‹ ›</span></div>
+    <input
+      class="ba-range"
+      type="range"
+      min="0"
+      max="100"
+      value="50"
+      aria-label="Drag to compare Instagram's grid with the Outliers grid"
+      aria-valuetext="50% of the Outliers grid showing"
+      data-ba-range
+    />
+  </div>
+  <figcaption>
+    <span class="cap-l"><i>Before</i> · Instagram, newest first</span>
+    <span class="cap-r"><i>After</i> · Outliers, biggest first</span>
+  </figcaption>
+  <p class="sample-note">Drag the handle · sample data from a fictional profile</p>
+</figure>
+
+<script>
+  import { prefersReducedMotion } from "../../lib/motion";
+
+  const ba = document.querySelector<HTMLElement>("[data-ba]");
+  const range = ba?.querySelector<HTMLInputElement>("[data-ba-range]");
+
+  if (ba && range) {
+    let userTouched = false;
+
+    const setPos = (value: number) => {
+      ba.style.setProperty("--pos", value.toFixed(2) + "%");
+      range.setAttribute("aria-valuetext", Math.round(100 - value) + "% of the Outliers grid showing");
+    };
+
+    const takeOver = () => {
+      userTouched = true;
+    };
+    range.addEventListener("input", () => {
+      takeOver();
+      setPos(Number(range.value));
+    });
+    range.addEventListener("pointerdown", takeOver);
+    range.addEventListener("keydown", takeOver);
+
+    // One sweep (50 → 82 → 18 → 50 over 2.4s) to show the card is interactive. Any input cancels it.
+    const KEYS: ReadonlyArray<readonly [number, number]> = [[0, 50], [700, 82], [1600, 18], [2400, 50]];
+    const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+
+    const sweep = () => {
+      const start = performance.now();
+      const frame = (now: number) => {
+        if (userTouched) return;
+        const t = now - start;
+        let k = 0;
+        while (k < KEYS.length - 2 && t > KEYS[k + 1]![0]) k++;
+        const [t0, v0] = KEYS[k]!;
+        const [t1, v1] = KEYS[k + 1]!;
+        const p = Math.min(1, Math.max(0, (t - t0) / (t1 - t0)));
+        const v = v0 + (v1 - v0) * ease(p);
+        setPos(v);
+        range.value = String(Math.round(v));
+        if (t < KEYS[KEYS.length - 1]![0]) requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    };
+
+    const intro = () => {
+      ba.classList.add("drawn");
+      if (!prefersReducedMotion() && !userTouched) sweep();
+    };
+
+    if ("IntersectionObserver" in window) {
+      const io = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((e) => e.isIntersecting)) {
+            io.disconnect();
+            window.setTimeout(intro, 500);
+          }
+        },
+        { threshold: 0.5 }
+      );
+      io.observe(ba);
+    } else {
+      intro();
+    }
+  }
+</script>

@@ -1,0 +1,26 @@
+---
+import "./privacy-ledger.css";
+
+const ledger = [
+  { label: "Uploads", value: "None" },
+  { label: "Analytics & tracking", value: "None" },
+  { label: "Account or sign-up", value: "Not needed" },
+  { label: "Saved Reels & settings", value: "Stay in this browser, on this device" },
+  { label: "Site access", value: "Instagram only" },
+  { label: "What it does on Instagram", value: "Reads and scrolls. Never posts, likes, follows or messages." },
+];
+---
+
+<section class="section section-ink" id="privacy" aria-labelledby="privacy-title">
+  <div class="wrap privacy">
+    <div>
+      <p class="smallcaps">Privacy</p>
+      <h2 id="privacy-title">Private by design.</h2>
+      <p class="privacy-lede">Outliers runs inside your Instagram tab. There's no Outliers server, so your research has nowhere to go but your own browser.</p>
+      <p class="privacy-more"><a class="link-arrow" href="/privacy/">Read the full privacy policy <span aria-hidden="true">→</span></a></p>
+    </div>
+    <ul class="ledger">
+      {ledger.map((row) => <li><span>{row.label}</span><b>{row.value}</b></li>)}
+    </ul>
+  </div>
+</section>

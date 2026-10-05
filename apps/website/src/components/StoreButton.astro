@@ -1,0 +1,13 @@
+---
+import { site } from "../config/site";
+
+interface Props {
+  size?: "sm" | "md" | "lg";
+  label?: string;
+}
+
+const { size = "md", label = "Add to Chrome — it's free" } = Astro.props;
+const sizeClass = size === "md" ? "" : `btn-${size}`;
+---
+
+<a class:list={["btn btn-ink", sizeClass]} href={site.storeUrl} target="_blank" rel="noopener noreferrer">{label}</a>

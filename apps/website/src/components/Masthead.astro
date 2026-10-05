@@ -1,0 +1,36 @@
+---
+import icon48 from "../assets/icon-48.png";
+import StoreButton from "./StoreButton.astro";
+import { sectionLinks } from "../config/site";
+
+interface Props {
+  /** On the home page the section links scroll in place; elsewhere they go back to the home page. */
+  home: boolean;
+}
+
+const { home } = Astro.props;
+const prefix = home ? "" : "/";
+---
+
+<header class="mast" data-mast>
+  <div class="wrap mast-inner">
+    <a class="wordmark" href={home ? "#top" : "/"} aria-label="Outliers home">
+      <img src={icon48.src} alt="" width="30" height="30" />
+      <span>Outliers</span>
+    </a>
+    <nav class="mast-links" aria-label={home ? "Page sections" : "Home page sections"}>
+      {sectionLinks.map((link) => <a href={`${prefix}#${link.id}`}>{link.label}</a>)}
+    </nav>
+    <StoreButton size="sm" label="Add to Chrome" />
+  </div>
+</header>
+
+<script>
+  // Hairline under the masthead once the page has scrolled.
+  const mast = document.querySelector<HTMLElement>("[data-mast]");
+  if (mast) {
+    const onScroll = () => mast.classList.toggle("scrolled", window.scrollY > 8);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+  }
+</script>

@@ -1,0 +1,21 @@
+---
+import Doc from "../layouts/Doc.astro";
+---
+
+<Doc
+  title="Page not found — Outliers"
+  description="This page doesn't exist. Head back to Outliers, the free Chrome extension for Instagram research."
+  kicker="Error 404 · Not found"
+  noindex
+  canonical={false}
+>
+  <Fragment slot="heading">This page didn't <em>break out.</em></Fragment>
+  <Fragment slot="lede">
+    <p>The link may be old, or the page never existed.</p>
+    <p class="doc-links">
+      <a class="link-arrow" href="/">Back to the home page <span aria-hidden="true">→</span></a>
+      <a class="link-arrow" href="/support/">Support</a>
+      <a class="link-arrow" href="/privacy/">Privacy</a>
+    </p>
+  </Fragment>
+</Doc>

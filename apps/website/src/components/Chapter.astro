@@ -1,0 +1,20 @@
+---
+interface Props {
+  numeral: string;
+  kicker: string;
+  title: string;
+  /** id for the h2, for aria-labelledby on the section. */
+  id?: string;
+  tight?: boolean;
+}
+
+const { numeral, kicker, title, id, tight = false } = Astro.props;
+---
+
+<header class:list={["chapter", { "chapter-tight": tight }]}>
+  <span class="chapter-num" aria-hidden="true">{numeral}</span>
+  <div>
+    <p class="smallcaps">{kicker}</p>
+    <h2 id={id}>{title}</h2>
+  </div>
+</header>

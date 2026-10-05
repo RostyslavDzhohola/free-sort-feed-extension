@@ -1,0 +1,11 @@
+---
+import "./pin.css";
+
+interface Props {
+  n: number;
+}
+
+const { n } = Astro.props;
+---
+
+<span class="pin" aria-hidden="true">{n}</span>

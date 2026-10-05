@@ -1,0 +1,100 @@
+---
+// Account-size comparison (DESIGN-SPEC §6.2). One Min Views slider drives three example accounts.
+// The initial state is rendered here with the same functions the island uses, so nothing shifts on load.
+import { MIN_VIEWS_SLIDER_MAX, formatExact, minViewsToSliderPosition } from "@outliers/core";
+import { caseView } from "../../lib/compare";
+
+const INITIAL_MIN_VIEWS = 100_000;
+const cases = [
+  { followers: 2_400, kicker: "Example · small account", title: "2,400 followers" },
+  { followers: 18_400, kicker: "Example · mid-size account", title: "18,400 followers" },
+  { followers: 1_200_000, kicker: "Example · large account", title: "1.2M followers" },
+];
+const position = minViewsToSliderPosition(INITIAL_MIN_VIEWS);
+const fill = ((position / MIN_VIEWS_SLIDER_MAX) * 100).toFixed(2) + "%";
+const valueText = formatExact(INITIAL_MIN_VIEWS) + " views";
+---
+
+<div class="compare" data-compare data-min-views={INITIAL_MIN_VIEWS}>
+  <div class="compare-ctl">
+    <label for="compare-min-views">Set a Min Views bar</label>
+    <output for="compare-min-views" data-compare-out>{valueText}</output>
+    <input
+      id="compare-min-views"
+      class="range"
+      type="range"
+      min="0"
+      max={MIN_VIEWS_SLIDER_MAX}
+      value={position}
+      aria-valuetext={valueText}
+      style={`--p: ${fill}`}
+      data-compare-range
+    />
+    <div class="ticks" aria-hidden="true"><span>1K</span><span>10K</span><span>100K</span><span>1M</span></div>
+  </div>
+
+  <div class="cases">
+    {
+      cases.map((c) => {
+        const view = caseView(c.followers, INITIAL_MIN_VIEWS);
+        return (
+          <article class="case" data-case={c.followers}>
+            <p class="case-kicker">{c.kicker}</p>
+            <h3>{c.title}</h3>
+            <div class="lines">
+              <div class="line l-5x">
+                <span>5×</span>
+                <div class="track"><i style={`--w: ${view.bar5Width}`} data-bar5 /></div>
+                <b data-v5>{view.bar5Label}</b>
+              </div>
+              <div class="line l-mv">
+                <span>Min</span>
+                <div class="track"><i style={`--w: ${view.minWidth}`} data-barmv /></div>
+                <b data-vmv>{view.minLabel}</b>
+              </div>
+            </div>
+            <p class="verdict" data-verdict>{view.verdict}</p>
+          </article>
+        );
+      })
+    }
+  </div>
+  <p class="compare-axis">Bars drawn on a log scale from 1K to 10M views. A shorter bar is easier to clear, so more Reels make the list.</p>
+</div>
+
+<script>
+  import { MIN_VIEWS_SLIDER_MAX, formatExact, sliderPositionToMinViews } from "@outliers/core";
+  import { caseView } from "../../lib/compare";
+
+  const root = document.querySelector<HTMLElement>("[data-compare]");
+  const range = root?.querySelector<HTMLInputElement>("[data-compare-range]");
+  const out = root?.querySelector<HTMLOutputElement>("[data-compare-out]");
+
+  if (root && range && out) {
+    const cases = Array.from(root.querySelectorAll<HTMLElement>("[data-case]")).map((el) => ({
+      followers: Number(el.dataset.case),
+      bar5: el.querySelector<HTMLElement>("[data-bar5]")!,
+      barMv: el.querySelector<HTMLElement>("[data-barmv]")!,
+      v5: el.querySelector<HTMLElement>("[data-v5]")!,
+      vMv: el.querySelector<HTMLElement>("[data-vmv]")!,
+      verdict: el.querySelector<HTMLElement>("[data-verdict]")!,
+    }));
+
+    range.addEventListener("input", () => {
+      const position = Number(range.value);
+      const minViews = sliderPositionToMinViews(position);
+      const text = formatExact(minViews) + " views";
+      range.style.setProperty("--p", ((position / MIN_VIEWS_SLIDER_MAX) * 100).toFixed(2) + "%");
+      range.setAttribute("aria-valuetext", text);
+      out.textContent = text;
+      for (const c of cases) {
+        const view = caseView(c.followers, minViews);
+        c.bar5.style.setProperty("--w", view.bar5Width);
+        c.barMv.style.setProperty("--w", view.minWidth);
+        c.v5.textContent = view.bar5Label;
+        c.vMv.textContent = view.minLabel;
+        c.verdict.textContent = view.verdict;
+      }
+    });
+  }
+</script>

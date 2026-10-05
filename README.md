@@ -23,9 +23,13 @@ This repo is a [pnpm workspace](https://pnpm.io/workspaces). Run every command f
 
 ```
 apps/extension/         — the Chrome extension (everything below describes it)
+apps/website/           — the marketing website (Astro, static) — see apps/website/README.md
+packages/core/          — pure shared logic (count formatting, 5× rule, slider curves, CSV layout)
 pnpm-workspace.yaml     — workspace definition (apps/*, packages/*)
 package.json            — root scripts that fan out to the workspace packages
 ```
+
+Website quick start: `pnpm dev:web` (http://127.0.0.1:4321/), `pnpm build:web` (static output in `apps/website/dist/`).
 
 ## Prerequisites
 
@@ -103,11 +107,14 @@ Run these from the repo root. The unsuffixed commands fan out to every workspace
 |---------|-------------|
 | `pnpm build:extension` | Production build to `apps/extension/dist/` (no hot reload) |
 | `pnpm watch:extension` | Watch mode + hot reload service worker |
+| `pnpm dev:web` | Website dev server on http://127.0.0.1:4321/ |
+| `pnpm build:web` | Static website build to `apps/website/dist/` |
+| `pnpm preview:web` | Serve the built website locally |
 | `pnpm build` | Build every workspace package |
-| `pnpm typecheck` | Type-check (`tsc --noEmit` in the extension) |
+| `pnpm typecheck` | Type-check (`tsc --noEmit`, `astro check` for the website) |
 | `pnpm lint` | Run ESLint |
-| `pnpm test` | Run the `node --test` suites |
-| `pnpm clean` | Remove build output (`apps/extension/dist/`) |
+| `pnpm test` | Run the `node --test` suites (the website's builds first) |
+| `pnpm clean` | Remove build output (`apps/extension/dist/`, `apps/website/dist/`) |
 
 To run a script in one package only, use a filter, e.g. `pnpm --filter @outliers/extension test`.
 

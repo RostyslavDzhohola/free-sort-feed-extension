@@ -1,0 +1,93 @@
+---
+// Privacy policy. Every statement must match extension v1.0.7 (DESIGN-SPEC §2):
+// storage keys live in apps/extension/src/sidepanel.ts, permissions in apps/extension/src/manifest.json.
+import Doc from "../layouts/Doc.astro";
+import DocSection from "../components/DocSection.astro";
+import { site } from "../config/site";
+---
+
+<Doc
+  title="Privacy policy — Outliers"
+  description="What the Outliers Chrome extension reads, what it keeps on your device, and what it never does. No uploads, no tracking, no account."
+  kicker="Privacy policy"
+>
+  <Fragment slot="heading">Privacy, in <em>plain words.</em></Fragment>
+  <Fragment slot="lede">
+    <p>Outliers is a Chrome extension that runs inside your Instagram tab. There's no Outliers server and no account. This page explains what it reads, what it keeps, and what it never does.</p>
+    <p class="doc-meta">Effective {site.privacyEffectiveDate}. Covers the Outliers Chrome extension (version 1.0.7) and this website.</p>
+  </Fragment>
+
+  <DocSection numeral="I." title="What Outliers reads" id="reads">
+    <p>Only the Instagram tab in front of you, and only while you're using the Outliers side panel.</p>
+    <ul class="doc-list">
+      <li>From that tab it reads what Instagram already shows you: the profile's follower count, and each Reel's link, view count and cover image.</li>
+      <li>When you press <b>Run</b>, it scrolls the Reels grid so Instagram loads more, then ranks the Reels in the side panel and on the page.</li>
+      <li>It doesn't read your messages, your feed, your other tabs or your browsing history, and it never sees your password.</li>
+    </ul>
+  </DocSection>
+
+  <DocSection numeral="II." title="What it keeps, and where" id="keeps">
+    <p>Everything Outliers keeps stays in this Chrome profile, on this device.</p>
+    <ul class="doc-list">
+      <li><b>Your Library.</b> For each Reel you save: its link, cover image link, view count and multiple, the profile it came from, and when you saved it. Kept in Chrome's local extension storage. It isn't synced to other devices.</li>
+      <li><b>Your settings.</b> Scan limit, filter mode and Min Views, kept in the extension's local storage.</li>
+      <li><b>Review reminders.</b> A few dates and counts, so Outliers doesn't ask you to rate it too often. Kept in Chrome's local extension storage.</li>
+      <li><b>The current scan.</b> Results stay in the Instagram tab's memory until you press Reset or reload the tab.</li>
+      <li><b>Exports</b> happen only when you ask. A CSV goes to your downloads, and Copy puts text on your clipboard.</li>
+    </ul>
+  </DocSection>
+
+  <DocSection numeral="III." title="What it never does" id="never">
+    <ul class="doc-list">
+      <li>It never uploads your research. There's no Outliers server, and nothing is sent to the developer or anyone else.</li>
+      <li>No analytics, tracking, ads or cookies.</li>
+      <li>No account or sign-up.</li>
+      <li>It doesn't sell or share data, because it doesn't collect any.</li>
+      <li>On Instagram it reads and scrolls. It never posts, likes, follows, comments or messages.</li>
+    </ul>
+  </DocSection>
+
+  <DocSection numeral="IV." title="Permissions, one by one" id="permissions">
+    <p>Chrome shows these when you install Outliers. Here's what each one is for.</p>
+    <dl class="doc-ledger">
+      <div>
+        <dt><code>sidePanel</code><small>Permission</small></dt>
+        <dd>Opens Outliers in Chrome's side panel when you click its toolbar icon.</dd>
+      </div>
+      <div>
+        <dt><code>scripting</code><small>Permission</small></dt>
+        <dd>Lets the panel run its reader in your Instagram tab: reading follower and view counts, scrolling the Reels grid, and showing the ranked grid on the page.</dd>
+      </div>
+      <div>
+        <dt><code>storage</code><small>Permission</small></dt>
+        <dd>Keeps your Library and review reminders on this device.</dd>
+      </div>
+      <div>
+        <dt><code>instagram.com</code><small>Site access</small></dt>
+        <dd>The only site Outliers works on.</dd>
+      </div>
+      <div>
+        <dt><code>cdninstagram.com</code><small>Site access</small></dt>
+        <dd>Instagram's image server. Lets the panel load Reel cover images that Instagram already shows you.</dd>
+      </div>
+    </dl>
+  </DocSection>
+
+  <DocSection numeral="V." title="Deleting your data" id="deleting">
+    <ul class="doc-list">
+      <li><b>Saved Reels:</b> open the Library and press <b>Clear</b>. This removes saved Reels only.</li>
+      <li><b>Scan results:</b> press <b>Reset</b> in the side panel, or reload the Instagram tab.</li>
+      <li><b>Everything:</b> remove Outliers from Chrome at <code>chrome://extensions</code>. Chrome deletes the extension's stored data with it.</li>
+    </ul>
+  </DocSection>
+
+  <DocSection numeral="VI." title="This website" id="website">
+    <p>This site has no analytics, cookies, ads or third-party scripts, and its fonts are served from the site itself. Like any website, its host may keep standard request logs, such as IP address and browser type, to run and protect the service.</p>
+    <p>If that ever changes, this page will be updated first.</p>
+  </DocSection>
+
+  <DocSection numeral="VII." title="Changes and contact" id="contact">
+    <p>If Outliers changes what it reads or keeps, this page will be updated with a new effective date.</p>
+    <p>Questions about privacy? Email <a href={`mailto:${site.contactEmail}`}>{site.contactEmail}</a>.</p>
+  </DocSection>
+</Doc>

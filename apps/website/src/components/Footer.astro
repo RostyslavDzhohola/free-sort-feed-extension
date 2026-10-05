@@ -1,0 +1,23 @@
+---
+import { pageLinks, socialLinks } from "../config/site";
+---
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <p><span class="wordmark-sm">Outliers</span> is made by Rosty. Not affiliated with, endorsed by, or sponsored by Instagram or Meta.</p>
+    <nav aria-label="Contact and site links">
+      {
+        socialLinks.map((link) =>
+          link.external ? (
+            <a href={link.href} target="_blank" rel="noopener noreferrer">
+              {link.label}
+            </a>
+          ) : (
+            <a href={link.href}>{link.label}</a>
+          )
+        )
+      }
+      {pageLinks.map((link) => <a href={link.href}>{link.label}</a>)}
+    </nav>
+  </div>
+</footer>
