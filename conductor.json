@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "setup": "pnpm install && pnpm build",
-    "run": "pnpm watch"
+    "setup": "pnpm install && pnpm build:extension",
+    "run": "pnpm watch:extension"
   }
 }

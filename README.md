@@ -17,10 +17,20 @@ On any Instagram profile's Reels tab, the extension:
 
 The page grid is replaced by an extension-rendered grid after scan completion. Closing and reopening the side panel preserves your results until reset.
 
+## Repository Layout
+
+This repo is a [pnpm workspace](https://pnpm.io/workspaces). Run every command from the repo root.
+
+```
+apps/extension/         — the Chrome extension (everything below describes it)
+pnpm-workspace.yaml     — workspace definition (apps/*, packages/*)
+package.json            — root scripts that fan out to the workspace packages
+```
+
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) (v18+)
-- [pnpm](https://pnpm.io/) package manager
+- [Node.js](https://nodejs.org/) (v22.12+)
+- [pnpm](https://pnpm.io/) package manager (pnpm only; there is no npm lockfile)
 
 ## Getting Started
 
@@ -29,13 +39,13 @@ The page grid is replaced by an extension-rendered grid after scan completion. C
 pnpm install
 
 # 2. Build the extension
-pnpm build
+pnpm build:extension
 
 # 3. Load in Chrome
 #    - Open chrome://extensions/
 #    - Enable "Developer mode" (top-right toggle)
 #    - Click "Load unpacked"
-#    - Select the dist/ folder
+#    - Select the apps/extension/dist/ folder
 ```
 
 ## Usage
@@ -74,34 +84,42 @@ pnpm build
 ### Watch mode with hot reload
 
 ```bash
-pnpm watch
+pnpm watch:extension
 ```
 
 This starts esbuild in watch mode. On every `.ts` file save:
-- esbuild rebuilds to `dist/` in ~20ms
+- esbuild rebuilds to `apps/extension/dist/` in ~20ms
 - A background service worker (`hot-reload.js`) auto-detects the change and reloads the extension
 
-The hot-reload service worker is **only included in watch mode** — production builds (`pnpm build`) do not include it.
+The hot-reload service worker is **only included in watch mode** — production builds (`pnpm build:extension`) do not include it.
 
 After the extension auto-reloads, you still need to **reopen the side panel** or **refresh the Instagram tab** to see your changes.
 
 ### Available commands
 
+Run these from the repo root. The unsuffixed commands fan out to every workspace package.
+
 | Command | Description |
 |---------|-------------|
-| `pnpm build` | Production build to `dist/` (no hot reload) |
-| `pnpm watch` | Watch mode + hot reload service worker |
-| `pnpm typecheck` | Type-check with `tsc --noEmit` |
+| `pnpm build:extension` | Production build to `apps/extension/dist/` (no hot reload) |
+| `pnpm watch:extension` | Watch mode + hot reload service worker |
+| `pnpm build` | Build every workspace package |
+| `pnpm typecheck` | Type-check (`tsc --noEmit` in the extension) |
 | `pnpm lint` | Run ESLint |
-| `pnpm clean` | Remove `dist/` |
+| `pnpm test` | Run the `node --test` suites |
+| `pnpm clean` | Remove build output (`apps/extension/dist/`) |
+
+To run a script in one package only, use a filter, e.g. `pnpm --filter @outliers/extension test`.
 
 ### Full check before committing
 
 ```bash
-pnpm typecheck && pnpm lint && pnpm build
+pnpm typecheck && pnpm lint && pnpm test && pnpm build
 ```
 
 ## Project Structure
+
+All paths are relative to `apps/extension/`.
 
 ```
 src/
@@ -120,16 +138,18 @@ src/
 
 dist/                   — Build output (Chrome loads this)
 icons/                  — Extension icons (16, 48, 128px)
+test/                   — node --test suites
 esbuild.mjs             — Build script
-conductor.json          — Conductor workspace scripts
 ```
+
+`conductor.json` (Conductor workspace scripts) lives at the repo root.
 
 ## Conductor Setup
 
 This project includes a `conductor.json` for use with [Conductor](https://conductor.build):
 
-- **Setup script** (`pnpm install && pnpm build`): Runs automatically when a new workspace is created — installs deps and produces a ready-to-load `dist/`
-- **Run script** (`pnpm watch`): Click the "Run" button in Conductor to start watch mode with hot reload
+- **Setup script** (`pnpm install && pnpm build:extension`): Runs automatically when a new workspace is created — installs deps and produces a ready-to-load `apps/extension/dist/`
+- **Run script** (`pnpm watch:extension`): Click the "Run" button in Conductor to start watch mode with hot reload
 - **Spotlight**: Use Conductor's Spotlight feature to sync workspace changes back to the repo root for testing. When spotlighted, changes are copied to the root directory in real-time. Turn off spotlight to restore the original state.
 
 ## Architecture
