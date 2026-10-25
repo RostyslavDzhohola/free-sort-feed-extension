@@ -75,6 +75,8 @@ let panelWindowId: number | null = null;
 let profileReady = false;
 let profileWaitStartedAt: number | null = null;
 let rehydrateInFlight = false;
+// Bumped on every tab bind; async work captured under an older value must not touch the UI.
+let bindGeneration = 0;
 let statsMessageKey: string | null = null;
 
 let selectedFilterMode: FilterMode = "ratio5x";
@@ -2114,10 +2116,14 @@ function readFollowersFromPage(): number | null {
   if (reserved.includes(segments[0]!.toLowerCase())) return null;
   const username = segments[0]!.toLowerCase();
 
-  // During SPA navigation Instagram can still show the previous profile's header.
-  // Only trust the page once its title (when it names a handle) names this profile.
-  const titleHandle = document.title.match(/@([A-Za-z0-9._]+)/);
-  if (titleHandle && titleHandle[1]!.toLowerCase() !== username) return null;
+  // Instagram titles and og:description name the owner as "Name (@handle)". Prefer that
+  // form so another @mention in a display name or bio isn't mistaken for the owner.
+  function ownerHandle(text: string): string | null {
+    const paren = text.match(/\(@([A-Za-z0-9._]+)\)/);
+    if (paren) return paren[1]!.toLowerCase();
+    const all = text.match(/@[A-Za-z0-9._]+/g);
+    return all && all.length > 0 ? all[all.length - 1]!.slice(1).toLowerCase() : null;
+  }
 
   function parseCount(raw: unknown): number {
     if (raw == null) return NaN;
@@ -2133,11 +2139,18 @@ function readFollowersFromPage(): number | null {
     return Math.round(num);
   }
 
+  // During SPA navigation Instagram can still show the previous profile's header.
+  // A followers link owned by this URL's user is trustworthy; one owned by anyone else
+  // means the header is stale, so the unowned fallbacks below must not read it.
+  let staleHeader = false;
   const followerLinks = document.querySelectorAll('a[href*="/followers"]');
   for (let i = 0; i < followerLinks.length; i++) {
     const link = followerLinks[i]!;
     const hrefOwner = (link.getAttribute("href") ?? "").split("/").filter(Boolean)[0]?.toLowerCase();
-    if (hrefOwner && hrefOwner !== username) continue;
+    if (hrefOwner && hrefOwner !== username) {
+      if (link.closest("header")) staleHeader = true;
+      continue;
+    }
     const title = link.getAttribute("title");
     if (title) {
       const c = parseCount(title.replace(/,/g, ""));
@@ -2159,6 +2172,10 @@ function readFollowersFromPage(): number | null {
     }
   }
 
+  if (staleHeader) return null;
+  const titleOwner = ownerHandle(document.title);
+  if (titleOwner && titleOwner !== username) return null;
+
   const headerSection = document.querySelector("header section");
   if (headerSection) {
     const hSpans = headerSection.querySelectorAll("span");
@@ -2177,8 +2194,8 @@ function readFollowersFromPage(): number | null {
   const meta = document.querySelector('meta[property="og:description"]');
   if (meta) {
     const content = meta.getAttribute("content") ?? "";
-    const metaHandle = content.match(/@([A-Za-z0-9._]+)/);
-    if (metaHandle && metaHandle[1]!.toLowerCase() !== username) return null;
+    const metaOwner = ownerHandle(content);
+    if (metaOwner && metaOwner !== username) return null;
     const m = content.match(/([\d,.]+[KMBkmb]?)\s+Followers/i);
     if (m) {
       const count = parseCount(m[1]);
@@ -2209,6 +2226,8 @@ function clearRenderedScan(): void {
 }
 
 async function rehydrate(tabId: number): Promise<void> {
+  // A rehydrate for a previous tab may still be in flight; its result is discarded, and the
+  // poll retries for the new tab because profileReady stays false.
   if (rehydrateInFlight) return;
   rehydrateInFlight = true;
   try {
@@ -2356,6 +2375,7 @@ async function handleNavigation(details: { tabId: number; url: string }): Promis
   } catch {
     // Non-fatal
   }
+  if (details.tabId !== cachedTabId) return;
 
   hideProgress();
   hideResults();
@@ -2617,6 +2637,7 @@ savedClearBtn.addEventListener("click", function () {
 });
 
 runBtn.addEventListener("click", async function () {
+  const generation = bindGeneration;
   setButtonsDisabled();
   reviewPromptShownThisSession = false;
   reviewPromptClosedThisSession = false;
@@ -2657,15 +2678,18 @@ runBtn.addEventListener("click", async function () {
       }) as unknown as () => void,
       args: [limit, mode, minViews],
     });
+    if (!isStillBound(tabId, generation)) return;
 
     await chrome.scripting.executeScript({
       target: { tabId },
       files: ["injected.js"],
     });
+    if (!isStillBound(tabId, generation)) return;
 
     setButtonsForScanning();
     statusEl.textContent = "";
   } catch (err: unknown) {
+    if (generation !== bindGeneration) return;
     const message = err instanceof Error ? err.message : "Something went wrong.";
     statusEl.textContent = message;
     statusEl.className = "status-msg error";
@@ -2804,8 +2828,11 @@ async function init(): Promise<void> {
     });
   });
   chrome.tabs.onUpdated.addListener(function (tabId, changeInfo) {
-    if (tabId !== cachedTabId || changeInfo.status !== "loading" || changeInfo.url) return;
-    // A full reload wipes the page's scan state; re-read once the page is back.
+    if (tabId !== cachedTabId || changeInfo.status !== "loading") return;
+    // Opening a reel from the outliers grid changes the URL in place; keep the results.
+    if (changeInfo.url && isContentPermalink(changeInfo.url)) return;
+    // A reload or new document wipes the page's scan state, and a non-Instagram URL is
+    // not reported to us at all, so re-read whatever the tab shows next.
     profileReady = false;
   });
   window.addEventListener("beforeunload", stopNavigationPolling);
@@ -2820,22 +2847,35 @@ async function init(): Promise<void> {
 
 // The side panel belongs to the window, so it follows whichever tab is active.
 async function bindToTab(tabId: number): Promise<void> {
+  const generation = ++bindGeneration;
   cachedTabId = tabId;
-  lastKnownUrl = await readTabUrl(tabId);
-  lastKnownProfile = lastKnownUrl ? getProfilePath(lastKnownUrl) : null;
-  if (tabId !== cachedTabId) return;
-
+  stopNavigationPolling();
+  lastKnownUrl = null;
+  lastKnownProfile = null;
   profileReady = false;
   profileWaitStartedAt = null;
   latestFollowers = null;
-  clearRenderedScan();
+  currentRenderedState = null;
+  hideProgress();
+  hideResults();
+  hideReviewPrompt();
+  setButtonsForIdle();
+  runBtn.disabled = true;
   statusEl.textContent = "";
   statusEl.className = "status-msg";
-  runBtn.disabled = true;
   showLoading();
+
+  const url = await readTabUrl(tabId);
+  if (generation !== bindGeneration) return;
+  lastKnownUrl = url;
+  lastKnownProfile = url ? getProfilePath(url) : null;
 
   startNavigationPolling(tabId);
   await rehydrate(tabId);
+}
+
+function isStillBound(tabId: number, generation: number): boolean {
+  return tabId === cachedTabId && generation === bindGeneration;
 }
 
 init();
