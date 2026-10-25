@@ -1,4 +1,5 @@
 import { parseCount } from "./shared/parse-count";
+import { readProfileFollowers } from "./shared/read-followers";
 import { buildEmptyStateCopy } from "./shared/empty-state-copy";
 import type { OutliersState, OutliersEntry, FilterMode } from "./types/state";
 
@@ -234,59 +235,7 @@ function init(): void {
   }
 
   function getFollowerCount(): number {
-    const followerLinks = document.querySelectorAll('a[href*="/followers"]');
-    for (let i = 0; i < followerLinks.length; i++) {
-      const link = followerLinks[i]!;
-
-      const title = link.getAttribute("title");
-      if (title) {
-        const c = parseCount(title.replace(/,/g, ""));
-        if (!isNaN(c) && c > 0) return c;
-      }
-
-      const innerSpans = link.querySelectorAll("span");
-      for (let s = innerSpans.length - 1; s >= 0; s--) {
-        const spanText = innerSpans[s]?.textContent?.trim() ?? "";
-        if (/^[\d,.]+[KMBkmb]?$/.test(spanText)) {
-          const parsed = parseCount(spanText);
-          if (!isNaN(parsed) && parsed > 0) return parsed;
-        }
-      }
-
-      const text = link.textContent?.trim() ?? "";
-      const m2 = text.match(/([\d,.]+[KMBkmb]?)/);
-      if (m2) {
-        const c2 = parseCount(m2[1]);
-        if (!isNaN(c2) && c2 > 0) return c2;
-      }
-    }
-
-    const headerSection = document.querySelector("header section");
-    if (headerSection) {
-      const hSpans = headerSection.querySelectorAll("span");
-      for (let j = 0; j < hSpans.length; j++) {
-        const parent = hSpans[j]?.parentElement;
-        if (parent && /followers/i.test(parent.textContent ?? "")) {
-          const hText = hSpans[j]?.textContent?.trim() ?? "";
-          if (/^[\d,.]+[KMBkmb]?$/.test(hText)) {
-            const c3 = parseCount(hText);
-            if (!isNaN(c3) && c3 > 0) return c3;
-          }
-        }
-      }
-    }
-
-    const meta = document.querySelector('meta[property="og:description"]');
-    if (meta) {
-      const content = meta.getAttribute("content") ?? "";
-      const m = content.match(/([\d,.]+[KMBkmb]?)\s+Followers/i);
-      if (m) {
-        const count = parseCount(m[1]);
-        if (!isNaN(count) && count > 0) return count;
-      }
-    }
-
-    return NaN;
+    return readProfileFollowers() ?? NaN;
   }
 
   function ensureAppStyle(): void {

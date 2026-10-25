@@ -1,6 +1,7 @@
 import { startHotReload } from "./hot-reload";
 import { buildOutliersCsv, buildSavedCsv } from "./shared/export-csv";
 import { buildEmptyStateCopy } from "./shared/empty-state-copy";
+import { readProfileFollowers } from "./shared/read-followers";
 import type {
   FilterMode,
   OutliersEntry,
@@ -2110,105 +2111,6 @@ function renderState(rawState: OutliersState): void {
   }
 }
 
-// ── Read followers from page (self-contained, injected via executeScript) ─
-function readFollowersFromPage(): number | null {
-  const path = window.location.pathname.replace(/\/+$/, "");
-  const segments = path.split("/").filter(Boolean);
-  if (segments.length === 0) return null;
-  const reserved = ["explore", "p", "stories", "direct", "accounts", "reel", "reels"];
-  if (reserved.includes(segments[0]!.toLowerCase())) return null;
-  const username = segments[0]!.toLowerCase();
-
-  // Instagram titles and og:description name the owner as "Name (@handle)". Prefer that
-  // form so another @mention in a display name or bio isn't mistaken for the owner.
-  function ownerHandle(text: string): string | null {
-    const paren = text.match(/\(@([A-Za-z0-9._]+)\)/);
-    if (paren) return paren[1]!.toLowerCase();
-    const all = text.match(/@[A-Za-z0-9._]+/g);
-    return all && all.length > 0 ? all[all.length - 1]!.slice(1).toLowerCase() : null;
-  }
-
-  function parseCount(raw: unknown): number {
-    if (raw == null) return NaN;
-    const s = String(raw).trim().replace(/[\s,\u00a0]+/g, "");
-    const match = s.match(/^([\d.]+)\s*([KMBkmb])?$/);
-    if (!match) return NaN;
-    let num = parseFloat(match[1]!);
-    if (isNaN(num)) return NaN;
-    const suffix = (match[2] ?? "").toUpperCase();
-    if (suffix === "K") num *= 1000;
-    else if (suffix === "M") num *= 1000000;
-    else if (suffix === "B") num *= 1000000000;
-    return Math.round(num);
-  }
-
-  // During SPA navigation Instagram can still show the previous profile's header.
-  // A followers link owned by this URL's user is trustworthy; one owned by anyone else
-  // means the header is stale, so the unowned fallbacks below must not read it.
-  let staleHeader = false;
-  const followerLinks = document.querySelectorAll('a[href*="/followers"]');
-  for (let i = 0; i < followerLinks.length; i++) {
-    const link = followerLinks[i]!;
-    const hrefOwner = (link.getAttribute("href") ?? "").split("/").filter(Boolean)[0]?.toLowerCase();
-    if (hrefOwner && hrefOwner !== username) {
-      if (link.closest("header")) staleHeader = true;
-      continue;
-    }
-    const title = link.getAttribute("title");
-    if (title) {
-      const c = parseCount(title.replace(/,/g, ""));
-      if (!isNaN(c) && c > 0) return c;
-    }
-    const innerSpans = link.querySelectorAll("span");
-    for (let s = innerSpans.length - 1; s >= 0; s--) {
-      const spanText = innerSpans[s]?.textContent?.trim() ?? "";
-      if (/^[\d,.]+[KMBkmb]?$/.test(spanText)) {
-        const parsed = parseCount(spanText);
-        if (!isNaN(parsed) && parsed > 0) return parsed;
-      }
-    }
-    const text = link.textContent?.trim() ?? "";
-    const m2 = text.match(/([\d,.]+[KMBkmb]?)/);
-    if (m2) {
-      const c2 = parseCount(m2[1]);
-      if (!isNaN(c2) && c2 > 0) return c2;
-    }
-  }
-
-  if (staleHeader) return null;
-  const titleOwner = ownerHandle(document.title);
-  if (titleOwner && titleOwner !== username) return null;
-
-  const headerSection = document.querySelector("header section");
-  if (headerSection) {
-    const hSpans = headerSection.querySelectorAll("span");
-    for (let j = 0; j < hSpans.length; j++) {
-      const parent = hSpans[j]?.parentElement;
-      if (parent && /followers/i.test(parent.textContent ?? "")) {
-        const hText = hSpans[j]?.textContent?.trim() ?? "";
-        if (/^[\d,.]+[KMBkmb]?$/.test(hText)) {
-          const c3 = parseCount(hText);
-          if (!isNaN(c3) && c3 > 0) return c3;
-        }
-      }
-    }
-  }
-
-  const meta = document.querySelector('meta[property="og:description"]');
-  if (meta) {
-    const content = meta.getAttribute("content") ?? "";
-    const metaOwner = ownerHandle(content);
-    if (metaOwner && metaOwner !== username) return null;
-    const m = content.match(/([\d,.]+[KMBkmb]?)\s+Followers/i);
-    if (m) {
-      const count = parseCount(m[1]);
-      if (!isNaN(count) && count > 0) return count;
-    }
-  }
-
-  return null;
-}
-
 // ── Tab helpers ───────────────────────────────────────────────────────────
 async function getActiveTabId(): Promise<number | null> {
   try {
@@ -2298,7 +2200,7 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
   try {
     const result = await chrome.scripting.executeScript({
       target: { tabId },
-      func: readFollowersFromPage,
+      func: readProfileFollowers,
     });
     followers = result?.[0]?.result ?? null;
   } catch {
