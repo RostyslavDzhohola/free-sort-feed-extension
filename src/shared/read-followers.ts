@@ -17,7 +17,7 @@ export function readProfileFollowers(): number | null {
 
   function parseCount(raw: string | null | undefined): number {
     if (raw == null) return NaN;
-    const s = String(raw).trim().replace(/[\s, ]+/g, "");
+    const s = String(raw).trim().replace(/[\s,\u00a0]+/g, "");
     const match = s.match(/^([\d.]+)([KMBkmb])?$/);
     if (!match) return NaN;
     let num = parseFloat(match[1]!);
@@ -29,14 +29,14 @@ export function readProfileFollowers(): number | null {
     return Math.round(num);
   }
 
-  // The profile header names its owner in a text-only element ("mrbeast").
+  // The profile header names its owner in its h2 heading ("mrbeast"). Display names and
+  // bio lines can also equal a username, so only the heading establishes ownership.
   const headers = document.querySelectorAll("main header, header");
   let header: Element | null = null;
   for (let i = 0; i < headers.length && !header; i++) {
-    const nodes = headers[i]!.querySelectorAll("h1, h2, span, a, div");
-    for (let j = 0; j < nodes.length; j++) {
-      const node = nodes[j]!;
-      if (node.children.length === 0 && node.textContent?.trim().toLowerCase() === username) {
+    const headings = headers[i]!.querySelectorAll("h1, h2");
+    for (let j = 0; j < headings.length; j++) {
+      if (headings[j]!.textContent?.trim().toLowerCase() === username) {
         header = headers[i]!;
         break;
       }
@@ -44,26 +44,31 @@ export function readProfileFollowers(): number | null {
   }
 
   if (header) {
-    // The count sits in an element whose whole text is "91.1M followers"; the exact
-    // number, when shown, is in a nested title="91,161,216". Requiring the whole text
-    // to match skips "Followed by j3ssicacao + 18 more", whose usernames hold digits.
+    // The stat is an element whose whole text is "91.1M followers", with the number in a
+    // nested element and the exact count, when shown, in title="91,161,216". Requiring
+    // the whole text to match skips "Followed by j3ssicacao + 18 more", whose usernames
+    // hold digits; requiring a nested element skips a display name like "1 follower".
+    let approxCount = NaN;
     const candidates = header.querySelectorAll("a, span, div, li, button");
     for (let i = 0; i < candidates.length; i++) {
       const el = candidates[i]!;
-      const text = (el.textContent ?? "").replace(/ /g, " ").trim();
+      if (el.children.length === 0 || el.closest("h1, h2")) continue;
+      const text = (el.textContent ?? "").replace(/\u00a0/g, " ").trim();
       const m = text.match(/^([\d.,]+\s*[KMBkmb]?)\s+followers?$/i);
       if (!m) continue;
-      const titled = el.querySelector("[title]");
-      const exact = parseCount(titled?.getAttribute("title"));
-      if (!isNaN(exact) && exact > 0) return exact;
-      const approx = parseCount(m[1]);
-      if (!isNaN(approx) && approx > 0) return approx;
+      const shown = parseCount(m[1]);
+      const exact = parseCount(el.querySelector("[title]")?.getAttribute("title"));
+      // Trust the title only when it agrees with the number shown (91,161,216 ≈ 91.1M).
+      const agrees = isNaN(shown) || Math.abs(exact - shown) <= Math.max(shown * 0.1, 1);
+      if (!isNaN(exact) && exact > 0 && agrees) return exact;
+      if (isNaN(approxCount) && !isNaN(shown) && shown > 0) approxCount = shown;
     }
-    return null;
+    if (!isNaN(approxCount)) return approxCount;
   }
 
-  // No owned header yet. og:description is only server-rendered for the first page
-  // load and is not updated by SPA navigation, so trust it only when it names this user.
+  // No readable owned header (not rendered yet, or a layout we don't parse). og:description
+  // is only server-rendered for the first page load and is not updated by SPA navigation,
+  // so trust it only when it names this user.
   const meta = document.querySelector('meta[property="og:description"]');
   const content = meta?.getAttribute("content") ?? "";
   const owner = content.match(/\(@([A-Za-z0-9._]+)\)/);
