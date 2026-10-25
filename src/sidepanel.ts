@@ -68,6 +68,19 @@ let lastKnownUrl: string | null = null;
 let lastKnownProfile: string | null = null;
 let navPollTimer: number | null = null;
 let navPollInFlight = false;
+let panelWindowId: number | null = null;
+// False until the panel has read a follower count or an active scan from the bound tab.
+// While false, the navigation poll keeps retrying, so a cold or still-loading page
+// becomes ready on its own instead of needing a refresh or a panel reopen.
+let profileReady = false;
+let profileWaitStartedAt: number | null = null;
+let rehydrateInFlight = false;
+// Bumped on every tab bind; async work captured under an older value must not touch the UI.
+let bindGeneration = 0;
+// Bumped whenever the bound tab starts or finishes loading a document. A rehydrate that
+// straddles a reload may have read the old page, so its result is discarded.
+let documentEpoch = 0;
+let statsMessageKey: string | null = null;
 
 let selectedFilterMode: FilterMode = "ratio5x";
 let selectedMinViews: number | null = null;
@@ -105,6 +118,8 @@ const REVIEW_PROMPT_MIN_OUTLIERS = 1;
 // Delay the ask so users can scan results first before we interrupt them.
 const REVIEW_PROMPT_DELAY_MS = 20_000;
 const DEFAULT_MIN_VIEWS = 10_000;
+// After this long without a follower count on a profile, stop showing the spinner and explain.
+const PROFILE_WAIT_HINT_MS = 8_000;
 
 const SCAN_LIMIT_MIN = 1;
 const SCAN_LIMIT_MAX = 975;
@@ -962,6 +977,7 @@ function normalizeState(raw: OutliersState): OutliersState {
 
 // ── UI rendering ──────────────────────────────────────────────────────────
 function showStats(thresholdLabel: string): void {
+  statsMessageKey = null;
   clearElement(statsArea);
   const box = document.createElement("div");
   box.className = "stats";
@@ -982,6 +998,7 @@ function showStats(thresholdLabel: string): void {
 }
 
 function showError(msg: string): void {
+  statsMessageKey = null;
   clearElement(statsArea);
   const el = document.createElement("div");
   el.className = "status-msg error";
@@ -990,6 +1007,8 @@ function showError(msg: string): void {
 }
 
 function showLoading(): void {
+  if (statsMessageKey === "loading") return;
+  statsMessageKey = "loading";
   clearElement(statsArea);
   const wrapper = document.createElement("div");
   wrapper.className = "status-msg";
@@ -998,6 +1017,16 @@ function showLoading(): void {
   wrapper.appendChild(spinner);
   wrapper.appendChild(document.createTextNode("Reading profile…"));
   statsArea.appendChild(wrapper);
+}
+
+function showNotice(msg: string): void {
+  if (statsMessageKey === "notice:" + msg) return;
+  statsMessageKey = "notice:" + msg;
+  clearElement(statsArea);
+  const el = document.createElement("div");
+  el.className = "status-msg";
+  el.textContent = msg;
+  statsArea.appendChild(el);
 }
 
 function hideReviewPrompt(): void {
@@ -2088,6 +2117,16 @@ function readFollowersFromPage(): number | null {
   if (segments.length === 0) return null;
   const reserved = ["explore", "p", "stories", "direct", "accounts", "reel", "reels"];
   if (reserved.includes(segments[0]!.toLowerCase())) return null;
+  const username = segments[0]!.toLowerCase();
+
+  // Instagram titles and og:description name the owner as "Name (@handle)". Prefer that
+  // form so another @mention in a display name or bio isn't mistaken for the owner.
+  function ownerHandle(text: string): string | null {
+    const paren = text.match(/\(@([A-Za-z0-9._]+)\)/);
+    if (paren) return paren[1]!.toLowerCase();
+    const all = text.match(/@[A-Za-z0-9._]+/g);
+    return all && all.length > 0 ? all[all.length - 1]!.slice(1).toLowerCase() : null;
+  }
 
   function parseCount(raw: unknown): number {
     if (raw == null) return NaN;
@@ -2103,9 +2142,18 @@ function readFollowersFromPage(): number | null {
     return Math.round(num);
   }
 
+  // During SPA navigation Instagram can still show the previous profile's header.
+  // A followers link owned by this URL's user is trustworthy; one owned by anyone else
+  // means the header is stale, so the unowned fallbacks below must not read it.
+  let staleHeader = false;
   const followerLinks = document.querySelectorAll('a[href*="/followers"]');
   for (let i = 0; i < followerLinks.length; i++) {
     const link = followerLinks[i]!;
+    const hrefOwner = (link.getAttribute("href") ?? "").split("/").filter(Boolean)[0]?.toLowerCase();
+    if (hrefOwner && hrefOwner !== username) {
+      if (link.closest("header")) staleHeader = true;
+      continue;
+    }
     const title = link.getAttribute("title");
     if (title) {
       const c = parseCount(title.replace(/,/g, ""));
@@ -2127,6 +2175,10 @@ function readFollowersFromPage(): number | null {
     }
   }
 
+  if (staleHeader) return null;
+  const titleOwner = ownerHandle(document.title);
+  if (titleOwner && titleOwner !== username) return null;
+
   const headerSection = document.querySelector("header section");
   if (headerSection) {
     const hSpans = headerSection.querySelectorAll("span");
@@ -2145,6 +2197,8 @@ function readFollowersFromPage(): number | null {
   const meta = document.querySelector('meta[property="og:description"]');
   if (meta) {
     const content = meta.getAttribute("content") ?? "";
+    const metaOwner = ownerHandle(content);
+    if (metaOwner && metaOwner !== username) return null;
     const m = content.match(/([\d,.]+[KMBkmb]?)\s+Followers/i);
     if (m) {
       const count = parseCount(m[1]);
@@ -2165,48 +2219,113 @@ async function getActiveTabId(): Promise<number | null> {
   }
 }
 
+function clearRenderedScan(): void {
+  if (currentRenderedState == null) return;
+  currentRenderedState = null;
+  hideProgress();
+  hideResults();
+  hideReviewPrompt();
+  setButtonsForIdle();
+}
+
 async function rehydrate(tabId: number): Promise<void> {
+  // A rehydrate for a previous tab may still be in flight; its result is discarded, and the
+  // poll retries for the new tab because profileReady stays false.
+  if (rehydrateInFlight) return;
+  rehydrateInFlight = true;
+  try {
+    await rehydrateOnce(tabId, bindGeneration, documentEpoch);
+  } finally {
+    rehydrateInFlight = false;
+  }
+}
+
+async function rehydrateOnce(tabId: number, generation: number, epoch: number): Promise<void> {
+  const isStale = function (): boolean {
+    return !isStillBound(tabId, generation) || epoch !== documentEpoch;
+  };
+  let url: string | null = null;
   try {
     const stateResult = await chrome.scripting.executeScript({
       target: { tabId },
-      func: function (): OutliersState | null {
-        return (window as unknown as { __outliers_state?: OutliersState }).__outliers_state ?? null;
+      func: function (): { state: OutliersState | null; url: string } {
+        return {
+          state: (window as unknown as { __outliers_state?: OutliersState }).__outliers_state ?? null,
+          url: window.location.href,
+        };
       },
     });
-    const rawState = stateResult?.[0]?.result as OutliersState | null;
+    if (isStale()) return;
+    const payload = stateResult?.[0]?.result as { state: OutliersState | null; url: string } | undefined;
+    url = payload?.url ?? null;
+    const rawState = payload?.state ?? null;
     if (rawState && rawState.status !== "idle") {
+      profileReady = true;
+      profileWaitStartedAt = null;
       renderState(rawState);
       return;
     }
   } catch {
-    // Non-fatal
+    // The tab is not an Instagram page, or it is mid-load. The poll retries.
+    if (isStale()) return;
+    profileReady = false;
+    latestFollowers = null;
+    clearRenderedScan();
+    runBtn.disabled = true;
+    hideReviewPrompt();
+    showNotice("Open an Instagram profile to scan its Reels.");
+    return;
   }
 
-  currentRenderedState = null;
+  // No scan lives in this page (e.g. after a reload), so drop any stale results.
+  clearRenderedScan();
 
+  if (!url || getProfilePath(url) == null) {
+    profileReady = false;
+    profileWaitStartedAt = null;
+    latestFollowers = null;
+    runBtn.disabled = true;
+    hideReviewPrompt();
+    showNotice(
+      url && isContentPermalink(url)
+        ? "Open the creator's profile to scan their Reels."
+        : "Open an Instagram profile to scan its Reels."
+    );
+    return;
+  }
+
+  let followers: number | null = null;
   try {
     const result = await chrome.scripting.executeScript({
       target: { tabId },
       func: readFollowersFromPage,
     });
-    const followers = result?.[0]?.result ?? null;
-
-    if (followers && followers > 0) {
-      latestFollowers = followers;
-      showStats(getThresholdLabel(selectedFilterMode, followers, selectedMinViews));
-      runBtn.disabled = false;
-      updateReviewPromptVisibility(currentRenderedState);
-    } else {
-      latestFollowers = null;
-      showStats("—");
-      runBtn.disabled = true;
-      hideReviewPrompt();
-    }
+    followers = result?.[0]?.result ?? null;
   } catch {
-    latestFollowers = null;
-    showStats("—");
-    runBtn.disabled = true;
-    hideReviewPrompt();
+    followers = null;
+  }
+  if (isStale()) return;
+
+  if (followers && followers > 0) {
+    profileReady = true;
+    profileWaitStartedAt = null;
+    latestFollowers = followers;
+    showStats(getThresholdLabel(selectedFilterMode, followers, selectedMinViews));
+    runBtn.disabled = false;
+    updateReviewPromptVisibility(currentRenderedState);
+    return;
+  }
+
+  // The profile header has not rendered yet. Keep the spinner up while the poll retries.
+  profileReady = false;
+  latestFollowers = null;
+  runBtn.disabled = true;
+  hideReviewPrompt();
+  if (profileWaitStartedAt == null) profileWaitStartedAt = Date.now();
+  if (Date.now() - profileWaitStartedAt < PROFILE_WAIT_HINT_MS) {
+    showLoading();
+  } else {
+    showNotice("Couldn't read the follower count yet. Scroll to the top of the profile; Outliers keeps checking.");
   }
 }
 
@@ -2229,13 +2348,15 @@ chrome.runtime.onMessage.addListener(function (
     statusEl.textContent = "Outliers cleared.";
     statusEl.className = "status-msg";
     currentRenderedState = null;
-    if (cachedTabId != null) rehydrate(cachedTabId);
+    // The page reloads after a reset; the poll rehydrates once the new document is up.
+    runBtn.disabled = true;
+    profileReady = false;
   }
 });
 
 // ── Navigation detection ──────────────────────────────────────────────────
-async function handleNavigation(details: { tabId: number; url: string }): Promise<void> {
-  if (cachedTabId == null || details.tabId !== cachedTabId) return;
+async function handleNavigation(details: { tabId: number; url: string }, generation: number): Promise<void> {
+  if (!isStillBound(details.tabId, generation)) return;
 
   const newProfile = getProfilePath(details.url);
   lastKnownUrl = details.url;
@@ -2262,18 +2383,20 @@ async function handleNavigation(details: { tabId: number; url: string }): Promis
   } catch {
     // Non-fatal
   }
+  if (!isStillBound(details.tabId, generation)) return;
 
   hideProgress();
   hideResults();
   setButtonsForIdle();
+  runBtn.disabled = true;
   currentRenderedState = null;
+  latestFollowers = null;
+  profileReady = false;
+  profileWaitStartedAt = null;
   statusEl.textContent = "";
   statusEl.className = "status-msg";
   showLoading();
-
-  setTimeout(function () {
-    rehydrate(details.tabId);
-  }, 500);
+  // The navigation poll rehydrates on its next tick, once the new profile has rendered.
 }
 
 async function readTabUrl(tabId: number): Promise<string | null> {
@@ -2299,19 +2422,23 @@ function stopNavigationPolling(): void {
 
 function startNavigationPolling(tabId: number): void {
   stopNavigationPolling();
+  const generation = bindGeneration;
   navPollTimer = window.setInterval(function () {
     if (navPollInFlight) return;
     navPollInFlight = true;
 
     readTabUrl(tabId)
-      .then(function (url) {
-        if (!url) return;
-        if (lastKnownUrl == null) {
-          lastKnownUrl = url;
-          lastKnownProfile = getProfilePath(url);
-          return;
+      .then(async function (url) {
+        if (!isStillBound(tabId, generation)) return;
+        if (url) {
+          if (lastKnownUrl == null) {
+            lastKnownUrl = url;
+            lastKnownProfile = getProfilePath(url);
+          } else if (url !== lastKnownUrl) {
+            await handleNavigation({ tabId, url }, generation);
+          }
         }
-        if (url !== lastKnownUrl) return handleNavigation({ tabId, url });
+        if (!profileReady && isStillBound(tabId, generation)) await rehydrate(tabId);
       })
       .finally(function () {
         navPollInFlight = false;
@@ -2519,6 +2646,7 @@ savedClearBtn.addEventListener("click", function () {
 });
 
 runBtn.addEventListener("click", async function () {
+  const generation = bindGeneration;
   setButtonsDisabled();
   reviewPromptShownThisSession = false;
   reviewPromptClosedThisSession = false;
@@ -2559,15 +2687,18 @@ runBtn.addEventListener("click", async function () {
       }) as unknown as () => void,
       args: [limit, mode, minViews],
     });
+    if (!isStillBound(tabId, generation)) return;
 
     await chrome.scripting.executeScript({
       target: { tabId },
       files: ["injected.js"],
     });
+    if (!isStillBound(tabId, generation)) return;
 
     setButtonsForScanning();
     statusEl.textContent = "";
   } catch (err: unknown) {
+    if (generation !== bindGeneration) return;
     const message = err instanceof Error ? err.message : "Something went wrong.";
     statusEl.textContent = message;
     statusEl.className = "status-msg error";
@@ -2601,10 +2732,11 @@ resetBtn.addEventListener("click", async function () {
   hideReviewPrompt();
   statusEl.textContent = "Resetting and reloading page…";
   statusEl.className = "status-msg";
+  const generation = bindGeneration;
+  const tabId = cachedTabId;
 
   try {
-    const tabId = cachedTabId ?? (await getActiveTabId());
-    if (tabId) {
+    if (tabId != null) {
       await chrome.scripting.executeScript({
         target: { tabId },
         func: function () {
@@ -2616,22 +2748,18 @@ resetBtn.addEventListener("click", async function () {
     // Non-fatal
   }
 
+  if (tabId == null || !isStillBound(tabId, generation)) return;
+
   hideProgress();
   hideResults();
   setButtonsForIdle();
+  runBtn.disabled = true;
   currentRenderedState = null;
+  latestFollowers = null;
   statusEl.textContent = "Waiting for page reload…";
-
-  if (cachedTabId != null) {
-    showLoading();
-    window.setTimeout(function () {
-      if (cachedTabId != null) {
-        rehydrate(cachedTabId).catch(function () {
-          // Tab may still be navigating — non-fatal
-        });
-      }
-    }, 1500);
-  }
+  showLoading();
+  // The reload fires tabs.onUpdated, and the poll rehydrates once the page is back.
+  profileReady = false;
 });
 
 scanLimitSlider.addEventListener("input", function () {
@@ -2651,16 +2779,22 @@ for (let i = 0; i < filterModeBtns.length; i++) {
     saveFilterMode(mode);
     setFilterControlsDisabled(false);
 
-    if (currentRenderedState?.status !== "done") {
-      showStats(getThresholdLabel(mode, latestFollowers, selectedMinViews));
-    }
+    refreshIdleThreshold();
   });
+}
+
+// Keep "Active threshold" in step with the filter controls before a scan runs.
+// Done and scanning states show the threshold the scan actually used.
+function refreshIdleThreshold(): void {
+  if (!profileReady || currentRenderedState?.status === "done" || currentRenderedState?.status === "scanning") return;
+  showStats(getThresholdLabel(selectedFilterMode, latestFollowers, selectedMinViews));
 }
 
 minViewsSlider.addEventListener("input", function () {
   const minViews = sliderPositionToMinViews(getRangeValue(minViewsSlider));
   syncMinViewsUI(minViews);
   saveMinViews(minViews);
+  refreshIdleThreshold();
 });
 
 exportBtn.addEventListener("click", exportCurrentResults);
@@ -2693,31 +2827,68 @@ async function init(): Promise<void> {
   hideReviewPrompt();
   await loadSavedReels();
 
-  const tabId = await getActiveTabId();
-  if (!tabId) {
-    showError("Open an Instagram profile page first.");
-    return;
-  }
-
-  cachedTabId = tabId;
-
   try {
-    const urlResult = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: function () {
-        return window.location.href;
-      },
-    });
-    lastKnownUrl = (urlResult?.[0]?.result as string | undefined) ?? null;
-    if (lastKnownUrl) lastKnownProfile = getProfilePath(lastKnownUrl);
+    panelWindowId = (await chrome.windows.getCurrent()).id ?? null;
   } catch {
-    // Non-fatal
+    panelWindowId = null;
   }
-
-  startNavigationPolling(tabId);
+  chrome.tabs.onActivated.addListener(function (info) {
+    if (panelWindowId != null && info.windowId !== panelWindowId) return;
+    if (info.tabId === cachedTabId) return;
+    bindToTab(info.tabId).catch(function () {
+      // Non-fatal
+    });
+  });
+  chrome.tabs.onUpdated.addListener(function (tabId, changeInfo) {
+    if (tabId !== cachedTabId) return;
+    if (changeInfo.status !== "loading" && changeInfo.status !== "complete") return;
+    documentEpoch++;
+    // A reload or new document wipes the page's scan state, and a non-Instagram URL is
+    // not reported to us at all, so re-read whatever the tab shows next. In-page URL
+    // changes (a reel modal) keep the page's scan state, and rehydrate restores it.
+    profileReady = false;
+  });
   window.addEventListener("beforeunload", stopNavigationPolling);
 
+  const tabId = await getActiveTabId();
+  if (!tabId) {
+    showNotice("Open an Instagram profile to scan its Reels.");
+    return;
+  }
+  await bindToTab(tabId);
+}
+
+// The side panel belongs to the window, so it follows whichever tab is active.
+async function bindToTab(tabId: number): Promise<void> {
+  const generation = ++bindGeneration;
+  cachedTabId = tabId;
+  stopNavigationPolling();
+  lastKnownUrl = null;
+  lastKnownProfile = null;
+  profileReady = false;
+  profileWaitStartedAt = null;
+  latestFollowers = null;
+  currentRenderedState = null;
+  hideProgress();
+  hideResults();
+  hideReviewPrompt();
+  setButtonsForIdle();
+  runBtn.disabled = true;
+  statusEl.textContent = "";
+  statusEl.className = "status-msg";
+  showLoading();
+
+  const url = await readTabUrl(tabId);
+  if (generation !== bindGeneration) return;
+  lastKnownUrl = url;
+  lastKnownProfile = url ? getProfilePath(url) : null;
+
+  startNavigationPolling(tabId);
   await rehydrate(tabId);
+}
+
+function isStillBound(tabId: number, generation: number): boolean {
+  return tabId === cachedTabId && generation === bindGeneration;
 }
 
 init();
