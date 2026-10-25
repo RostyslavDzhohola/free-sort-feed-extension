@@ -77,6 +77,9 @@ let profileWaitStartedAt: number | null = null;
 let rehydrateInFlight = false;
 // Bumped on every tab bind; async work captured under an older value must not touch the UI.
 let bindGeneration = 0;
+// Bumped whenever the bound tab starts or finishes loading a document. A rehydrate that
+// straddles a reload may have read the old page, so its result is discarded.
+let documentEpoch = 0;
 let statsMessageKey: string | null = null;
 
 let selectedFilterMode: FilterMode = "ratio5x";
@@ -2231,13 +2234,16 @@ async function rehydrate(tabId: number): Promise<void> {
   if (rehydrateInFlight) return;
   rehydrateInFlight = true;
   try {
-    await rehydrateOnce(tabId, bindGeneration);
+    await rehydrateOnce(tabId, bindGeneration, documentEpoch);
   } finally {
     rehydrateInFlight = false;
   }
 }
 
-async function rehydrateOnce(tabId: number, generation: number): Promise<void> {
+async function rehydrateOnce(tabId: number, generation: number, epoch: number): Promise<void> {
+  const isStale = function (): boolean {
+    return !isStillBound(tabId, generation) || epoch !== documentEpoch;
+  };
   let url: string | null = null;
   try {
     const stateResult = await chrome.scripting.executeScript({
@@ -2249,7 +2255,7 @@ async function rehydrateOnce(tabId: number, generation: number): Promise<void> {
         };
       },
     });
-    if (!isStillBound(tabId, generation)) return;
+    if (isStale()) return;
     const payload = stateResult?.[0]?.result as { state: OutliersState | null; url: string } | undefined;
     url = payload?.url ?? null;
     const rawState = payload?.state ?? null;
@@ -2261,7 +2267,7 @@ async function rehydrateOnce(tabId: number, generation: number): Promise<void> {
     }
   } catch {
     // The tab is not an Instagram page, or it is mid-load. The poll retries.
-    if (!isStillBound(tabId, generation)) return;
+    if (isStale()) return;
     profileReady = false;
     latestFollowers = null;
     clearRenderedScan();
@@ -2298,7 +2304,7 @@ async function rehydrateOnce(tabId: number, generation: number): Promise<void> {
   } catch {
     followers = null;
   }
-  if (!isStillBound(tabId, generation)) return;
+  if (isStale()) return;
 
   if (followers && followers > 0) {
     profileReady = true;
@@ -2342,7 +2348,9 @@ chrome.runtime.onMessage.addListener(function (
     statusEl.textContent = "Outliers cleared.";
     statusEl.className = "status-msg";
     currentRenderedState = null;
-    if (cachedTabId != null) rehydrate(cachedTabId);
+    // The page reloads after a reset; the poll rehydrates once the new document is up.
+    runBtn.disabled = true;
+    profileReady = false;
   }
 });
 
@@ -2832,7 +2840,9 @@ async function init(): Promise<void> {
     });
   });
   chrome.tabs.onUpdated.addListener(function (tabId, changeInfo) {
-    if (tabId !== cachedTabId || changeInfo.status !== "loading") return;
+    if (tabId !== cachedTabId) return;
+    if (changeInfo.status !== "loading" && changeInfo.status !== "complete") return;
+    documentEpoch++;
     // A reload or new document wipes the page's scan state, and a non-Instagram URL is
     // not reported to us at all, so re-read whatever the tab shows next. In-page URL
     // changes (a reel modal) keep the page's scan state, and rehydrate restores it.
