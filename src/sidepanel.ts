@@ -68,6 +68,14 @@ let lastKnownUrl: string | null = null;
 let lastKnownProfile: string | null = null;
 let navPollTimer: number | null = null;
 let navPollInFlight = false;
+let panelWindowId: number | null = null;
+// False until the panel has read a follower count or an active scan from the bound tab.
+// While false, the navigation poll keeps retrying, so a cold or still-loading page
+// becomes ready on its own instead of needing a refresh or a panel reopen.
+let profileReady = false;
+let profileWaitStartedAt: number | null = null;
+let rehydrateInFlight = false;
+let statsMessageKey: string | null = null;
 
 let selectedFilterMode: FilterMode = "ratio5x";
 let selectedMinViews: number | null = null;
@@ -105,6 +113,8 @@ const REVIEW_PROMPT_MIN_OUTLIERS = 1;
 // Delay the ask so users can scan results first before we interrupt them.
 const REVIEW_PROMPT_DELAY_MS = 20_000;
 const DEFAULT_MIN_VIEWS = 10_000;
+// After this long without a follower count on a profile, stop showing the spinner and explain.
+const PROFILE_WAIT_HINT_MS = 8_000;
 
 const SCAN_LIMIT_MIN = 1;
 const SCAN_LIMIT_MAX = 975;
@@ -962,6 +972,7 @@ function normalizeState(raw: OutliersState): OutliersState {
 
 // ── UI rendering ──────────────────────────────────────────────────────────
 function showStats(thresholdLabel: string): void {
+  statsMessageKey = null;
   clearElement(statsArea);
   const box = document.createElement("div");
   box.className = "stats";
@@ -982,6 +993,7 @@ function showStats(thresholdLabel: string): void {
 }
 
 function showError(msg: string): void {
+  statsMessageKey = null;
   clearElement(statsArea);
   const el = document.createElement("div");
   el.className = "status-msg error";
@@ -990,6 +1002,8 @@ function showError(msg: string): void {
 }
 
 function showLoading(): void {
+  if (statsMessageKey === "loading") return;
+  statsMessageKey = "loading";
   clearElement(statsArea);
   const wrapper = document.createElement("div");
   wrapper.className = "status-msg";
@@ -998,6 +1012,16 @@ function showLoading(): void {
   wrapper.appendChild(spinner);
   wrapper.appendChild(document.createTextNode("Reading profile…"));
   statsArea.appendChild(wrapper);
+}
+
+function showNotice(msg: string): void {
+  if (statsMessageKey === "notice:" + msg) return;
+  statsMessageKey = "notice:" + msg;
+  clearElement(statsArea);
+  const el = document.createElement("div");
+  el.className = "status-msg";
+  el.textContent = msg;
+  statsArea.appendChild(el);
 }
 
 function hideReviewPrompt(): void {
@@ -2088,6 +2112,12 @@ function readFollowersFromPage(): number | null {
   if (segments.length === 0) return null;
   const reserved = ["explore", "p", "stories", "direct", "accounts", "reel", "reels"];
   if (reserved.includes(segments[0]!.toLowerCase())) return null;
+  const username = segments[0]!.toLowerCase();
+
+  // During SPA navigation Instagram can still show the previous profile's header.
+  // Only trust the page once its title (when it names a handle) names this profile.
+  const titleHandle = document.title.match(/@([A-Za-z0-9._]+)/);
+  if (titleHandle && titleHandle[1]!.toLowerCase() !== username) return null;
 
   function parseCount(raw: unknown): number {
     if (raw == null) return NaN;
@@ -2106,6 +2136,8 @@ function readFollowersFromPage(): number | null {
   const followerLinks = document.querySelectorAll('a[href*="/followers"]');
   for (let i = 0; i < followerLinks.length; i++) {
     const link = followerLinks[i]!;
+    const hrefOwner = (link.getAttribute("href") ?? "").split("/").filter(Boolean)[0]?.toLowerCase();
+    if (hrefOwner && hrefOwner !== username) continue;
     const title = link.getAttribute("title");
     if (title) {
       const c = parseCount(title.replace(/,/g, ""));
@@ -2145,6 +2177,8 @@ function readFollowersFromPage(): number | null {
   const meta = document.querySelector('meta[property="og:description"]');
   if (meta) {
     const content = meta.getAttribute("content") ?? "";
+    const metaHandle = content.match(/@([A-Za-z0-9._]+)/);
+    if (metaHandle && metaHandle[1]!.toLowerCase() !== username) return null;
     const m = content.match(/([\d,.]+[KMBkmb]?)\s+Followers/i);
     if (m) {
       const count = parseCount(m[1]);
@@ -2165,48 +2199,108 @@ async function getActiveTabId(): Promise<number | null> {
   }
 }
 
+function clearRenderedScan(): void {
+  if (currentRenderedState == null) return;
+  currentRenderedState = null;
+  hideProgress();
+  hideResults();
+  hideReviewPrompt();
+  setButtonsForIdle();
+}
+
 async function rehydrate(tabId: number): Promise<void> {
+  if (rehydrateInFlight) return;
+  rehydrateInFlight = true;
+  try {
+    await rehydrateOnce(tabId);
+  } finally {
+    rehydrateInFlight = false;
+  }
+}
+
+async function rehydrateOnce(tabId: number): Promise<void> {
+  let url: string | null = null;
   try {
     const stateResult = await chrome.scripting.executeScript({
       target: { tabId },
-      func: function (): OutliersState | null {
-        return (window as unknown as { __outliers_state?: OutliersState }).__outliers_state ?? null;
+      func: function (): { state: OutliersState | null; url: string } {
+        return {
+          state: (window as unknown as { __outliers_state?: OutliersState }).__outliers_state ?? null,
+          url: window.location.href,
+        };
       },
     });
-    const rawState = stateResult?.[0]?.result as OutliersState | null;
+    if (tabId !== cachedTabId) return;
+    const payload = stateResult?.[0]?.result as { state: OutliersState | null; url: string } | undefined;
+    url = payload?.url ?? null;
+    const rawState = payload?.state ?? null;
     if (rawState && rawState.status !== "idle") {
+      profileReady = true;
+      profileWaitStartedAt = null;
       renderState(rawState);
       return;
     }
   } catch {
-    // Non-fatal
+    // The tab is not an Instagram page, or it is mid-load. The poll retries.
+    if (tabId !== cachedTabId) return;
+    profileReady = false;
+    latestFollowers = null;
+    clearRenderedScan();
+    runBtn.disabled = true;
+    hideReviewPrompt();
+    showNotice("Open an Instagram profile to scan its Reels.");
+    return;
   }
 
-  currentRenderedState = null;
+  // No scan lives in this page (e.g. after a reload), so drop any stale results.
+  clearRenderedScan();
 
+  if (!url || getProfilePath(url) == null) {
+    profileReady = false;
+    profileWaitStartedAt = null;
+    latestFollowers = null;
+    runBtn.disabled = true;
+    hideReviewPrompt();
+    showNotice(
+      url && isContentPermalink(url)
+        ? "Open the creator's profile to scan their Reels."
+        : "Open an Instagram profile to scan its Reels."
+    );
+    return;
+  }
+
+  let followers: number | null = null;
   try {
     const result = await chrome.scripting.executeScript({
       target: { tabId },
       func: readFollowersFromPage,
     });
-    const followers = result?.[0]?.result ?? null;
-
-    if (followers && followers > 0) {
-      latestFollowers = followers;
-      showStats(getThresholdLabel(selectedFilterMode, followers, selectedMinViews));
-      runBtn.disabled = false;
-      updateReviewPromptVisibility(currentRenderedState);
-    } else {
-      latestFollowers = null;
-      showStats("—");
-      runBtn.disabled = true;
-      hideReviewPrompt();
-    }
+    followers = result?.[0]?.result ?? null;
   } catch {
-    latestFollowers = null;
-    showStats("—");
-    runBtn.disabled = true;
-    hideReviewPrompt();
+    followers = null;
+  }
+  if (tabId !== cachedTabId) return;
+
+  if (followers && followers > 0) {
+    profileReady = true;
+    profileWaitStartedAt = null;
+    latestFollowers = followers;
+    showStats(getThresholdLabel(selectedFilterMode, followers, selectedMinViews));
+    runBtn.disabled = false;
+    updateReviewPromptVisibility(currentRenderedState);
+    return;
+  }
+
+  // The profile header has not rendered yet. Keep the spinner up while the poll retries.
+  profileReady = false;
+  latestFollowers = null;
+  runBtn.disabled = true;
+  hideReviewPrompt();
+  if (profileWaitStartedAt == null) profileWaitStartedAt = Date.now();
+  if (Date.now() - profileWaitStartedAt < PROFILE_WAIT_HINT_MS) {
+    showLoading();
+  } else {
+    showNotice("Couldn't read the follower count yet. Scroll to the top of the profile; Outliers keeps checking.");
   }
 }
 
@@ -2266,14 +2360,15 @@ async function handleNavigation(details: { tabId: number; url: string }): Promis
   hideProgress();
   hideResults();
   setButtonsForIdle();
+  runBtn.disabled = true;
   currentRenderedState = null;
+  latestFollowers = null;
+  profileReady = false;
+  profileWaitStartedAt = null;
   statusEl.textContent = "";
   statusEl.className = "status-msg";
   showLoading();
-
-  setTimeout(function () {
-    rehydrate(details.tabId);
-  }, 500);
+  // The navigation poll rehydrates on its next tick, once the new profile has rendered.
 }
 
 async function readTabUrl(tabId: number): Promise<string | null> {
@@ -2304,14 +2399,17 @@ function startNavigationPolling(tabId: number): void {
     navPollInFlight = true;
 
     readTabUrl(tabId)
-      .then(function (url) {
-        if (!url) return;
-        if (lastKnownUrl == null) {
-          lastKnownUrl = url;
-          lastKnownProfile = getProfilePath(url);
-          return;
+      .then(async function (url) {
+        if (tabId !== cachedTabId) return;
+        if (url) {
+          if (lastKnownUrl == null) {
+            lastKnownUrl = url;
+            lastKnownProfile = getProfilePath(url);
+          } else if (url !== lastKnownUrl) {
+            await handleNavigation({ tabId, url });
+          }
         }
-        if (url !== lastKnownUrl) return handleNavigation({ tabId, url });
+        if (!profileReady && tabId === cachedTabId) await rehydrate(tabId);
       })
       .finally(function () {
         navPollInFlight = false;
@@ -2693,30 +2791,50 @@ async function init(): Promise<void> {
   hideReviewPrompt();
   await loadSavedReels();
 
-  const tabId = await getActiveTabId();
-  if (!tabId) {
-    showError("Open an Instagram profile page first.");
-    return;
-  }
-
-  cachedTabId = tabId;
-
   try {
-    const urlResult = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: function () {
-        return window.location.href;
-      },
-    });
-    lastKnownUrl = (urlResult?.[0]?.result as string | undefined) ?? null;
-    if (lastKnownUrl) lastKnownProfile = getProfilePath(lastKnownUrl);
+    panelWindowId = (await chrome.windows.getCurrent()).id ?? null;
   } catch {
-    // Non-fatal
+    panelWindowId = null;
   }
-
-  startNavigationPolling(tabId);
+  chrome.tabs.onActivated.addListener(function (info) {
+    if (panelWindowId != null && info.windowId !== panelWindowId) return;
+    if (info.tabId === cachedTabId) return;
+    bindToTab(info.tabId).catch(function () {
+      // Non-fatal
+    });
+  });
+  chrome.tabs.onUpdated.addListener(function (tabId, changeInfo) {
+    if (tabId !== cachedTabId || changeInfo.status !== "loading" || changeInfo.url) return;
+    // A full reload wipes the page's scan state; re-read once the page is back.
+    profileReady = false;
+  });
   window.addEventListener("beforeunload", stopNavigationPolling);
 
+  const tabId = await getActiveTabId();
+  if (!tabId) {
+    showNotice("Open an Instagram profile to scan its Reels.");
+    return;
+  }
+  await bindToTab(tabId);
+}
+
+// The side panel belongs to the window, so it follows whichever tab is active.
+async function bindToTab(tabId: number): Promise<void> {
+  cachedTabId = tabId;
+  lastKnownUrl = await readTabUrl(tabId);
+  lastKnownProfile = lastKnownUrl ? getProfilePath(lastKnownUrl) : null;
+  if (tabId !== cachedTabId) return;
+
+  profileReady = false;
+  profileWaitStartedAt = null;
+  latestFollowers = null;
+  clearRenderedScan();
+  statusEl.textContent = "";
+  statusEl.className = "status-msg";
+  runBtn.disabled = true;
+  showLoading();
+
+  startNavigationPolling(tabId);
   await rehydrate(tabId);
 }
 
