@@ -2771,16 +2771,22 @@ for (let i = 0; i < filterModeBtns.length; i++) {
     saveFilterMode(mode);
     setFilterControlsDisabled(false);
 
-    if (currentRenderedState?.status !== "done") {
-      showStats(getThresholdLabel(mode, latestFollowers, selectedMinViews));
-    }
+    refreshIdleThreshold();
   });
+}
+
+// Keep "Active threshold" in step with the filter controls before a scan runs.
+// Done and scanning states show the threshold the scan actually used.
+function refreshIdleThreshold(): void {
+  if (!profileReady || currentRenderedState?.status === "done" || currentRenderedState?.status === "scanning") return;
+  showStats(getThresholdLabel(selectedFilterMode, latestFollowers, selectedMinViews));
 }
 
 minViewsSlider.addEventListener("input", function () {
   const minViews = sliderPositionToMinViews(getRangeValue(minViewsSlider));
   syncMinViewsUI(minViews);
   saveMinViews(minViews);
+  refreshIdleThreshold();
 });
 
 exportBtn.addEventListener("click", exportCurrentResults);
