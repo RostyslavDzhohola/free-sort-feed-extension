@@ -2231,13 +2231,13 @@ async function rehydrate(tabId: number): Promise<void> {
   if (rehydrateInFlight) return;
   rehydrateInFlight = true;
   try {
-    await rehydrateOnce(tabId);
+    await rehydrateOnce(tabId, bindGeneration);
   } finally {
     rehydrateInFlight = false;
   }
 }
 
-async function rehydrateOnce(tabId: number): Promise<void> {
+async function rehydrateOnce(tabId: number, generation: number): Promise<void> {
   let url: string | null = null;
   try {
     const stateResult = await chrome.scripting.executeScript({
@@ -2249,7 +2249,7 @@ async function rehydrateOnce(tabId: number): Promise<void> {
         };
       },
     });
-    if (tabId !== cachedTabId) return;
+    if (!isStillBound(tabId, generation)) return;
     const payload = stateResult?.[0]?.result as { state: OutliersState | null; url: string } | undefined;
     url = payload?.url ?? null;
     const rawState = payload?.state ?? null;
@@ -2261,7 +2261,7 @@ async function rehydrateOnce(tabId: number): Promise<void> {
     }
   } catch {
     // The tab is not an Instagram page, or it is mid-load. The poll retries.
-    if (tabId !== cachedTabId) return;
+    if (!isStillBound(tabId, generation)) return;
     profileReady = false;
     latestFollowers = null;
     clearRenderedScan();
@@ -2298,7 +2298,7 @@ async function rehydrateOnce(tabId: number): Promise<void> {
   } catch {
     followers = null;
   }
-  if (tabId !== cachedTabId) return;
+  if (!isStillBound(tabId, generation)) return;
 
   if (followers && followers > 0) {
     profileReady = true;
@@ -2347,8 +2347,8 @@ chrome.runtime.onMessage.addListener(function (
 });
 
 // ── Navigation detection ──────────────────────────────────────────────────
-async function handleNavigation(details: { tabId: number; url: string }): Promise<void> {
-  if (cachedTabId == null || details.tabId !== cachedTabId) return;
+async function handleNavigation(details: { tabId: number; url: string }, generation: number): Promise<void> {
+  if (!isStillBound(details.tabId, generation)) return;
 
   const newProfile = getProfilePath(details.url);
   lastKnownUrl = details.url;
@@ -2375,7 +2375,7 @@ async function handleNavigation(details: { tabId: number; url: string }): Promis
   } catch {
     // Non-fatal
   }
-  if (details.tabId !== cachedTabId) return;
+  if (!isStillBound(details.tabId, generation)) return;
 
   hideProgress();
   hideResults();
@@ -2414,22 +2414,23 @@ function stopNavigationPolling(): void {
 
 function startNavigationPolling(tabId: number): void {
   stopNavigationPolling();
+  const generation = bindGeneration;
   navPollTimer = window.setInterval(function () {
     if (navPollInFlight) return;
     navPollInFlight = true;
 
     readTabUrl(tabId)
       .then(async function (url) {
-        if (tabId !== cachedTabId) return;
+        if (!isStillBound(tabId, generation)) return;
         if (url) {
           if (lastKnownUrl == null) {
             lastKnownUrl = url;
             lastKnownProfile = getProfilePath(url);
           } else if (url !== lastKnownUrl) {
-            await handleNavigation({ tabId, url });
+            await handleNavigation({ tabId, url }, generation);
           }
         }
-        if (!profileReady && tabId === cachedTabId) await rehydrate(tabId);
+        if (!profileReady && isStillBound(tabId, generation)) await rehydrate(tabId);
       })
       .finally(function () {
         navPollInFlight = false;
@@ -2723,10 +2724,11 @@ resetBtn.addEventListener("click", async function () {
   hideReviewPrompt();
   statusEl.textContent = "Resetting and reloading page…";
   statusEl.className = "status-msg";
+  const generation = bindGeneration;
+  const tabId = cachedTabId;
 
   try {
-    const tabId = cachedTabId ?? (await getActiveTabId());
-    if (tabId) {
+    if (tabId != null) {
       await chrome.scripting.executeScript({
         target: { tabId },
         func: function () {
@@ -2738,22 +2740,18 @@ resetBtn.addEventListener("click", async function () {
     // Non-fatal
   }
 
+  if (tabId == null || !isStillBound(tabId, generation)) return;
+
   hideProgress();
   hideResults();
   setButtonsForIdle();
+  runBtn.disabled = true;
   currentRenderedState = null;
+  latestFollowers = null;
   statusEl.textContent = "Waiting for page reload…";
-
-  if (cachedTabId != null) {
-    showLoading();
-    window.setTimeout(function () {
-      if (cachedTabId != null) {
-        rehydrate(cachedTabId).catch(function () {
-          // Tab may still be navigating — non-fatal
-        });
-      }
-    }, 1500);
-  }
+  showLoading();
+  // The reload fires tabs.onUpdated, and the poll rehydrates once the page is back.
+  profileReady = false;
 });
 
 scanLimitSlider.addEventListener("input", function () {
@@ -2829,10 +2827,9 @@ async function init(): Promise<void> {
   });
   chrome.tabs.onUpdated.addListener(function (tabId, changeInfo) {
     if (tabId !== cachedTabId || changeInfo.status !== "loading") return;
-    // Opening a reel from the outliers grid changes the URL in place; keep the results.
-    if (changeInfo.url && isContentPermalink(changeInfo.url)) return;
     // A reload or new document wipes the page's scan state, and a non-Instagram URL is
-    // not reported to us at all, so re-read whatever the tab shows next.
+    // not reported to us at all, so re-read whatever the tab shows next. In-page URL
+    // changes (a reel modal) keep the page's scan state, and rehydrate restores it.
     profileReady = false;
   });
   window.addEventListener("beforeunload", stopNavigationPolling);
