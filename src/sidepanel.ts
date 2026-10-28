@@ -881,7 +881,7 @@ async function saveReelFromResult(reel: OutliersEntry): Promise<void> {
   const saved: SavedReel = {
     ...reel,
     savedAt: nowIso(),
-    profilePath: normalizeProfileUrl(lastKnownProfile, reel.url),
+    profilePath: normalizeProfileUrl(currentProfileUrl(), reel.url),
   };
   savedByUrl.set(reel.url, saved);
   await persistSavedReels();
@@ -1062,6 +1062,11 @@ function normalizeProfileUrl(profilePathOrUrl: string | null, reelUrl?: string):
   }
 
   if (!profilePathOrUrl) return null;
+  // Pre-release 1.1 builds stored the internal key, e.g. instagram.com/instagram:natgeo/.
+  const fromKey = profilePathOrUrl.match(/^https?:\/\/[^/]+\/(instagram|tiktok):([^/?#]+)\/?$/i);
+  if (fromKey) {
+    return profileUrl({ platform: fromKey[1]!.toLowerCase() as Platform, handle: fromKey[2]!.toLowerCase() });
+  }
   if (/^https?:\/\//i.test(profilePathOrUrl)) {
     if (detectPlatform(profilePathOrUrl) === "tiktok") return profilePathOrUrl.replace(/\/+$/, "");
     return profilePathOrUrl.endsWith("/") ? profilePathOrUrl : profilePathOrUrl + "/";
@@ -2396,6 +2401,7 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
     return !isStillBound(tabId, generation) || epoch !== documentEpoch;
   };
   let url: string | null = null;
+  let errorText: string | null = null;
   try {
     const stateResult = await chrome.scripting.executeScript({
       target: { tabId },
@@ -2411,12 +2417,13 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
     url = payload?.url ?? null;
     adoptProfileFromUrl(url);
     const rawState = payload?.state ?? null;
-    if (rawState && rawState.status !== "idle") {
+    if (rawState && (rawState.status === "scanning" || rawState.status === "done")) {
       profileReady = true;
       profileWaitStartedAt = null;
       renderState(rawState, true);
       return;
     }
+    if (rawState && rawState.status === "error") errorText = rawState.errorText;
   } catch {
     // Not a page Outliers can read (another site, or TikTok before access is on), or mid-load.
     if (isStale()) return;
@@ -2432,6 +2439,10 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
 
   // No scan lives in this page (e.g. after a reload), so drop any stale results.
   clearRenderedScan();
+  if (errorText) {
+    statusEl.textContent = errorText;
+    statusEl.className = "status-msg error";
+  }
 
   const ref = url ? getProfileRef(url) : null;
   if (!url || !ref) {
@@ -2600,6 +2611,7 @@ async function handleNavigation(details: { tabId: number; url: string }, generat
 
   lastKnownProfile = newProfile;
   lastKnownProfileRef = newRef;
+  cancelViewPush();
 
   try {
     await chrome.scripting.executeScript({
@@ -3045,22 +3057,30 @@ function onViewChanged(): void {
   }
 }
 
+function cancelViewPush(): void {
+  if (viewPushTimer == null) return;
+  clearTimeout(viewPushTimer);
+  viewPushTimer = null;
+}
+
 function schedulePushView(): void {
-  if (viewPushTimer != null) clearTimeout(viewPushTimer);
+  cancelViewPush();
+  const tabId = cachedTabId;
+  if (tabId == null) return;
+  const generation = bindGeneration;
+  const epoch = documentEpoch;
+  const view = currentView();
   // Coalesce slider drags into one redraw of the page grid.
   viewPushTimer = window.setTimeout(function () {
     viewPushTimer = null;
-    pushViewToPage().catch(function () {
+    pushViewToPage(tabId, generation, epoch, view).catch(function () {
       // Non-fatal
     });
   }, 90);
 }
 
-async function pushViewToPage(): Promise<void> {
-  const tabId = cachedTabId;
-  if (tabId == null) return;
-  const generation = bindGeneration;
-  const view = currentView();
+async function pushViewToPage(tabId: number, generation: number, epoch: number, view: ViewSettings): Promise<void> {
+  if (!isStillBound(tabId, generation) || epoch !== documentEpoch) return;
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
@@ -3193,6 +3213,7 @@ async function init(): Promise<void> {
 async function bindToTab(tabId: number): Promise<void> {
   const generation = ++bindGeneration;
   cachedTabId = tabId;
+  cancelViewPush();
   stopNavigationPolling();
   lastKnownUrl = null;
   lastKnownProfile = null;
