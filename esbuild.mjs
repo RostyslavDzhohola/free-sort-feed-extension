@@ -59,6 +59,7 @@ const commonOptions = {
 const entryPoints = [
   { in: "src/sidepanel.ts", out: "sidepanel" },
   { in: "src/injected.ts", out: "injected" },
+  { in: "src/page-bridge.ts", out: "page-bridge" },
   { in: "src/background.ts", out: "background" },
 ];
 
