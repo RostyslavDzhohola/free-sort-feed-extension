@@ -37,7 +37,7 @@ Paste these into the Developer Dashboard for item `heogkfpbeagpoodininnfhdgjmpda
 > • Sort by likes, comments, shares, saves, engagement, date and more (you asked for it!)
 > • TikTok support
 > • "All" view: every scanned video, sorted
-> • Exact counts in any language, and Min Views no longer needs a follower count
+> • Exact counts where the page provides them, in any language; Min Views no longer needs a follower count
 
 **Video:** the store takes a YouTube URL. The 1.1 promo MP4 is ready locally; upload it to YouTube once approved and paste the link here.
 
@@ -62,7 +62,7 @@ Paste these into the Developer Dashboard for item `heogkfpbeagpoodininnfhdgjmpda
 
 **Are you using remote code?** No. All JavaScript ships in the package; nothing is fetched and executed at runtime.
 
-**Data usage.** What user data do you plan to collect from users now or in the future? Leave every box unchecked:
+**Data usage.** What user data do you plan to collect from users now or in the future? Chrome counts data an extension handles on the device, even when it never leaves the browser, so declare the page content Outliers reads:
 
 - Personally identifiable information: no
 - Health information: no
@@ -72,7 +72,7 @@ Paste these into the Developer Dashboard for item `heogkfpbeagpoodininnfhdgjmpda
 - Location: no
 - Web history: no
 - User activity: no
-- Website content: no. Outliers reads public video metrics on the page the user opens and processes them locally in the browser. Nothing is collected by the developer or sent anywhere.
+- **Website content: yes.** When the user runs a scan, Outliers reads the profile page's public video data (video links, cover images, view, like, comment, share and save counts, post dates, lengths, and the follower count) to list and sort them. It processes this only in the user's browser. Videos the user saves to the Library, and the user's settings, are kept in `chrome.storage.local` on their device. Nothing is sent to the developer or any server.
 
 Certify all three statements:
 
@@ -80,7 +80,7 @@ Certify all three statements:
 - I do not use or transfer user data for purposes that are unrelated to my item's single purpose
 - I do not use or transfer user data to determine creditworthiness or for lending purposes
 
-**Privacy policy URL:** keep the current one. If the listing has none, use the README's Privacy section on GitHub, or the website's privacy page once it exists.
+**Privacy policy URL:** keep the current one, and make sure it says the same as the Website content answer above: page data is read and processed locally, saved videos and settings stay on the device, nothing is transmitted. If the listing has none, use the README's Privacy section on GitHub, or the website's privacy page once it exists.
 
 ## Notes for submission
 
