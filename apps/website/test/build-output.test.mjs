@@ -113,7 +113,7 @@ test("home page copy follows the spec", () => {
   assert.ok(!/Prototype C|All prototypes/.test(home), "prototype-only bar must not ship");
   assert.ok(home.includes("Some Reels travel far past a creator's own audience. Outliers helps you spot them."), "revised hero lede");
   assert.ok(home.includes('<span class="mark">at least 5× more views than followers</span>'), "marked phrase");
-  assert.equal(home.match(/<details>/g)?.length, 8, "eight FAQ items");
+  assert.equal(home.match(/<details>/g)?.length, RELEASE_1_1 ? 9 : 8, "FAQ items (1.1 adds TikTok)");
   assert.ok(home.includes("Is it really free? Which browsers?"), "the FAQ opens with free");
   assert.ok(home.includes("I set a small scan limit, but it scanned more."), "scan-limit FAQ");
   assert.ok(/real snapshot of @[\w.]+, captured|sample data from a fictional profile/.test(home), "hero compare names its data source");
@@ -227,17 +227,29 @@ test("demo profiles without permission never reach a production build", () => {
   }
 });
 
-test("1.1 copy stays off until 1.1 is in the store, behind one flag", () => {
+test("1.1 copy and the promo video stay off until 1.1 is in the store, behind one flag", () => {
   const home = html["/"];
+  const promo = new URL("promo/", dist);
   if (RELEASE_1_1) {
-    assert.ok(home.includes("Sort by any metric") && home.includes("TikTok, too"), "1.1 features show");
+    assert.ok(home.includes("Sort by any metric") && home.includes("TikTok, too") && home.includes("Change it, no rescan"), "1.1 features show");
     assert.ok(!home.includes('class="features-soon"'));
+    assert.ok(home.includes("Does it work on TikTok?"), "TikTok FAQ");
+    assert.ok(html["/privacy/"].includes("<code>tiktok.com</code>"), "privacy lists the optional TikTok access");
+    const video = home.match(/<video[^>]*>/)?.[0];
+    assert.ok(video, "promo video on the page");
+    for (const file of ["outliers-1.1-promo.mp4", "outliers-1.1-promo-poster.jpg"]) {
+      assert.ok(video.includes(`/promo/${file}`), `video uses ${file}`);
+      assert.ok(existsSync(new URL(file, promo)), `dist/promo/${file} ships`);
+    }
+    assert.ok(/\spreload="none"/.test(video) && /\scontrols[\s>=]/.test(video), "the video loads on demand, with controls");
     return;
   }
   assert.ok(/<span class="smallcaps">Coming soon<\/span> TikTok support, and sorting by likes and comments\./.test(home), "labelled coming-soon line");
   for (const page of Object.values(html)) {
-    assert.ok(!/new in 1\.1|Sort by any metric|Simple sort|Instagram and TikTok research/.test(page), "no 1.1 promises");
+    assert.ok(!/new in 1\.1|Sort by any metric|Change it, no rescan|Instagram and TikTok|tiktok\.com\/@handle|<video/.test(page), "no 1.1 promises");
+    assert.ok(!page.includes("/promo/"), "no link to the unreleased video");
   }
+  assert.ok(!existsSync(promo), "the unreleased promo video isn't in dist/");
   assert.ok(home.includes("Sorting by likes and comments is coming soon"), "FAQ says not yet");
 });
 
@@ -249,6 +261,6 @@ test("the site is honest about its own analytics, and keeps the extension's clai
     assert.ok(privacy.includes("The extension sends nothing to DataFast or anywhere else."));
   }
   assert.ok(privacy.includes("No analytics, tracking, ads or cookies."), "the extension's own claims stay");
-  assert.ok(privacy.includes("version 1.0.8"), "policy covers the store version");
+  assert.ok(privacy.includes(RELEASE_1_1 ? "version 1.1" : "version 1.0.8"), "policy covers the store version");
   assert.ok(html["/"].includes("it counts visits and button clicks with cookieless analytics"), "privacy band separates site and extension");
 });

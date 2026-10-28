@@ -8,7 +8,9 @@
 .features-soon .smallcaps { margin: 0; }
 
 .features-video { margin: 0 0 64px; }
-.features-video video { display: block; width: 100%; border-radius: 14px; border: 1.5px solid var(--ink); background: var(--ink); }
+.features-video video { display: block; width: 100%; height: auto; border-radius: 14px; border: 1.5px solid var(--ink); background: var(--ink); }
+.features-video figcaption { margin-top: 12px; font-size: 14px; color: var(--muted); }
+.features code { font-size: 0.9em; }
 
 @media (max-width: 960px) {
   .features { grid-template-columns: repeat(2, minmax(0, 1fr)); }

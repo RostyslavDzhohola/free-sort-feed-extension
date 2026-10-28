@@ -1,4 +1,5 @@
 ---
+import { site } from "../../config/site";
 import "./privacy-ledger.css";
 
 const ledger = [
@@ -6,8 +7,8 @@ const ledger = [
   { label: "Analytics & tracking", value: "None" },
   { label: "Account or sign-up", value: "Not needed" },
   { label: "Saved Reels & settings", value: "Stay in this browser, on this device" },
-  { label: "Site access", value: "Instagram only" },
-  { label: "What it does on Instagram", value: "Reads and scrolls. Never posts, likes, follows or messages." },
+  { label: "Site access", value: site.release11 ? "Instagram, plus TikTok if you turn it on" : "Instagram only" },
+  { label: site.release11 ? "What it does on a profile" : "What it does on Instagram", value: "Reads and scrolls. Never posts, likes, follows or messages." },
 ];
 ---
 
@@ -16,7 +17,7 @@ const ledger = [
     <div>
       <p class="smallcaps">Privacy</p>
       <h2 id="privacy-title">Private by design.</h2>
-      <p class="privacy-lede">Outliers runs inside your Instagram tab. There's no Outliers server, so your research has nowhere to go but your own browser.</p>
+      <p class="privacy-lede">Outliers runs inside your {site.release11 ? "browser tab" : "Instagram tab"}. There's no Outliers server, so your research has nowhere to go but your own browser.</p>
       <p class="privacy-site">This website is different: it counts visits and button clicks with cookieless analytics. The extension sends it nothing.</p>
       <p class="privacy-more"><a class="link-arrow" href="/privacy/">Read the full privacy policy <span aria-hidden="true">→</span></a></p>
     </div>

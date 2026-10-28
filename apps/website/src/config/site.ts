@@ -4,8 +4,9 @@ import type { IconId } from "../components/icons";
 export const site = {
   name: "Outliers",
   title: "Outliers — Find the Instagram Reels that broke out",
-  description:
-    "A free Chrome extension for Instagram research. Open a profile's Reels, press Run, and see the videos with at least 5× more views than followers.",
+  description: RELEASE_1_1
+    ? "A free Chrome extension for Instagram and TikTok research. Open a profile, press Run, and sort its videos by views, likes, comments and more, or see the ones with 5× more views than followers."
+    : "A free Chrome extension for Instagram research. Open a profile's Reels, press Run, and see the videos with at least 5× more views than followers.",
   storeUrl: "https://chromewebstore.google.com/detail/outliers/heogkfpbeagpoodininnfhdgjmpdalgj",
   /** The extension's public source code. */
   repoUrl: "https://github.com/RostyslavDzhohola/free-sort-feed-extension",

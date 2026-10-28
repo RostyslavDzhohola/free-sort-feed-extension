@@ -35,5 +35,13 @@ export const DATAFAST = process.env.DATAFAST !== "false" && {
  */
 export const RELEASE_1_1 = process.env.RELEASE_1_1 === "true";
 
-/** Promo video for the 1.1 launch (a URL under public/, e.g. "/promo/outliers-1.1.mp4"). Shown only with RELEASE_1_1. */
-export const PROMO_VIDEO = process.env.PROMO_VIDEO ?? null;
+/**
+ * The 1.1 promo video in public/promo/. It ships, and shows at the top of Features, only with RELEASE_1_1:
+ * integrations/prune-promo.mjs removes public/promo/ from dist/ otherwise, so it can't be fetched by URL.
+ */
+export const PROMO_VIDEO = {
+  src: "/promo/outliers-1.1-promo.mp4",
+  poster: "/promo/outliers-1.1-promo-poster.jpg",
+  width: 1920,
+  height: 1080,
+};

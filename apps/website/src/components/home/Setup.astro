@@ -3,6 +3,7 @@ import Chapter from "../Chapter.astro";
 import icon128 from "../../assets/icon-128.png";
 import { MULTIPLIER, thresholdLabel } from "@outliers/core";
 import { sampleProfile } from "../../data/demo/profiles";
+import { site } from "../../config/site";
 import "./setup.css";
 
 // Illustrative bar for the step-3 mini panel, from the fictional sample profile (18,400 × 5).
@@ -33,8 +34,14 @@ const barLabel = thresholdLabel((sampleProfile?.snapshot.followers ?? 18_400) * 
           </div>
         </div>
         <span class="step-n" aria-hidden="true">2</span>
-        <h3>Open a Reels tab</h3>
-        <p>Visit any profile you can see, a competitor's or your own, and switch to its <b>Reels</b> tab, where view counts are shown.</p>
+        <h3>{site.release11 ? "Open a profile" : "Open a Reels tab"}</h3>
+        {
+          site.release11 ? (
+            <p>Visit any profile you can see, a competitor's or your own: an Instagram <b>Reels</b> tab, or a TikTok profile at <code>tiktok.com/@handle</code>.</p>
+          ) : (
+            <p>Visit any profile you can see, a competitor's or your own, and switch to its <b>Reels</b> tab, where view counts are shown.</p>
+          )
+        }
       </li>
       <li>
         <div class="step-fig" aria-hidden="true">

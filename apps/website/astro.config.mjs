@@ -1,8 +1,9 @@
 // @ts-check
 import { defineConfig } from "astro/config";
 import sitemap from "@astrojs/sitemap";
-import { SHOW_PENDING_DEMO_PROFILES, SITE_URL } from "./site.config.mjs";
+import { RELEASE_1_1, SHOW_PENDING_DEMO_PROFILES, SITE_URL } from "./site.config.mjs";
 import { prunePendingDemoProfiles } from "./integrations/prune-pending-demo.mjs";
+import { pruneUnreleasedPromo } from "./integrations/prune-promo.mjs";
 
 export default defineConfig({
   site: SITE_URL,
@@ -20,6 +21,7 @@ export default defineConfig({
   integrations: [
     sitemap({ filter: (page) => !page.includes("/404") }),
     prunePendingDemoProfiles({ keep: SHOW_PENDING_DEMO_PROFILES }),
+    pruneUnreleasedPromo({ keep: RELEASE_1_1 }),
   ],
   vite: {
     environments: {

@@ -1,6 +1,6 @@
 ---
 // Chapter II: everything the side panel does. Every claim must match the store version of the extension
-// (apps/extension/src); 1.1 features stay behind site.release11 until 1.1 is live in the store.
+// (apps/extension/src). The 1.1 list replaces it only when site.release11 is on (1.1 live in the store).
 import Chapter from "../Chapter.astro";
 import { site } from "../../config/site";
 import "./features.css";
@@ -11,7 +11,8 @@ interface Feature {
   body: string;
 }
 
-const features: Feature[] = [
+// The store version (1.0.8).
+const current: Feature[] = [
   {
     kicker: "Filter · default",
     title: "5× Outliers",
@@ -44,26 +45,56 @@ const features: Feature[] = [
   },
 ];
 
-// Outliers 1.1. Copy is drafted for launch day; it ships only when site.release11 is on.
+// Outliers 1.1, as verified by the 1.1 thread (PR #10). Ships only when site.release11 is on.
 const release11: Feature[] = [
   {
     kicker: "Sort · new in 1.1",
     title: "Sort by any metric",
-    body: "Rank videos by views, likes, comments or any other number the profile shows, not only views.",
+    body: "Views, likes, comments, engagement rate or <b>views ÷ followers</b>, highest or lowest first. On TikTok, also shares, saves, post date and length.",
   },
   {
-    kicker: "Sort · new in 1.1",
-    title: "Simple sort",
-    body: "Skip the outlier filter and list every scanned video, ordered by the metric you choose.",
+    kicker: "Show · default",
+    title: "5× Outliers",
+    body: "Only the videos with <b>at least five times more views than the account has followers</b>: the ones that travelled far beyond their own audience.",
+  },
+  {
+    kicker: "Show",
+    title: "Min Views",
+    body: "Prefer one fixed bar? Set it <b>anywhere from 1,000 to 1,000,000 views</b> and use it on every profile. No follower count needed.",
+  },
+  {
+    kicker: "Show · new in 1.1",
+    title: "All",
+    body: "Skip the filter and list <b>every video you scanned</b>, sorted by the metric you pick.",
+  },
+  {
+    kicker: "Results · new in 1.1",
+    title: "Change it, no rescan",
+    body: "Switch Show or Sort after a scan and the results update at once, in the side panel and in the grid of cards on the profile.",
   },
   {
     kicker: "Platforms · new in 1.1",
     title: "TikTok, too",
-    body: "Run the same scan on a TikTok profile. Same panel, same filters, same exports.",
+    body: "Run it on <code>tiktok.com/@handle</code> profiles as well as Instagram Reels, yours or anyone else's. TikTok access is optional: Chrome asks once, the first time you turn it on.",
+  },
+  {
+    kicker: "Scan",
+    title: "As deep as you like",
+    body: "Set a scan limit, and Outliers scrolls the profile's grid for you. <b>Stop</b> keeps what it has found so far.",
+  },
+  {
+    kicker: "Keep",
+    title: "Your Library",
+    body: "Save the videos worth studying. Your Library stays in Chrome on this device, and exports as a CSV any time.",
+  },
+  {
+    kicker: "Share",
+    title: "Export, copy, share",
+    body: "Download a CSV with every metric for Sheets or Excel. Copy a caption or the top 5 links, or save a story card of the top 5.",
   },
 ];
 
-const shown = site.release11 ? [...features, ...release11] : features;
+const shown = site.release11 ? release11 : current;
 ---
 
 <section class="section section-rule" id="features" aria-labelledby="features-title">
@@ -72,7 +103,17 @@ const shown = site.release11 ? [...features, ...release11] : features;
     {
       site.promoVideo && (
         <figure class="features-video">
-          <video src={site.promoVideo} controls muted playsinline preload="metadata" aria-label="Outliers promo video" />
+          <video
+            src={site.promoVideo.src}
+            poster={site.promoVideo.poster}
+            width={site.promoVideo.width}
+            height={site.promoVideo.height}
+            controls
+            playsinline
+            preload="none"
+            aria-label="Outliers 1.1 promo video, 36 seconds"
+          />
+          <figcaption>Outliers 1.1 in 36 seconds, made from @heyrostyslav's own Instagram and TikTok numbers.</figcaption>
         </figure>
       )
     }
