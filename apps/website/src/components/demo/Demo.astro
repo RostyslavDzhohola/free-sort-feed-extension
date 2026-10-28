@@ -15,25 +15,26 @@ import {
 } from "@outliers/core";
 import Chapter from "../Chapter.astro";
 import { DemoPanel, panelHints, type PanelInitialState } from "../panel";
+import { icons } from "../icons";
 import { demoProfiles } from "../../data/demo/profiles";
-import { initialsFor } from "../../data/demo/initials";
-import { DEFAULT_SETTINGS, capScanLimit } from "../../lib/demo-engine";
-import { limitNote, tileHtml } from "../../lib/demo-render";
+import { DEFAULT_SETTINGS } from "../../lib/demo-engine";
+import { avatarHtml, limitNote, tileHtml } from "../../lib/demo-render";
 import { creditFor, honestyLabel, type CopyProfile } from "../../lib/demo-copy";
 import "../../styles/tiles.css";
 import "./demo.css";
 
 const profiles = demoProfiles;
 const first = profiles[0]!;
+// With one profile there's nothing to switch to, so its card opens the profile on Instagram instead.
+const single = profiles.length === 1;
 const hasReal = profiles.some((p) => p.kind === "real");
 
 const initial: PanelInitialState = {
   thresholdLabel: thresholdLabel(thresholdFor(DEFAULT_SETTINGS.mode, first.snapshot.followers, DEFAULT_SETTINGS.minViews)),
   mode: DEFAULT_SETTINGS.mode,
   scanLimit: {
-    position: scanLimitToSliderPosition(capScanLimit(DEFAULT_SETTINGS.scanLimit, first.snapshot.reels.length)),
-    label: formatScanLimit(capScanLimit(DEFAULT_SETTINGS.scanLimit, first.snapshot.reels.length)),
-    capPosition: scanLimitToSliderPosition(first.snapshot.reels.length),
+    position: scanLimitToSliderPosition(DEFAULT_SETTINGS.scanLimit),
+    label: formatScanLimit(DEFAULT_SETTINGS.scanLimit),
     note: limitNote(first.kind, first.snapshot.reels.length),
   },
   minViews: { position: minViewsToSliderPosition(DEFAULT_MIN_VIEWS), label: formatExact(DEFAULT_MIN_VIEWS) + " views" },
@@ -42,6 +43,10 @@ const initial: PanelInitialState = {
 const gridHtml = first.snapshot.reels.map((reel, i) => tileHtml(reel, i, first.assetBase)).join("");
 
 // The label fields (CopyProfile) travel to the island inside each profile, so both render the same copy.
+const avatarOf = (p: (typeof profiles)[number]) => (p.snapshot.avatar ? p.assetBase + p.snapshot.avatar : null);
+const instagramUrl = (handle: string) => `https://www.instagram.com/${handle}/`;
+const newTab = { target: "_blank", rel: "noopener noreferrer" };
+
 const copyOf = (p: (typeof profiles)[number]): CopyProfile => ({
   handle: p.snapshot.handle,
   kind: p.kind,
@@ -56,6 +61,7 @@ const payload = {
     followers: p.snapshot.followers,
     followersText: p.snapshot.followersText,
     assetBase: p.assetBase,
+    avatar: avatarOf(p),
     reels: p.snapshot.reels,
   })),
 };
@@ -86,25 +92,40 @@ const firstCredit = creditFor(copyOf(first));
     </p>
 
     <div class="demo" data-demo>
-      <div class="demo-profiles" role="radiogroup" aria-label="Profile to replay">
-        {
-          profiles.map((p, i) => (
-            <button
-              type="button"
-              role="radio"
-              class="demo-profile"
-              aria-checked={i === 0 ? "true" : "false"}
-              tabindex={i === 0 ? 0 : -1}
-              data-demo-profile={p.snapshot.handle}
-            >
-              <span class="demo-profile-handle">@{p.snapshot.handle}</span>
-              {p.featured && <span class="demo-tag">Featured</span>}
-              {p.permission === "pending" && <span class="demo-tag demo-tag-dev">Permission pending · dev only</span>}
-              <span class="demo-profile-meta">{meta(p)}</span>
-            </button>
-          ))
-        }
-      </div>
+      {
+        single ? (
+          <div class="demo-profiles">
+            <a class="demo-profile demo-profile-link" href={instagramUrl(first.snapshot.handle)} {...newTab}>
+              <span class="demo-profile-handle">
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false" set:html={icons.instagram} />
+                @{first.snapshot.handle}<span class="demo-profile-out" aria-hidden="true">↗</span>
+              </span>
+              <span class="demo-profile-meta">{meta(first)}</span>
+              <span class="visually-hidden">(opens Instagram in a new tab)</span>
+            </a>
+          </div>
+        ) : (
+          <div class="demo-profiles" role="radiogroup" aria-label="Profile to replay">
+            {
+              profiles.map((p, i) => (
+                <button
+                  type="button"
+                  role="radio"
+                  class="demo-profile"
+                  aria-checked={i === 0 ? "true" : "false"}
+                  tabindex={i === 0 ? 0 : -1}
+                  data-demo-profile={p.snapshot.handle}
+                >
+                  <span class="demo-profile-handle">@{p.snapshot.handle}</span>
+                  {p.featured && <span class="demo-tag">Featured</span>}
+                  {p.permission === "pending" && <span class="demo-tag demo-tag-dev">Permission pending · dev only</span>}
+                  <span class="demo-profile-meta">{meta(p)}</span>
+                </button>
+              ))
+            }
+          </div>
+        )
+      }
 
       <div class="demo-card">
         <div class="demo-chrome" aria-hidden="true">
@@ -113,10 +134,11 @@ const firstCredit = creditFor(copyOf(first));
         </div>
         <div class="demo-body">
           <div class="demo-page">
-            <div class="ig-head">
-              <span class="ig-av" data-demo-avatar>{initialsFor(first.snapshot.handle)}</span>
-              <div><b data-demo-handle>{first.snapshot.handle}</b><small data-demo-followers>{first.snapshot.followersText} followers</small></div>
-            </div>
+            <a class="ig-head ig-head-link" href={instagramUrl(first.snapshot.handle)} {...newTab} data-demo-profile-link>
+              <span class="ig-av" data-demo-avatar set:html={avatarHtml(first.snapshot.handle, avatarOf(first))} />
+              <span><b data-demo-handle>{first.snapshot.handle}</b><small data-demo-followers>{first.snapshot.followersText} followers</small></span>
+              <span class="visually-hidden">(opens Instagram in a new tab)</span>
+            </a>
             <div class="ig-tabs" aria-hidden="true"><span>Posts</span><span class="on">Reels</span><span>Tagged</span></div>
             <div class="demo-viewport" tabindex="0" role="region" aria-label="Instagram Reels grid, scrollable" data-demo-viewport>
               <div class="demo-grid" role="img" aria-label="Instagram Reels grid" data-demo-grid set:html={gridHtml} />

@@ -99,12 +99,12 @@ test("JS stays under the 60 KB budget", () => {
 
 test("store links open in a new tab without referrer and count as install_click goals", () => {
   const links = [...html["/"].matchAll(/<a[^>]+href="([^"]+)"[^>]*>/g)].filter(([, href]) => href === STORE_URL);
-  assert.equal(links.length, 3, "masthead, hero and closing CTA");
+  assert.equal(links.length, 2, "masthead and hero");
   for (const [tag] of links) assert.ok(tag.includes('target="_blank"') && tag.includes('rel="noopener noreferrer"'), tag);
   for (const [tag] of links) assert.ok(tag.includes('data-fast-goal="install_click"'), tag);
   assert.deepEqual(
     links.map(([tag]) => tag.match(/data-fast-goal-location="([^"]+)"/)?.[1]),
-    ["nav", "hero", "close"],
+    ["nav", "hero"],
   );
 });
 
@@ -144,7 +144,7 @@ test("revision 2: it reads as completely free, without promising forever", () =>
   const home = html["/"];
   assert.ok(home.includes("100% free · no account · no paywall"));
   assert.ok(home.includes("<dd>Completely free</dd>"));
-  assert.ok(home.includes("Free. No sign-up, no trial, no paid plan."));
+  assert.ok(!home.includes("Start your"), "no closing CTA: the masthead and hero carry the store button");
   for (const page of Object.values(html)) assert.ok(!/free forever|forever free/i.test(page));
 });
 

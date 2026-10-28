@@ -2,6 +2,7 @@
 // Values come from snapshot JSON, so everything interpolated is escaped.
 import { formatCount, formatRatio } from "@outliers/core";
 import { coverStyle } from "../data/covers";
+import { initialsFor } from "../data/demo/initials";
 
 export interface TileReel {
   url: string;
@@ -25,9 +26,14 @@ export function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
-/** Why the scan-limit slider stops short of All in the replay. */
+/** Inside the round avatar: the profile photo, or initials when the snapshot has none. */
+export function avatarHtml(handle: string, src: string | null): string {
+  return src ? `<img src="${escapeHtml(src)}" alt="" width="38" height="38" decoding="async">` : escapeHtml(initialsFor(handle));
+}
+
+/** Where a replay ends: any limit works, but a scan stops at the snapshot's last Reel. */
 export function limitNote(kind: "real" | "sample", captured: number): string {
-  return kind === "sample" ? `Sample profile with ${captured} Reels` : `Snapshot of the ${captured} most recent Reels`;
+  return kind === "sample" ? `Sample profile with ${captured} Reels` : `This snapshot holds the ${captured} most recent Reels`;
 }
 
 /** A Reels-grid tile: thumbnail (or a gradient cover for the fictional sample) and its view count. */

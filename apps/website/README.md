@@ -63,7 +63,7 @@ The 1.1 copy follows the features the 1.1 thread verified in PR #10. Once 1.1 is
 In production builds, `layouts/Base.astro` inlines a small script (`#datafast-queue`). It queues goals sent before the tracker loads, and it loads `https://datafa.st/js/script.cookieless.js` only when the page's hostname is `outliers-extension.vercel.app`, so localhost, Vercel preview URLs and per-deployment URLs send nothing. Cookieless mode is also switched on in the DataFast dashboard, so the site sets no cookies and needs no banner.
 
 Custom goals (created in DataFast on their first event):
-- `install_click`: any **Add to Chrome** button (`StoreButton.astro`), with `location` = `nav`, `hero` or `close`.
+- `install_click`: any **Add to Chrome** button (`StoreButton.astro`), with `location` = `nav` or `hero`.
 - `demo_run`: **Run** in the demo (`lib/analytics.ts` → `demo-client.ts`), with `profile` and `mode`.
 
 The privacy page (§VI) describes what DataFast records. Keep it in step if the setup changes. The extension itself still collects nothing.
@@ -144,7 +144,13 @@ The design thread captures each profile as `snapshot.json`, `thumbs/*.jpg`, `ext
 
    For @benaratame, the snapshot holds the first 60 Reels at 31,822 followers (bar 159,110). The extension read 32,000 (bar 160,000) and found 8 outliers in 102 Reels. 6 are in the snapshot; the other 2 are beyond it.
 
-The date label uses `capturedAtLocal` (the capture's own calendar date), because `capturedAt` may be UTC and fall on the next day. The replay can't scan past its snapshot, so the scan-limit slider stops at the number of Reels captured: the track beyond it is greyed out and a note reads "Snapshot of the 60 most recent Reels".
+   An export from an earlier session can verify a newer snapshot: set `"session": "different"` in `comparison.json`, with `extensionScanned` (Reels the export scanned) and `newSinceExport` (Reels posted since). The test then checks that every exported outlier is still one, with at least its exported views, and that the snapshot's other outliers (`snapshotOnlyBeyondExport`) lay beyond the export's scan.
+
+   For @heyrostyslav, the snapshot holds the 120 most recent Reels on Oct 28, 2026, at 659 followers (bar 3,295), with the profile photo (`snapshot.avatar`; profiles without one show initials). It's checked against the extension's Oct 4 export (69 Reels, 6 outliers at 648 followers): all 6 are still outliers, and the other 3 lay beyond that scan.
+
+The date label uses `capturedAtLocal` (the capture's own calendar date), because `capturedAt` may be UTC and fall on the next day. The scan-limit slider moves over its whole range, like the extension's. A replay can't scan past its snapshot, so a higher limit, or All, ends at the snapshot's last Reel, as a real scan ends at a profile's last Reel; a note under the slider reads "This snapshot holds the 120 most recent Reels".
+
+With a single profile, its card above the demo links to the profile on Instagram, as does the profile header in the replica. With several, the cards switch profiles.
 
 When there's at least one real profile, the demo shows only real profiles. `@sample.studio` stays as the fallback dataset.
 

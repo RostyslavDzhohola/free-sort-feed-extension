@@ -13,12 +13,9 @@ import {
   type FilterMode,
 } from "@outliers/core";
 import type { SnapshotReel } from "../../data/demo/types";
-import { initialsFor } from "../../data/demo/initials";
 import {
   BATCH_SIZE,
-  DEFAULT_SETTINGS,
   activeThreshold,
-  capScanLimit,
   collectBatch,
   emptyState,
   finishScan,
@@ -33,7 +30,7 @@ import {
   updateSettings,
   type ScanState,
 } from "../../lib/demo-engine";
-import { escapeHtml, limitNote, resultRowHtml, tileHtml } from "../../lib/demo-render";
+import { avatarHtml, escapeHtml, limitNote, resultRowHtml, tileHtml } from "../../lib/demo-render";
 import { creditFor, honestyLabel, type CopyProfile } from "../../lib/demo-copy";
 import { trackGoal } from "../../lib/analytics";
 import { prefersReducedMotion } from "../../lib/motion";
@@ -45,6 +42,8 @@ interface DemoProfileData extends CopyProfile {
   followers: number;
   followersText: string;
   assetBase: string;
+  /** Profile photo URL, or null for initials. */
+  avatar: string | null;
   reels: SnapshotReel[];
 }
 
@@ -84,6 +83,7 @@ function mount(root: HTMLElement): void {
   const page = {
     profiles: Array.from(root.querySelectorAll<HTMLButtonElement>("[data-demo-profile]")),
     url: el("data-demo-url"),
+    profileLink: el<HTMLAnchorElement>("data-demo-profile-link"),
     avatar: el("data-demo-avatar"),
     handle: el("data-demo-handle"),
     followers: el("data-demo-followers"),
@@ -109,10 +109,7 @@ function mount(root: HTMLElement): void {
 
   let profile = profiles[0]!;
   let gridIndex = indexByUrl(profile);
-  // The limit the visitor picked (null = All). The replay caps it at the Reels captured for each profile.
-  let requestedLimit: number | null = DEFAULT_SETTINGS.scanLimit;
-  const cappedLimit = (limit: number | null) => capScanLimit(limit, profile.reels.length);
-  let state: ScanState<SnapshotReel> = initialState({ ...DEFAULT_SETTINGS, scanLimit: cappedLimit(requestedLimit) });
+  let state: ScanState<SnapshotReel> = initialState();
   let timer = 0;
   let gridShowsResults = false;
 
@@ -131,7 +128,6 @@ function mount(root: HTMLElement): void {
 
     const note = limitNote(profile.kind, profile.reels.length);
     syncRange(panel.limit, scanLimitToSliderPosition(pending.scanLimit), SCAN_SLIDER_MAX, `${formatScanLimit(pending.scanLimit)}. ${note}`);
-    panel.limit.style.setProperty("--cap", ((scanLimitToSliderPosition(profile.reels.length) / SCAN_SLIDER_MAX) * 100).toFixed(2) + "%");
     panel.limitValue.textContent = formatScanLimit(pending.scanLimit);
     panel.limitNote.textContent = note;
     panel.limit.disabled = scanning;
@@ -211,7 +207,8 @@ function mount(root: HTMLElement): void {
 
   function renderProfile(): void {
     page.url.textContent = profile.handle;
-    page.avatar.textContent = initialsFor(profile.handle);
+    page.profileLink.href = `https://www.instagram.com/${profile.handle}/`;
+    page.avatar.innerHTML = avatarHtml(profile.handle, profile.avatar);
     page.handle.textContent = profile.handle;
     page.followers.textContent = profile.followersText + " followers";
     page.honesty.textContent = honestyLabel(profile);
@@ -306,7 +303,7 @@ function mount(root: HTMLElement): void {
     window.clearTimeout(timer);
     profile = next;
     gridIndex = indexByUrl(profile);
-    state = updateSettings(resetScan(state), { scanLimit: cappedLimit(requestedLimit) });
+    state = resetScan(state);
     gridShowsResults = true; // force a fresh grid
     renderProfile();
     render();
@@ -322,12 +319,10 @@ function mount(root: HTMLElement): void {
   }
 
   panel.limit.addEventListener("input", () => {
-    const capPosition = scanLimitToSliderPosition(profile.reels.length);
-    const position = Math.min(Number(panel.limit.value), capPosition);
-    requestedLimit = sliderPositionToScanLimit(Number(panel.limit.value));
-    state = updateSettings(state, { scanLimit: cappedLimit(requestedLimit) });
+    const position = Number(panel.limit.value);
+    state = updateSettings(state, { scanLimit: sliderPositionToScanLimit(position) });
     render();
-    panel.limit.value = String(position); // let the thumb follow the pointer up to the cap; it snaps on release
+    panel.limit.value = String(position); // let the thumb follow the pointer; it snaps on release
     setFill(panel.limit, position, SCAN_SLIDER_MAX);
   });
   panel.limit.addEventListener("change", () => render());
@@ -339,7 +334,7 @@ function mount(root: HTMLElement): void {
     setFill(panel.minViews, position, MIN_VIEWS_SLIDER_MAX);
   });
   panel.minViews.addEventListener("change", () => render());
-  stepByValue(panel.limit, (position) => cappedLimit(sliderPositionToScanLimit(position)), () => state.pending.scanLimit);
+  stepByValue(panel.limit, sliderPositionToScanLimit, () => state.pending.scanLimit);
   stepByValue(panel.minViews, sliderPositionToMinViews, () => state.pending.minViews);
 
   wireRadioGroup(panel.modes, (button) => setMode(button.dataset.panelMode as FilterMode));

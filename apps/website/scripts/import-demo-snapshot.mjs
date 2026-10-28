@@ -1,9 +1,11 @@
 // Imports one captured demo profile (DESIGN-SPEC §6.4) into the site:
 //   pnpm --filter @outliers/website demo:import <capture-dir>
-// <capture-dir> holds snapshot.json, thumbs/<shortcode>.jpg, extension-5x.csv and (optionally) comparison.json.
+// <capture-dir> holds snapshot.json, thumbs/<shortcode>.jpg, extension-5x.csv and (optionally) comparison.json
+// and the profile photo named by snapshot.avatar.
 //
 // - snapshot.json, extension-5x.csv, comparison.json → src/data/demo/<handle>/
-// - thumbs → public/demo/<handle>/thumbs/<shortcode>.webp (WebP q82; thumb paths in the JSON are rewritten)
+// - thumbs → public/demo/<handle>/thumbs/<shortcode>.webp (360 px wide, WebP q82; thumb paths in the JSON are rewritten)
+// - snapshot.avatar → public/demo/<handle>/avatar.webp (96 px)
 // It doesn't touch profiles.json: add the profile there yourself, with the right permission.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -24,7 +26,7 @@ if (!existsSync(join(source, "extension-5x.csv"))) throw new Error("extension-5x
 
 const dataDir = join(site, "src/data/demo", handle);
 const thumbDir = join(site, "public/demo", handle, "thumbs");
-rmSync(thumbDir, { recursive: true, force: true });
+rmSync(join(site, "public/demo", handle), { recursive: true, force: true });
 mkdirSync(dataDir, { recursive: true });
 mkdirSync(thumbDir, { recursive: true });
 
@@ -34,10 +36,15 @@ for (const reel of snapshot.reels) {
   if (!reel.thumb) throw new Error(`${reel.shortcode} has no thumbnail`);
   const input = join(source, reel.thumb);
   const output = `thumbs/${reel.shortcode}.webp`;
-  await sharp(input).webp({ quality: 82, effort: 6 }).toFile(join(site, "public/demo", handle, output));
+  await sharp(input).resize({ width: 360, withoutEnlargement: true }).webp({ quality: 82, effort: 6 }).toFile(join(site, "public/demo", handle, output));
   before += statSync(input).size;
   after += statSync(join(site, "public/demo", handle, output)).size;
   reel.thumb = output;
+}
+
+if (snapshot.avatar) {
+  await sharp(join(source, snapshot.avatar)).resize(96, 96).webp({ quality: 82 }).toFile(join(site, "public/demo", handle, "avatar.webp"));
+  snapshot.avatar = "avatar.webp";
 }
 
 writeFileSync(join(dataDir, "snapshot.json"), JSON.stringify(snapshot, null, 2) + "\n");

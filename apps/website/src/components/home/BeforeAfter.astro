@@ -3,8 +3,7 @@
 // Both grids are rendered here; the island only moves the divider.
 import { findOutliers } from "@outliers/core";
 import { heroProfile } from "../../data/demo/profiles";
-import { initialsFor } from "../../data/demo/initials";
-import { tileHtml } from "../../lib/demo-render";
+import { avatarHtml, tileHtml } from "../../lib/demo-render";
 import "../../styles/tiles.css";
 import "./before-after.css";
 
@@ -28,7 +27,7 @@ const sourceNote = kind === "sample" ? "sample data from a fictional profile" : 
   <div class="ba" data-ba style="--pos: 50%">
     <div class="ba-layer ba-before" aria-hidden="true">
       <div class="ig-head">
-        <span class="ig-av">{initialsFor(snapshot.handle)}</span>
+        <span class="ig-av" set:html={avatarHtml(snapshot.handle, snapshot.avatar ? assetBase + snapshot.avatar : null)} />
         <div><b>{snapshot.handle}</b><small>{snapshot.followersText} followers</small></div>
       </div>
       <div class="ig-tabs"><span>Posts</span><span class="on">Reels</span><span>Tagged</span></div>

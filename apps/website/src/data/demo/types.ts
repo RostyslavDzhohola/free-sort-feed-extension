@@ -21,6 +21,8 @@ export interface Snapshot {
   /** The same moment in the capture's local time zone. Its calendar date is the one shown on the site. */
   capturedAtLocal?: string;
   reelCount: number;
+  /** Profile photo path relative to public/demo/<handle>/ (e.g. "avatar.webp"). Without one, the demo shows initials. */
+  avatar?: string;
   reels: SnapshotReel[];
   /** Capture notes from the design thread. Not shown on the site. */
   notes?: string[];

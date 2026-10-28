@@ -3,6 +3,7 @@
    (data/covers.ts) instead. */
 .ig-head { display: flex; align-items: center; gap: 10px; padding: 2px 4px 10px; font-family: var(--sans); }
 .ig-av { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; color: #fff; background: var(--ink); font: 600 12px/1 var(--sans); box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--orange-bright); }
+.ig-av img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .ig-head b { display: block; font-size: 14px; line-height: 1.2; }
 .ig-head small { font-size: 12px; color: #737373; }
 .ig-tabs { display: flex; justify-content: center; gap: 28px; border-top: 1px solid #ececec; margin-bottom: 6px; font: 600 10px/1 var(--sans); letter-spacing: 0.1em; text-transform: uppercase; color: #737373; }

@@ -1,5 +1,6 @@
 // Validates every demo snapshot, and checks each real one against the extension's own CSV export:
-// the 5× set computed by @outliers/core must equal extension-5x.csv (DESIGN-SPEC §6.4).
+// the 5× set computed by @outliers/core must equal extension-5x.csv (DESIGN-SPEC §6.4). When the export
+// comes from an earlier session (comparison.json "session": "different"), views may have grown since.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -63,6 +64,7 @@ for (const entry of entries) {
         assert.ok(existsSync(new URL(`${entry.handle}/${r.thumb}`, publicDir)), `missing public/demo/${entry.handle}/${r.thumb}`);
       }
     }
+    if (s.avatar) assert.ok(existsSync(new URL(`${entry.handle}/${s.avatar}`, publicDir)), `missing public/demo/${entry.handle}/${s.avatar}`);
   });
 
   if (entry.kind === "real") {
@@ -77,6 +79,26 @@ for (const entry of entries) {
       const computed = core.findOutliers(s.reels, { mode: "ratio5x", followers: s.followers }).outliers;
       const csvByUrl = new Map(csv.map((row) => [row.url, row]));
       for (const row of csv) assert.equal(row.filter_mode, "ratio5x");
+      const comparisonUrl = new URL(`${entry.handle}/comparison.json`, dataDir);
+      const comparison = existsSync(comparisonUrl) ? JSON.parse(readFileSync(comparisonUrl, "utf8")) : {};
+
+      if (comparison.session === "different") {
+        // Every exported outlier is still one here, with at least the views it had then.
+        const computedUrls = new Set(computed.map((r) => r.url));
+        for (const row of csv) {
+          assert.ok(inSnapshot.has(row.url), `${row.url} from the export is missing from the snapshot`);
+          assert.ok(computedUrls.has(row.url), `${row.url} was an outlier in the export but isn't here`);
+          assert.ok(inSnapshot.get(row.url).views >= Number(row.views), `${row.url} lost views since the export`);
+        }
+        // The other outliers were beyond the export's scan: grid position then = position now − Reels posted since.
+        const extra = computed.filter((r) => !csvByUrl.has(r.url));
+        assert.deepEqual(extra.map((r) => r.url), (comparison.snapshotOnlyBeyondExport ?? []).map((row) => row.url));
+        const position = new Map(s.reels.map((r, i) => [r.url, i]));
+        for (const reel of extra) {
+          assert.ok(position.get(reel.url) - comparison.newSinceExport >= comparison.extensionScanned, `${reel.url} was within the export's scan`);
+        }
+        return;
+      }
 
       // Every computed outlier is in the export, with the same views.
       for (const reel of computed) {
@@ -89,11 +111,7 @@ for (const entry of entries) {
 
       // The rest of the export lies beyond the snapshot, as the capture's comparison.json records.
       const csvOnly = csv.filter((row) => !inSnapshot.has(row.url)).map((row) => row.url);
-      const comparisonUrl = new URL(`${entry.handle}/comparison.json`, dataDir);
-      if (existsSync(comparisonUrl)) {
-        const comparison = JSON.parse(readFileSync(comparisonUrl, "utf8"));
-        assert.deepEqual(csvOnly, (comparison.csvOnlyBeyondSnapshot ?? []).map((row) => row.url));
-      }
+      if (existsSync(comparisonUrl)) assert.deepEqual(csvOnly, (comparison.csvOnlyBeyondSnapshot ?? []).map((row) => row.url));
 
       // The export's multiples imply the follower count the extension read. Same set under that bar too,
       // i.e. no Reel in the snapshot falls between the two bars.

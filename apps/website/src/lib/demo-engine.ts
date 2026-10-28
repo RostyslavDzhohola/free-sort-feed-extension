@@ -2,6 +2,7 @@
 //
 // It mirrors how the v1.0.7 side panel behaves (the scan is unchanged in v1.0.8):
 // - idle → Run → scanning → (Stop | limit reached | grid exhausted) → done → Reset → idle
+//   (a limit above the snapshot's Reels, or All, ends when the grid runs out, as on a profile's last Reel);
 // - the extension collects whole batches of visible tiles before it checks the scan limit,
 //   so a very small limit can collect a few extra Reels (the FAQ says so);
 // - settings changed after a scan don't touch its results: they apply on the next Run, after Reset.
@@ -54,11 +55,6 @@ function analyze<T extends ReelLike>(reels: readonly T[], followers: number, set
 export function startScan<T extends ReelLike>(state: ScanState<T>, reels: readonly T[], followers: number): ScanState<T> {
   if (state.phase !== "idle") return state;
   return { ...state, phase: "scanning", applied: state.pending, collected: 0, result: analyze(reels, followers, state.pending, 0) };
-}
-
-/** A replay can't scan past its snapshot: All, or any limit above the Reels captured, becomes that count. */
-export function capScanLimit(limit: number | null, captured: number): number {
-  return limit === null || limit > captured ? captured : limit;
 }
 
 export function isComplete(collected: number, settings: ScanSettings, total: number): boolean {
