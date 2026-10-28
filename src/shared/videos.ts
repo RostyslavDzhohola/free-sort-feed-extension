@@ -216,20 +216,23 @@ export function formatMetricValue(key: SortKey, value: number | null): string {
   }
 }
 
-/** The metric with its unit, e.g. "1.2K comments", "4.1% engagement", "posted Oct 3, 2026". */
+/** The metric with its unit, e.g. "1.2K comments", "1 share", "4.1% engagement", "posted Oct 3, 2026". */
 export function formatMetricPhrase(key: SortKey, value: number | null): string {
   const shown = formatMetricValue(key, value);
+  const unit = function (singular: string): string {
+    return shown + " " + singular + (value === 1 ? "" : "s");
+  };
   switch (key) {
     case "views":
-      return shown + " views";
+      return unit("view");
     case "likes":
-      return value === null ? "likes hidden" : shown + " likes";
+      return value === null ? "likes hidden" : unit("like");
     case "comments":
-      return shown + " comments";
+      return unit("comment");
     case "shares":
-      return shown + " shares";
+      return unit("share");
     case "saves":
-      return shown + " saves";
+      return unit("save");
     case "engagement":
       return shown + " engagement";
     case "multiple":

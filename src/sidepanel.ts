@@ -132,6 +132,8 @@ let currentPlatform: Platform | null = null;
 let latestProfileInfo: ProfileInfo | null = null;
 let hasTikTokAccess = false;
 let viewPushTimer: number | null = null;
+// Reset reloads the page; its "Waiting for page reload…" note clears once the profile is back.
+let awaitingResetReload = false;
 let activePanelView: "outliers" | "saved" = "outliers";
 let helpTooltipOpen = false;
 let reviewPromptState: ReviewPromptState = createDefaultReviewPromptState();
@@ -1378,7 +1380,7 @@ function formatOutlierLine(reel: OutliersEntry, rank: number, state: OutliersSta
     if (value !== null) parts.push(formatMetricPhrase(key, value));
   }
   const multiple = viewsMultiple(reel, state.followers);
-  if (multiple !== null && sortKey !== "multiple") parts.push(multiple.toFixed(1) + "x");
+  if (multiple !== null && sortKey !== "multiple") parts.push(formatMultiple(multiple));
   return parts.join(" | ");
 }
 
@@ -1827,7 +1829,7 @@ async function buildStoryCardBlob(state: OutliersState): Promise<StoryCardBuildR
 
     ctx.fillStyle = "#fcd9a8";
     ctx.font = "800 30px " + FONT;
-    ctx.fillText("Top " + top.length + " by " + sortLabel(sortKey).toLowerCase(), 72, 205);
+    ctx.fillText(storyHeading(sortKey, state.sortDir ?? "desc", top.length), 72, 205);
 
     const cardX = 70;
     const cardW = 940;
@@ -1924,6 +1926,15 @@ async function buildStoryCardBlob(state: OutliersState): Promise<StoryCardBuildR
       thumbnails[i]?.close();
     }
   }
+}
+
+// "Top 5 by views", or "Lowest 5 by views" when the list runs lowest first.
+function storyHeading(key: SortKey, dir: SortDir, count: number): string {
+  let lead: string;
+  if (key === "date") lead = dir === "desc" ? "Newest" : "Oldest";
+  else if (key === "duration") lead = dir === "desc" ? "Longest" : "Shortest";
+  else lead = dir === "desc" ? "Top" : "Lowest";
+  return lead + " " + count + " by " + sortLabel(key).toLowerCase();
 }
 
 async function showStoryCardPreview(state: OutliersState): Promise<void> {
@@ -2453,6 +2464,11 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
   if (isStale()) return;
 
   if (info && info.headerMatches && info.handle === ref.handle) {
+    if (awaitingResetReload) {
+      awaitingResetReload = false;
+      statusEl.textContent = "";
+      statusEl.className = "status-msg";
+    }
     latestProfileInfo = info;
     latestFollowers = info.followers;
     if (profileWaitStartedAt == null) profileWaitStartedAt = Date.now();
@@ -2987,6 +3003,7 @@ resetBtn.addEventListener("click", async function () {
   currentRenderedState = null;
   latestFollowers = null;
   statusEl.textContent = "Waiting for page reload…";
+  awaitingResetReload = true;
   showLoading();
   // The reload fires tabs.onUpdated, and the poll rehydrates once the page is back.
   profileReady = false;

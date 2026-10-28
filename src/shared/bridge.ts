@@ -3,7 +3,9 @@
 // side panel. They meet on DOM events, which both worlds share. Event details cross the
 // world boundary only as primitives, so the response is a JSON string.
 
-export const BRIDGE_VERSION = "1.1.0";
+// Bump with any bridge change: an open tab keeps the first bridge it was given, and a newer
+// one registers beside it so the scanner hears the newest answer last.
+export const BRIDGE_VERSION = "1.1.0.2";
 export const METRICS_REQUEST_EVENT = "outliers:metrics-request";
 export const METRICS_RESPONSE_EVENT = "outliers:metrics-response";
 
@@ -17,6 +19,8 @@ export interface PageMetrics {
   postedAt: number | null;
   durationSec: number | null;
   likesHidden: boolean;
+  /** The cover the page loaded for the video, when it has one (TikTok). */
+  thumbnailUrl?: string | null;
 }
 
 /** Keyed by Instagram shortcode or TikTok video id. */

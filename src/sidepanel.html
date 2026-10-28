@@ -699,6 +699,7 @@
       letter-spacing: 0.01em;
     }
     .filter-mode-label {
+      display: block;
       margin-bottom: 10px;
     }
     .value-pill {
@@ -1474,8 +1475,8 @@
     </div>
 
     <div id="filter-mode-area">
-      <label class="filter-mode-label">Show</label>
-      <div class="filter-mode-buttons" role="group" aria-label="Which videos to show">
+      <span class="filter-mode-label" id="show-label">Show</span>
+      <div class="filter-mode-buttons" role="group" aria-labelledby="show-label">
         <button id="mode-ratio-btn" class="filter-mode-btn active" data-mode="ratio5x" title="Videos with 5× more views than the profile has followers">5× Outliers</button>
         <button id="mode-min-views-btn" class="filter-mode-btn" data-mode="minViews" title="Videos over a view count you choose">Min Views</button>
         <button id="mode-all-btn" class="filter-mode-btn" data-mode="all" title="Every scanned video, sorted">All</button>

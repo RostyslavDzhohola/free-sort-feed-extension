@@ -77,6 +77,8 @@ test("formats metric phrases", async () => {
   const { formatMetricPhrase, formatPercent, formatDuration } = await load();
   assert.equal(formatMetricPhrase("comments", 1_234), "1.2K comments");
   assert.equal(formatMetricPhrase("likes", null), "likes hidden");
+  assert.equal(formatMetricPhrase("shares", 1), "1 share");
+  assert.equal(formatMetricPhrase("views", 0), "0 views");
   assert.equal(formatMetricPhrase("multiple", 12.44), "12.4× followers");
   assert.equal(formatMetricPhrase("engagement", 0.0412), "4.1% engagement");
   assert.equal(formatPercent(0.0005), "0.05%");

@@ -138,22 +138,25 @@ function init(): void {
     return firstUrl || null;
   }
 
+  // Lazy grids hold data: placeholders until a tile scrolls into view; only real image URLs count.
+  function realUrl(url: string | null | undefined): string | null {
+    const trimmed = (url ?? "").trim();
+    return /^https?:\/\//i.test(trimmed) ? trimmed : null;
+  }
+
   function readThumbnailUrl(root: Element): string | null {
     const img = root.querySelector("img") as HTMLImageElement | null;
     if (img) {
-      const current = (img.currentSrc ?? "").trim();
-      if (current) return current;
-      const src = (img.getAttribute("src") ?? "").trim();
-      if (src) return src;
-      const fromSrcset = pickFirstSrcsetUrl(img.getAttribute("srcset"));
-      if (fromSrcset) return fromSrcset;
+      const found = realUrl(img.currentSrc) ?? realUrl(img.getAttribute("src")) ?? realUrl(pickFirstSrcsetUrl(img.getAttribute("srcset")));
+      if (found) return found;
     }
     // Instagram's Reels grid paints the cover as a background image.
     const painted = root.querySelectorAll('[style*="background-image"]');
     for (let i = 0; i < painted.length; i++) {
       const bg = (painted[i] as HTMLElement).style.backgroundImage;
       const m = bg.match(/url\((['"]?)(.*?)\1\)/i);
-      if (m && m[2]) return m[2];
+      const found = realUrl(m?.[2]);
+      if (found) return found;
     }
     return null;
   }
@@ -457,6 +460,7 @@ function init(): void {
       if (m.saves != null) video.saves = m.saves;
       if (m.postedAt != null) video.postedAt = m.postedAt;
       if (m.durationSec != null) video.durationSec = m.durationSec;
+      if (m.thumbnailUrl) video.thumbnailUrl = m.thumbnailUrl;
     });
   }
 
@@ -538,8 +542,9 @@ function init(): void {
       R + " .outliers-card-shade { position: absolute; inset: 0; z-index: -1; background: linear-gradient(to bottom, rgba(0,0,0,0.42) 0, rgba(0,0,0,0) 26%, rgba(0,0,0,0) 48%, rgba(0,0,0,0.82) 100%); }",
       R + " .outliers-card-rank { position: absolute; top: 8px; left: 8px; padding: 3px 9px; border-radius: 999px; background: #950acc; font-size: 13px; font-weight: 800; }",
       R + " .outliers-card-multiple { position: absolute; top: 8px; right: 8px; padding: 3px 9px; border-radius: 999px; background: #f99b21; color: #2b1943; font-size: 13px; font-weight: 800; }",
-      R + " .outliers-card-primary { position: absolute; left: 10px; right: 10px; bottom: 34px; font-size: 18px; font-weight: 800; line-height: 1.15; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }",
-      R + " .outliers-card-stats { position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12.5px; font-weight: 700; }",
+      R + " .outliers-card-info { position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; flex-direction: column; gap: 5px; }",
+      R + " .outliers-card-primary { font-size: 18px; font-weight: 800; line-height: 1.15; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }",
+      R + " .outliers-card-stats { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12.5px; font-weight: 700; line-height: 1.2; }",
       R + " .outliers-card-stat { display: inline-flex; align-items: center; gap: 3px; opacity: 0.92; }",
       R + " .outliers-card-stat.active { color: #ffd08a; opacity: 1; }",
       R + " .outliers-card-stat svg { width: 13px; height: 13px; flex: 0 0 auto; }",
@@ -716,10 +721,12 @@ function init(): void {
       card.appendChild(multEl);
     }
 
+    const info = document.createElement("div");
+    info.className = "outliers-card-info";
     const primary = document.createElement("div");
     primary.className = "outliers-card-primary";
     primary.textContent = formatMetricPhrase(sortKey, metricValue(entry, sortKey, f));
-    card.appendChild(primary);
+    info.appendChild(primary);
 
     const stats = document.createElement("div");
     stats.className = "outliers-card-stats";
@@ -730,7 +737,8 @@ function init(): void {
       stats.appendChild(statEl("shares", entry.shares, sortKey === "shares"));
       stats.appendChild(statEl("saves", entry.saves, sortKey === "saves"));
     }
-    card.appendChild(stats);
+    info.appendChild(stats);
+    card.appendChild(info);
 
     card.setAttribute("aria-label", "#" + rank + ", " + primary.textContent);
 

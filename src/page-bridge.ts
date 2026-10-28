@@ -100,7 +100,7 @@ interface TikTokItem {
   stats?: Record<string, unknown>;
   statsV2?: Record<string, unknown>;
   createTime?: unknown;
-  video?: { duration?: unknown };
+  video?: { duration?: unknown; cover?: unknown; originCover?: unknown };
 }
 
 function findTikTokItem(tile: Element): TikTokItem | null {
@@ -120,6 +120,10 @@ function findTikTokItem(tile: Element): TikTokItem | null {
     if (fiber.child) stack.push(fiber.child);
   }
   return null;
+}
+
+function coverUrl(raw: unknown): string | null {
+  return typeof raw === "string" && /^https:\/\//i.test(raw) ? raw : null;
 }
 
 function readTikTokMetrics(): PageMetricsMap {
@@ -142,6 +146,8 @@ function readTikTokMetrics(): PageMetricsMap {
       postedAt: toCount(item.createTime),
       durationSec: toCount(item.video?.duration) || null,
       likesHidden: false,
+      // Tiles off screen show a placeholder until they load; the item always has its cover.
+      thumbnailUrl: coverUrl(item.video?.cover) ?? coverUrl(item.video?.originCover),
     };
     out[String(item.id)] = metrics;
   }
