@@ -2916,6 +2916,12 @@ runBtn.addEventListener("click", async function () {
 
     const limit = getScanLimitFromUI();
     const view = currentView();
+    // The scan belongs to this document and profile; a navigation mid-startup abandons it.
+    const epoch = documentEpoch;
+    const expected = lastKnownProfileRef;
+    const stillHere = function (): boolean {
+      return isStillBound(tabId, generation) && epoch === documentEpoch;
+    };
 
     saveFilterMode(view.filterMode);
     if (view.filterMode === "minViews") saveMinViews(view.minViews);
@@ -2923,38 +2929,58 @@ runBtn.addEventListener("click", async function () {
 
     statusEl.textContent = "Starting scan…";
 
+    // Read the profile again right before seeding the scanner, so the follower count it gets
+    // belongs to the page it will scroll, not to one the tab showed a moment ago.
+    const fresh = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      func: readProfileInfo,
+    });
+    if (!stillHere()) return;
+    const info = (fresh?.[0]?.result as ProfileInfo | null | undefined) ?? null;
+    if (!info || !info.headerMatches || !info.onScanTab || !expected
+      || info.platform !== expected.platform || info.handle !== expected.handle) {
+      profileReady = false;
+      statusEl.textContent = "The page changed. Wait for the profile to load, then run the scan again.";
+      statusEl.className = "status-msg error";
+      setButtonsForIdle();
+      return;
+    }
+
     // The bridge runs in the page's own world to read exact counts; it only answers the scanner.
     await chrome.scripting.executeScript({
       target: { tabId },
       world: "MAIN",
       files: ["page-bridge.js"],
     });
-    if (!isStillBound(tabId, generation)) return;
+    if (!stillHere()) return;
 
     await chrome.scripting.executeScript({
       target: { tabId },
-      func: (function (l: number | null, v: ViewSettings, f: number | null) {
+      func: (function (l: number | null, v: ViewSettings, p: { handle: string; followers: number | null }) {
         const w = window as unknown as {
           __outliers_scan_limit: number | null | undefined;
           __outliers_view: ViewSettings | undefined;
-          __outliers_followers: number | null | undefined;
+          __outliers_profile: { handle: string; followers: number | null } | undefined;
         };
         w.__outliers_scan_limit = l;
         w.__outliers_view = v;
-        w.__outliers_followers = f;
+        w.__outliers_profile = p;
       }) as unknown as () => void,
-      args: [limit, view, latestFollowers],
+      args: [limit, view, { handle: info.handle, followers: info.followers }],
     });
-    if (!isStillBound(tabId, generation)) return;
+    if (!stillHere()) return;
 
     await chrome.scripting.executeScript({
       target: { tabId },
       files: ["injected.js"],
     });
-    if (!isStillBound(tabId, generation)) return;
+    if (!stillHere()) return;
 
     setButtonsForScanning();
     statusEl.textContent = "";
+    // Show or Sort may have changed while the scanner was starting; hand it the latest.
+    if (JSON.stringify(currentView()) !== JSON.stringify(view)) schedulePushView();
   } catch (err: unknown) {
     if (generation !== bindGeneration) return;
     const message = err instanceof Error ? err.message : "Something went wrong.";

@@ -10,7 +10,8 @@ declare global {
     __outliers_apply_view: ((view: ViewSettings) => void) | undefined;
     __outliers_scan_limit: number | null | undefined;
     __outliers_view: ViewSettings | undefined;
-    __outliers_followers: number | null | undefined;
+    /** The profile the panel read just before Run; its count applies only to that handle. */
+    __outliers_profile: { handle: string; followers: number | null } | undefined;
     __outliers_state: OutliersState | undefined;
     __outliers_bridge: string | undefined;
   }

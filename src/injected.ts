@@ -71,7 +71,6 @@ function init(): void {
 
   const SCAN_LIMIT: number | null = window.__outliers_scan_limit ?? null;
   let view: ViewSettings = normalizeView(window.__outliers_view);
-  let followers: number | null = positiveOrNull(window.__outliers_followers);
 
   const SCROLL_STEP_PX = 600;
   const SCROLL_WAIT_MS = 800;
@@ -86,6 +85,10 @@ function init(): void {
     : createInstagramAdapter();
   const NOUN = videoNoun(adapter.platform);
   const PROFILE_HANDLE = readProfileInfo()?.handle ?? null;
+  // The panel's exact count is trusted only for the profile this page is on; otherwise the
+  // scanner reads the header itself.
+  const seeded = window.__outliers_profile;
+  let followers: number | null = seeded && seeded.handle === PROFILE_HANDLE ? positiveOrNull(seeded.followers) : null;
 
   let _interactionBlocker: ((ev: Event) => void) | null = null;
 
