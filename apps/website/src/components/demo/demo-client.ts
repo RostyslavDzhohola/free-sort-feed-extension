@@ -35,6 +35,7 @@ import {
 } from "../../lib/demo-engine";
 import { escapeHtml, limitNote, resultRowHtml, tileHtml } from "../../lib/demo-render";
 import { creditFor, honestyLabel, type CopyProfile } from "../../lib/demo-copy";
+import { trackGoal } from "../../lib/analytics";
 import { prefersReducedMotion } from "../../lib/motion";
 import { stepByValue } from "../../lib/range-keys";
 import { PANEL_HOOKS } from "../panel/types";
@@ -271,6 +272,7 @@ function mount(root: HTMLElement): void {
   function run(): void {
     if (state.phase !== "idle") return;
     state = startScan(state, profile.reels, profile.followers);
+    trackGoal("demo_run", { profile: profile.handle, mode: state.applied.mode });
     setStatus("");
     announce(`Scanning @${profile.handle}'s Reels.`);
     if (reduced) {

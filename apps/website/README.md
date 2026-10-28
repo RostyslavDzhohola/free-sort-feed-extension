@@ -1,6 +1,8 @@
 # Outliers website
 
-The marketing site for the Outliers Chrome extension, direction C ("Field Notes"). It's a static [Astro](https://astro.build) site with small vanilla-TypeScript islands. There's no UI framework, no analytics and no third-party scripts.
+The marketing site for the Outliers Chrome extension, direction C ("Field Notes"). It's a static [Astro](https://astro.build) site with small vanilla-TypeScript islands. There's no UI framework, and the only third-party script is [DataFast](https://datafa.st)'s cookieless analytics.
+
+Live at **https://outliers-extension.vercel.app** (Vercel project `outliers-extension`).
 
 The source of truth for design is `DESIGN-SPEC.md` in the design worktree (direction C). Its §0 (Revision 2) and §6.4 (the demo) override older sections. Copy must match how the extension really behaves (§2 guardrails), so check `apps/extension/src` before changing any claim.
 
@@ -25,39 +27,68 @@ pnpm --filter @outliers/website test        # builds, then checks dist/, the dem
 
 Astro's CLI telemetry is turned off in every script (`ASTRO_TELEMETRY_DISABLED=1`).
 
-## Site URL and launch switch
+## Site URL, launch switch and flags
 
-The domain isn't decided yet, so nothing hard-codes it. The settings live in [`site.config.mjs`](./site.config.mjs):
+The settings live in [`site.config.mjs`](./site.config.mjs):
 
 | Setting | Default | Effect |
 | --- | --- | --- |
-| `SITE_URL` | `https://outliers.example` (reserved placeholder) | Canonical URLs, `og:url`/`og:image`, `sitemap-index.xml`, and the `Sitemap:` line in `robots.txt`. |
-| `SITE_INDEXABLE` | `false` | While false, every page ships `<meta name="robots" content="noindex, nofollow">`. Set it to true only after the owner approves launch. The 404 page is always noindex. |
+| `SITE_URL` | `https://outliers-extension.vercel.app` | Canonical URLs, `og:url`/`og:image`, `sitemap-index.xml`, and the `Sitemap:` line in `robots.txt`. |
+| `SITE_INDEXABLE` | `true` (launched) | Set `SITE_INDEXABLE=false` for a build that must stay out of search: every page then ships `<meta name="robots" content="noindex, nofollow">`. The 404 page is always noindex. |
+| `DATAFAST` | on | The DataFast website id and domain. `DATAFAST=false` builds without the script. |
+| `RELEASE_1_1` | `false` | Turns on the Outliers 1.1 copy (sort by any metric, simple sort, TikTok) and replaces the "Coming soon" line. Flip it only once 1.1 is live in the Chrome Web Store. |
+| `PROMO_VIDEO` | `null` | A video URL under `public/` (e.g. `/promo/outliers-1.1.mp4`), shown at the top of Features when `RELEASE_1_1` is on. |
 | `SHOW_PENDING_DEMO_PROFILES` | `false` | Includes demo profiles whose permission is `"pending"` in a build. Use it only for a local preview. `astro dev` always shows them. |
 
 Change the defaults in that file, or override them per build:
 
 ```bash
-SITE_URL=https://your-domain.example SITE_INDEXABLE=true pnpm build:web
+SITE_INDEXABLE=false DATAFAST=false pnpm build:web
 ```
 
-`robots.txt` always allows crawling, so crawlers can see the noindex tag. Blocking crawlers would hide it.
+`robots.txt` always allows crawling, so crawlers can see a noindex tag. Blocking crawlers would hide it.
+
+### Shipping 1.1
+
+When 1.1 is approved and live in the store: drop the promo video into `public/promo/`, set `RELEASE_1_1 = true` and `PROMO_VIDEO` in `site.config.mjs`, check the 1.1 copy in `components/home/Features.astro` and `data/faq.ts` against the released extension, then redeploy.
+
+## Analytics (DataFast)
+
+`layouts/Base.astro` loads `https://datafa.st/js/script.cookieless.js` in production builds only, after a small inline queue (`#datafast-queue`) that keeps goals sent before the script loads. Cookieless mode is also switched on in the DataFast dashboard, so the site sets no cookies and needs no banner. DataFast counts only `outliers-extension.vercel.app`: localhost and Vercel preview URLs send nothing.
+
+Custom goals (created in DataFast on their first event):
+- `install_click`: any **Add to Chrome** button (`StoreButton.astro`), with `location` = `nav`, `hero` or `close`.
+- `demo_run`: **Run** in the demo (`lib/analytics.ts` → `demo-client.ts`), with `profile` and `mode`.
+
+The privacy page (§VI) describes what DataFast records. Keep it in step if the setup changes. The extension itself still collects nothing.
+
+## Deploy (Vercel)
+
+The Vercel project `outliers-extension` builds from this monorepo with **Root Directory** `apps/website`. [`vercel.json`](./vercel.json) sets the install and build commands, the `dist` output, trailing slashes and cache headers. The project has `ENABLE_EXPERIMENTAL_COREPACK=1`, so Vercel uses the repo's pinned pnpm. Deploy from the repo root:
+
+```bash
+vercel deploy          # preview
+vercel deploy --prod   # https://outliers-extension.vercel.app
+```
+
+The project isn't connected to Git yet, so pushes don't deploy on their own.
 
 ## Layout
 
 ```
-site.config.mjs              SITE_URL, launch switch, pending-profile switch
+site.config.mjs              SITE_URL, launch switch, DataFast, 1.1 flag, pending-profile switch
+vercel.json                  Vercel build settings (project root: apps/website)
 astro.config.mjs             static output, sitemap, dev server port 4321, pending-profile pruning
 integrations/                prune-pending-demo.mjs (drops pending profiles' thumbnails from dist/)
 og/                          template + script that renders public/og-image.png
 public/                      favicon, og-image.png, font licences, demo/<handle>/thumbs/
 src/
-  config/site.ts             name, title, store URL, nav anchors, footer links (one place)
+  config/site.ts             name, title, store and repo URLs, nav anchors, footer links (one place)
   data/demo/                 demo profiles: profiles.json + <handle>/snapshot.json (+ extension-5x.csv)
   data/faq.ts                home FAQ (verbatim from the prototype), support diagnostics, known limits
   lib/demo-engine.ts         the scan replay as a pure state machine (tested)
   lib/demo-render.ts         Reel tile and result-row HTML, shared by server and island
-  lib/compare.ts             5× vs Min Views maths for the account-size comparison
+  lib/analytics.ts           DataFast custom goals
   layouts/                   Base.astro (<head>, masthead, footer), Doc.astro (privacy/support/404)
   components/home/*          home page sections
   components/demo/*          chapter I, the scan replay (Demo.astro + demo-client.ts)
@@ -67,20 +98,19 @@ src/
   styles/                    global tokens/base, tiles (Reel grid), document pages
 ```
 
-Home page order (§0.6): Hero → I. Demo → II. Setup → III. Setting the bar → IV. Ways to use it → Privacy → V. FAQ → closing CTA → footer. The nav links are Demo · Setup · Setting the bar · FAQ (`sectionLinks` in `config/site.ts`).
+Home page order: Hero → I. Demo → II. Features → III. Setup → Privacy → IV. FAQ → closing CTA (with the owner's portfolio, GitHub, X and Instagram) → footer. The nav links are Demo · Features · Setup · FAQ (`sectionLinks` in `config/site.ts`). Features replaced the earlier "Setting the bar" and "Ways to use it" chapters to keep the page short.
 
 Shared extension logic comes from [`@outliers/core`](../../packages/core): `formatCount`, the 5× rule, slider curves, the CSV layout and the empty-state copy. Its tests check it against the extension source.
 
 The islands are plain `<script>` modules next to their markup:
 - `BeforeAfter.astro`: the before/after compare (§6.1).
-- `AccountCompare.astro`: the account-size comparison (§6.2).
 - `demo/demo-client.ts`: the scan replay (§6.4).
 
 Every initial state is rendered on the server, so the page reads correctly without JavaScript and nothing shifts on load.
 
 ## The demo: a replay of a real snapshot
 
-A website can't scan Instagram for a visitor. Cross-origin reads are blocked, there's a login wall and Instagram's terms forbid it, and scanning would need a server, which would break "nothing leaves your browser". So chapter I replays snapshots of real Reels tabs, each verified against a real extension CSV export (`extension-5x.csv`). A snapshot and its export may come from different sessions; `comparison.json` records which. `lib/demo-engine.ts` mirrors the v1.0.7 panel:
+A website can't scan Instagram for a visitor. Cross-origin reads are blocked, there's a login wall and Instagram's terms forbid it, and scanning would need a server, which would break "nothing leaves your browser". So chapter I replays snapshots of real Reels tabs, each verified against a real extension CSV export (`extension-5x.csv`). A snapshot and its export may come from different sessions; `comparison.json` records which. `lib/demo-engine.ts` mirrors the v1.0.7 panel (the scan is unchanged in v1.0.8):
 - it collects tiles in batches of 12 before checking the scan limit;
 - Stop finalizes what's been collected;
 - settings changed after a scan apply only after Reset → Run;

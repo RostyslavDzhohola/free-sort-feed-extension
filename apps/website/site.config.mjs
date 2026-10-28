@@ -1,17 +1,16 @@
 // Deploy-time settings for the website. Change them here or override them with env vars at build time:
-//   SITE_URL=https://example.com SITE_INDEXABLE=true pnpm build:web
+//   SITE_URL=https://example.com SITE_INDEXABLE=false pnpm build:web
 //
-// The domain is still undecided, so the default is a reserved placeholder (RFC 2606) that can never resolve.
-// It feeds `site` in astro.config.mjs, which builds canonical URLs, Open Graph URLs, the sitemap and robots.txt.
+// SITE_URL feeds `site` in astro.config.mjs, which builds canonical URLs, Open Graph URLs, the sitemap and robots.txt.
 
-/** Public origin of the site, without a trailing path. */
-export const SITE_URL = process.env.SITE_URL ?? "https://outliers.example";
+/** Public origin of the site, without a trailing path. Production runs on Vercel's default domain. */
+export const SITE_URL = process.env.SITE_URL ?? "https://outliers-extension.vercel.app";
 
 /**
- * Keep false until the owner approves launch. While false, every page ships
- * <meta name="robots" content="noindex, nofollow">.
+ * The owner approved launch, so pages are indexable. Set SITE_INDEXABLE=false for a build that must
+ * stay out of search (every page then ships <meta name="robots" content="noindex, nofollow">).
  */
-export const SITE_INDEXABLE = process.env.SITE_INDEXABLE === "true";
+export const SITE_INDEXABLE = process.env.SITE_INDEXABLE !== "false";
 
 /**
  * Demo profiles whose creator hasn't granted permission (permission: "pending" in
@@ -19,3 +18,22 @@ export const SITE_INDEXABLE = process.env.SITE_INDEXABLE === "true";
  * preview build; production builds must leave it false.
  */
 export const SHOW_PENDING_DEMO_PROFILES = process.env.SHOW_PENDING_DEMO_PROFILES === "true";
+
+/**
+ * DataFast analytics, cookieless script. It only counts visits on DATAFAST_DOMAIN, so local and
+ * preview builds send nothing. Set DATAFAST=false to build without the script.
+ */
+export const DATAFAST = process.env.DATAFAST !== "false" && {
+  websiteId: "dfid_RiEbjoAfKP438O6TBOWr0",
+  domain: "outliers-extension.vercel.app",
+};
+
+/**
+ * Outliers 1.1 (sort by likes, comments and every metric, simple sort, TikTok). Keep false until the
+ * owner approves 1.1 and it's live in the Chrome Web Store: the site may only promise what the store
+ * version does. While false, the features section shows a "Coming soon" line instead.
+ */
+export const RELEASE_1_1 = process.env.RELEASE_1_1 === "true";
+
+/** Promo video for the 1.1 launch (a URL under public/, e.g. "/promo/outliers-1.1.mp4"). Shown only with RELEASE_1_1. */
+export const PROMO_VIDEO = process.env.PROMO_VIDEO ?? null;

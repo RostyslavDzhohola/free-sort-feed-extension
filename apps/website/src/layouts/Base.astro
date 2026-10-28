@@ -26,6 +26,8 @@ const { title = site.title, description = site.description, home = false, noinde
 const canonicalUrl = new URL(Astro.url.pathname, Astro.site).href;
 const ogImage = new URL("/og-image.png", Astro.site).href;
 const robots = site.indexable && !noindex ? "index, follow" : "noindex, nofollow";
+// Production builds only, so `astro dev` never loads the tracker.
+const analytics = import.meta.env.PROD && site.analytics;
 ---
 
 <!doctype html>
@@ -59,6 +61,17 @@ const robots = site.indexable && !noindex ? "index, follow" : "noindex, nofollow
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImage} />
+    {
+      analytics && (
+        <Fragment>
+          <!-- DataFast, cookieless. The queue keeps goals sent before the script loads (lib/analytics.ts). -->
+          <script is:inline id="datafast-queue">
+            window.datafast = window.datafast || function () { (window.datafast.q = window.datafast.q || []).push(arguments); };
+          </script>
+          <script is:inline defer data-website-id={analytics.websiteId} data-domain={analytics.domain} src="https://datafa.st/js/script.cookieless.js"></script>
+        </Fragment>
+      )
+    }
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>

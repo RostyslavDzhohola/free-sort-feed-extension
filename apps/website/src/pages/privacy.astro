@@ -1,5 +1,5 @@
 ---
-// Privacy policy. Every statement must match extension v1.0.7 (DESIGN-SPEC §2):
+// Privacy policy. Every statement must match extension v1.0.8 (DESIGN-SPEC §2):
 // storage keys live in apps/extension/src/sidepanel.ts, permissions in apps/extension/src/manifest.json.
 import Doc from "../layouts/Doc.astro";
 import DocSection from "../components/DocSection.astro";
@@ -8,13 +8,13 @@ import { site } from "../config/site";
 
 <Doc
   title="Privacy policy — Outliers"
-  description="What the Outliers Chrome extension reads, what it keeps on your device, and what it never does. No uploads, no tracking, no account."
+  description="What the Outliers Chrome extension reads, what it keeps on your device, and what it never does. No uploads, no tracking, no account. Plus what this website measures."
   kicker="Privacy policy"
 >
   <Fragment slot="heading">Privacy, in <em>plain words.</em></Fragment>
   <Fragment slot="lede">
     <p>Outliers is a Chrome extension that runs inside your Instagram tab. There's no Outliers server and no account. This page explains what it reads, what it keeps, and what it never does.</p>
-    <p class="doc-meta">Effective {site.privacyEffectiveDate}. Covers the Outliers Chrome extension (version 1.0.7) and this website.</p>
+    <p class="doc-meta">Effective {site.privacyEffectiveDate}. Covers the Outliers Chrome extension (version 1.0.8) and this website.</p>
   </Fragment>
 
   <DocSection numeral="I." title="What Outliers reads" id="reads">
@@ -82,8 +82,14 @@ import { site } from "../config/site";
   </DocSection>
 
   <DocSection numeral="VI." title="This website" id="website">
-    <p>This site has no analytics, cookies, ads or third-party scripts, and its fonts are served from the site itself. Like any website, its host may keep standard request logs, such as IP address and browser type, to run and protect the service.</p>
-    <p>If that ever changes, this page will be updated first.</p>
+    <p>This website, unlike the extension, counts its visitors. It uses <a href="https://datafa.st" target="_blank" rel="noopener noreferrer">DataFast</a> in cookieless mode, so it sets no cookies and there's no consent banner.</p>
+    <ul class="doc-list">
+      <li><b>What it records:</b> the pages you view, the site that sent you, your approximate location (country and city, from your IP address), your device type, browser and operating system, clicks on links that leave the site (such as <b>Add to Chrome</b>), and presses of the demo's <b>Run</b> button.</li>
+      <li><b>How it tells visits apart:</b> by a hashed identifier made from your IP address, browser and this site's domain, with a salt that changes about every 24 hours. It can't recognise you from one day to the next. It may also keep a session value in your browser for the current tab.</li>
+      <li><b>What it never gets:</b> anything from the extension. The extension sends nothing to DataFast or anywhere else.</li>
+    </ul>
+    <p>No ads, and no other third-party scripts. Fonts are served from the site itself. The site is hosted on Vercel, which keeps standard request logs, such as IP address and browser type, to run and protect the service.</p>
+    <p>To opt out, block <code>datafa.st</code> with any content blocker; the site works the same without it.</p>
   </DocSection>
 
   <DocSection numeral="VII." title="Changes and contact" id="contact">

@@ -29,7 +29,7 @@ pnpm-workspace.yaml     — workspace definition (apps/*, packages/*)
 package.json            — root scripts that fan out to the workspace packages
 ```
 
-Website quick start: `pnpm dev:web` (http://127.0.0.1:4321/), `pnpm build:web` (static output in `apps/website/dist/`).
+Website: live at https://outliers-extension.vercel.app. Quick start: `pnpm dev:web` (http://127.0.0.1:4321/), `pnpm build:web` (static output in `apps/website/dist/`).
 
 ## Prerequisites
 

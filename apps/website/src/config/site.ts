@@ -1,4 +1,4 @@
-import { SITE_INDEXABLE } from "../../site.config.mjs";
+import { DATAFAST, PROMO_VIDEO, RELEASE_1_1, SITE_INDEXABLE } from "../../site.config.mjs";
 import type { IconId } from "../components/icons";
 
 export const site = {
@@ -7,10 +7,17 @@ export const site = {
   description:
     "A free Chrome extension for Instagram research. Open a profile's Reels, press Run, and see the videos with at least 5× more views than followers.",
   storeUrl: "https://chromewebstore.google.com/detail/outliers/heogkfpbeagpoodininnfhdgjmpdalgj",
+  /** The extension's public source code. */
+  repoUrl: "https://github.com/RostyslavDzhohola/free-sort-feed-extension",
   contactEmail: "rosty.build@gmail.com",
   /** Shown on /privacy. Update when the policy changes or on launch day. */
-  privacyEffectiveDate: "October 4, 2026",
+  privacyEffectiveDate: "October 27, 2026",
   indexable: SITE_INDEXABLE,
+  /** DataFast analytics (cookieless), or false. See site.config.mjs. */
+  analytics: DATAFAST,
+  /** Outliers 1.1 copy and promo video, off until 1.1 is live in the store. See site.config.mjs. */
+  release11: RELEASE_1_1,
+  promoVideo: RELEASE_1_1 ? PROMO_VIDEO : null,
 } as const;
 
 /** A footer icon link. `href: null` hides the link, e.g. while a URL is pending. */
@@ -36,12 +43,13 @@ export const socialLinks: SocialLink[] = [
 export const pageLinks = [
   { label: "Privacy", href: "/privacy/" },
   { label: "Support", href: "/support/" },
+  { label: "Source code", href: site.repoUrl },
 ] as const;
 
 // Masthead anchors (DESIGN-SPEC §0.1). The Privacy section stays on the page but isn't in the nav.
 export const sectionLinks = [
   { label: "Demo", id: "demo" },
+  { label: "Features", id: "features" },
   { label: "Setup", id: "setup" },
-  { label: "Setting the bar", id: "bar" },
   { label: "FAQ", id: "faq" },
 ] as const;

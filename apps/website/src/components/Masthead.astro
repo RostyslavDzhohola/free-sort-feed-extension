@@ -21,7 +21,7 @@ const prefix = home ? "" : "/";
     <nav class="mast-links" aria-label={home ? "Page sections" : "Home page sections"}>
       {sectionLinks.map((link) => <a href={`${prefix}#${link.id}`}>{link.label}</a>)}
     </nav>
-    <StoreButton size="sm" label="Add to Chrome" />
+    <StoreButton size="sm" label="Add to Chrome" location="nav" />
   </div>
 </header>
 

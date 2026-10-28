@@ -4,10 +4,12 @@ import { site } from "../config/site";
 interface Props {
   size?: "sm" | "md" | "lg";
   label?: string;
+  /** Where the button sits, sent with the DataFast install_click goal. */
+  location: "nav" | "hero" | "close";
 }
 
-const { size = "md", label = "Add to Chrome — it's free" } = Astro.props;
+const { size = "md", label = "Add to Chrome — it's free", location } = Astro.props;
 const sizeClass = size === "md" ? "" : `btn-${size}`;
 ---
 
-<a class:list={["btn btn-ink", sizeClass]} href={site.storeUrl} target="_blank" rel="noopener noreferrer">{label}</a>
+<a class:list={["btn btn-ink", sizeClass]} href={site.storeUrl} target="_blank" rel="noopener noreferrer" data-fast-goal="install_click" data-fast-goal-location={location}>{label}</a>

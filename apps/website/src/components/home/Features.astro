@@ -1,0 +1,98 @@
+---
+// Chapter II: everything the side panel does. Every claim must match the store version of the extension
+// (apps/extension/src); 1.1 features stay behind site.release11 until 1.1 is live in the store.
+import Chapter from "../Chapter.astro";
+import { site } from "../../config/site";
+import "./features.css";
+
+interface Feature {
+  kicker: string;
+  title: string;
+  body: string;
+}
+
+const features: Feature[] = [
+  {
+    kicker: "Filter · default",
+    title: "5× Outliers",
+    body: "The bar is <b>five times the profile's follower count</b>, so it asks every creator the same question: which Reels travelled far beyond their own audience?",
+  },
+  {
+    kicker: "Filter",
+    title: "Min Views",
+    body: "Prefer one fixed bar? Pick <b>any number from 1,000 to 1,000,000 views</b> and use it on every profile.",
+  },
+  {
+    kicker: "Scan",
+    title: "As deep as you like",
+    body: "Set a scan limit from 1 Reel to All. Outliers scrolls the Reels grid for you, and <b>Stop</b> keeps what it has found so far.",
+  },
+  {
+    kicker: "Results",
+    title: "Ranked while it scans",
+    body: "Results fill in live, biggest first, with each Reel's views and multiple, in the side panel and on the page. Open any Reel or copy its link.",
+  },
+  {
+    kicker: "Keep",
+    title: "Your Library",
+    body: "Save the Reels worth studying. Your Library stays in Chrome on this device, and exports as a CSV any time.",
+  },
+  {
+    kicker: "Share",
+    title: "Export, copy, share",
+    body: "Download a ranked CSV with links, views and multiples. Copy the list as text, copy a caption or the top 5 links, or save a story card.",
+  },
+];
+
+// Outliers 1.1. Copy is drafted for launch day; it ships only when site.release11 is on.
+const release11: Feature[] = [
+  {
+    kicker: "Sort · new in 1.1",
+    title: "Sort by any metric",
+    body: "Rank videos by views, likes, comments or any other number the profile shows, not only views.",
+  },
+  {
+    kicker: "Sort · new in 1.1",
+    title: "Simple sort",
+    body: "Skip the outlier filter and list every scanned video, ordered by the metric you choose.",
+  },
+  {
+    kicker: "Platforms · new in 1.1",
+    title: "TikTok, too",
+    body: "Run the same scan on a TikTok profile. Same panel, same filters, same exports.",
+  },
+];
+
+const shown = site.release11 ? [...features, ...release11] : features;
+---
+
+<section class="section section-rule" id="features" aria-labelledby="features-title">
+  <div class="wrap">
+    <Chapter numeral="II." kicker="Features" title="Everything in the side panel." id="features-title" />
+    {
+      site.promoVideo && (
+        <figure class="features-video">
+          <video src={site.promoVideo} controls muted playsinline preload="metadata" aria-label="Outliers promo video" />
+        </figure>
+      )
+    }
+    <ul class="features">
+      {
+        shown.map((feature) => (
+          <li>
+            <p class="smallcaps">{feature.kicker}</p>
+            <h3>{feature.title}</h3>
+            <p set:html={feature.body} />
+          </li>
+        ))
+      }
+    </ul>
+    {
+      !site.release11 && (
+        <p class="features-soon">
+          <span class="smallcaps">Coming soon</span> TikTok support, and sorting by likes and comments.
+        </p>
+      )
+    }
+  </div>
+</section>

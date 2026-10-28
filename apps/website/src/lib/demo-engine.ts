@@ -1,6 +1,6 @@
 // Scan replay state machine for the home page demo (DESIGN-SPEC §6.4). Pure: no DOM, no timers.
 //
-// It mirrors how the v1.0.7 side panel behaves:
+// It mirrors how the v1.0.7 side panel behaves (the scan is unchanged in v1.0.8):
 // - idle → Run → scanning → (Stop | limit reached | grid exhausted) → done → Reset → idle
 // - the extension collects whole batches of visible tiles before it checks the scan limit,
 //   so a very small limit can collect a few extra Reels (the FAQ says so);
