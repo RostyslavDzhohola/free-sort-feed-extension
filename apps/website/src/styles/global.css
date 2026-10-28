@@ -99,7 +99,7 @@ button { font: inherit; color: inherit; }
 .link-arrow:hover span { transform: translateX(4px); }
 
 /* Masthead */
-.mast { position: sticky; top: 0; z-index: 50; background: rgba(243, 238, 228, 0.88); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid transparent; transition: border-color 0.2s; }
+.mast { position: sticky; top: 0; z-index: 50; background: rgba(243, 238, 228, 0.96); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid transparent; transition: border-color 0.2s; }
 .mast.scrolled { border-bottom-color: var(--rule); }
 .mast-inner { display: flex; align-items: center; gap: 28px; min-height: 70px; }
 .wordmark { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font: italic 500 26px/1 var(--serif); font-variation-settings: "SOFT" 100, "WONK" 1; color: var(--ink); letter-spacing: -0.02em; }
@@ -124,10 +124,10 @@ button { font: inherit; color: inherit; }
 .wordmark-sm { font: italic 500 18px/1 var(--serif); color: var(--ink); font-variation-settings: "SOFT" 100, "WONK" 1; }
 .footer-links { display: flex; align-items: center; gap: 12px 24px; flex-wrap: wrap; }
 .footer-pages { display: flex; gap: 18px; }
-.footer-pages a { text-decoration: none; color: var(--ink-2); border-bottom: 1px solid transparent; }
+.footer-pages a { display: inline-block; padding: 10px 0; text-decoration: none; color: var(--ink-2); border-bottom: 1px solid transparent; }
 .footer-pages a:hover { border-bottom-color: var(--orange); }
 .footer-icons { display: flex; flex-wrap: wrap; gap: 2px; margin: 0; padding: 0; list-style: none; }
-.footer-icons a { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 999px; color: var(--ink); transition: color 0.2s, background-color 0.2s; }
+.footer-icons a { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 999px; color: var(--ink); transition: color 0.2s, background-color 0.2s; }
 .footer-icons a:hover { color: var(--orange); background: var(--paper-2); }
 .footer-icons svg { display: block; }
 

@@ -34,8 +34,10 @@
 /* Annotated zones: the demo toggles .active while a hint is shown. */
 .sp-zone { position: relative; border-radius: 12px; padding: 4px; margin: 0 -4px 8px; outline: 2px dashed transparent; outline-offset: 2px; transition: outline-color 0.2s, background-color 0.2s; }
 .sp-zone.active { outline-color: var(--orange-bright); background: rgba(229, 111, 18, 0.07); }
-.sp-zone-inline { display: inline-flex; gap: 6px; margin: 0; padding: 2px; }
+.sp-zone-inline { display: inline-flex; gap: 6px; margin: 0; padding: 2px 18px 2px 2px; }
 .sp-zone > .pin { position: absolute; top: -9px; right: -9px; z-index: 2; }
+/* Values on the right of a zone stay clear of its pin. */
+.sp-zone > .sp-ctl { padding-right: 16px; }
 
 .sp-stats { display: flex; justify-content: space-between; gap: 8px; padding: 10px 12px; background: #fff; border: 1px solid var(--sp-line); border-radius: 12px; font-size: 13px; }
 .sp-stats span { color: var(--sp-muted); font-weight: 600; }
@@ -47,7 +49,7 @@
 .sp-range {
   -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 8px; margin: 8px 0 4px;
   border-radius: 999px; border: 1px solid var(--sp-line); cursor: pointer;
-  background: linear-gradient(90deg, #d9b6f2 var(--fill, 0%), var(--sp-purple-soft) var(--fill, 0%) var(--cap, 100%), #e4e0ea var(--cap, 100%));
+  background: linear-gradient(90deg, #d9b6f2 var(--fill, 0%), var(--sp-purple-soft) var(--fill, 0%) var(--cap, 100%), #d6d1db var(--cap, 100%));
 }
 .sp-range:disabled { opacity: 0.5; cursor: not-allowed; }
 .sp-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; border: 2px solid #fff; background: var(--sp-orange); box-shadow: 0 3px 0 #d87e08, 0 0 0 1px rgba(58, 29, 101, 0.12); }

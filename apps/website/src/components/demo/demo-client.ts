@@ -236,7 +236,7 @@ function mount(root: HTMLElement): void {
   function tickDelay(): number {
     const target = Math.min(state.applied.scanLimit ?? profile.reels.length, profile.reels.length);
     const batches = Math.max(1, Math.ceil(target / BATCH_SIZE));
-    return Math.min(650, Math.max(260, Math.round(3600 / batches)));
+    return Math.min(1200, Math.max(260, Math.round(3600 / batches)));
   }
 
   function tick(): void {

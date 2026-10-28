@@ -63,7 +63,7 @@ const payload = {
 const payloadJson = JSON.stringify(payload).replace(/</g, "\\u003c");
 
 const meta = (p: (typeof profiles)[number]) =>
-  `${p.snapshot.followersText} followers · bar ${formatCount(p.snapshot.followers * MULTIPLIER)} · ` +
+  `${p.snapshot.followersText} followers · 5× bar ${formatCount(p.snapshot.followers * MULTIPLIER)} · ` +
   (p.kind === "sample" ? "sample data" : `Snapshot · ${p.capturedLabel}`);
 const firstCredit = creditFor(copyOf(first));
 ---
@@ -75,7 +75,7 @@ const firstCredit = creditFor(copyOf(first));
       {
         hasReal ? (
           <Fragment>
-            Pick a profile and press <b>Run Outliers Scan</b>. A website can't scan Instagram for you, and Outliers never sends your research to a server, so this replays a real snapshot of the profile's Reels, checked against the extension's own export and ranked with its exact rule.
+            {profiles.length > 1 ? "Pick a profile and press " : "Press "}<b>Run Outliers Scan</b>. A website can't scan Instagram for you, and Outliers never sends your research to a server, so this replays a real snapshot of the profile's Reels, checked against the extension's own export and ranked with its exact rule.
           </Fragment>
         ) : (
           <Fragment>
@@ -118,7 +118,7 @@ const firstCredit = creditFor(copyOf(first));
               <div><b data-demo-handle>{first.snapshot.handle}</b><small data-demo-followers>{first.snapshot.followersText} followers</small></div>
             </div>
             <div class="ig-tabs" aria-hidden="true"><span>Posts</span><span class="on">Reels</span><span>Tagged</span></div>
-            <div class="demo-viewport" data-demo-viewport>
+            <div class="demo-viewport" tabindex="0" role="region" aria-label="Instagram Reels grid, scrollable" data-demo-viewport>
               <div class="demo-grid" role="img" aria-label="Instagram Reels grid" data-demo-grid set:html={gridHtml} />
               <p class="demo-grid-empty" data-demo-grid-empty hidden>No Reels cleared the bar on this scan.</p>
             </div>
@@ -133,7 +133,7 @@ const firstCredit = creditFor(copyOf(first));
       </div>
 
       <div class="demo-foot">
-        <p class="demo-hint" aria-hidden="true" data-demo-hint>Hover or tab to the numbered pins to see what each part of the panel does.</p>
+        <p class="demo-hint" aria-hidden="true" data-demo-hint>Point at, tap or tab to a numbered pin to see what each part of the panel does.</p>
         {
           panelHints.map((h) => (
             <p class="visually-hidden" id={`demo-hint-${h.zone}`} data-hint-title={h.title}>

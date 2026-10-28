@@ -222,5 +222,5 @@ test("the site is honest about its own analytics, and keeps the extension's clai
   }
   assert.ok(privacy.includes("No analytics, tracking, ads or cookies."), "the extension's own claims stay");
   assert.ok(privacy.includes("version 1.0.8"), "policy covers the store version");
-  assert.ok(html["/"].includes("This website counts visits with cookieless analytics"), "privacy band separates site and extension");
+  assert.ok(html["/"].includes("it counts visits and button clicks with cookieless analytics"), "privacy band separates site and extension");
 });

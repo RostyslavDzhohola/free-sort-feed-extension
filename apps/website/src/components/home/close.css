@@ -5,6 +5,6 @@
 .close h2 { font-size: clamp(52px, 8vw, 120px); font-weight: 380; letter-spacing: -0.035em; line-height: 0.95; font-variation-settings: "SOFT" 30, "opsz" 144; }
 .close-maker { display: grid; justify-items: center; gap: 10px; font-size: 15px; color: var(--muted); }
 .close-maker a { color: var(--ink); text-underline-offset: 3px; }
-.close-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 22px; font-weight: 600; }
-.close-links a { text-decoration: none; border-bottom: 1.5px solid var(--rule); padding-bottom: 2px; }
+.close-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 22px; font-weight: 600; }
+.close-links a { display: inline-block; text-decoration: none; border-bottom: 1.5px solid var(--rule); padding: 12px 0 2px; }
 .close-links a:hover { border-bottom-color: var(--orange); }

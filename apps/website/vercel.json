@@ -5,6 +5,7 @@
   "buildCommand": "pnpm build",
   "outputDirectory": "dist",
   "trailingSlash": true,
+  "rewrites": [{ "source": "/favicon.ico", "destination": "/favicon.png" }],
   "headers": [
     {
       "source": "/_astro/(.*)",

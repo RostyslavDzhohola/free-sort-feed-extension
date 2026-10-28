@@ -4,5 +4,7 @@
   background: var(--orange-bright); color: var(--ink); font: italic 600 14px/1 var(--serif); font-variation-settings: "SOFT" 100, "WONK" 1;
   box-shadow: 0 0 0 3px var(--paper), 0 6px 12px -4px rgba(201, 88, 10, 0.6); transition: scale 0.2s;
 }
-button.pin { cursor: help; }
+button.pin { cursor: help; position: relative; }
+/* 44px touch target around the 24px pin. */
+button.pin::before { content: ""; position: absolute; inset: -10px; border-radius: 50%; }
 [data-zone].active > .pin { scale: 1.18; }
