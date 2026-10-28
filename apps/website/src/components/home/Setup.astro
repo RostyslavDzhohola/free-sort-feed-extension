@@ -1,0 +1,59 @@
+---
+import Chapter from "../Chapter.astro";
+import icon128 from "../../assets/icon-128.png";
+import { MULTIPLIER, thresholdLabel } from "@outliers/core";
+import { sampleProfile } from "../../data/demo/profiles";
+import { site } from "../../config/site";
+import "./setup.css";
+
+// Illustrative bar for the step-3 mini panel, from the fictional sample profile (18,400 × 5).
+const barLabel = thresholdLabel((sampleProfile?.snapshot.followers ?? 18_400) * MULTIPLIER);
+---
+
+<section class="section section-tint" id="setup" aria-labelledby="setup-title">
+  <div class="wrap">
+    <Chapter numeral="III." kicker="Setup" title="Three steps, then you're researching." id="setup-title" />
+    <ol class="steps">
+      <li>
+        <div class="step-fig" aria-hidden="true">
+          <div class="fig-card fig-store">
+            <img src={icon128.src} alt="" width="44" height="44" />
+            <div><b>Outliers</b><small>Chrome Web Store</small></div>
+            <span class="fig-btn">Add to Chrome</span>
+          </div>
+        </div>
+        <span class="step-n" aria-hidden="true">1</span>
+        <h3>Add it to Chrome</h3>
+        <p>Install Outliers free from the Chrome Web Store, then pin it to your toolbar so it's one click away.</p>
+      </li>
+      <li>
+        <div class="step-fig" aria-hidden="true">
+          <div class="fig-card fig-url">
+            <span class="fig-omni">instagram.com/<b>username</b>/reels/</span>
+            <span class="fig-tabs"><span>Posts</span><span class="on">Reels</span><span>Tagged</span></span>
+          </div>
+        </div>
+        <span class="step-n" aria-hidden="true">2</span>
+        <h3>{site.release11 ? "Open a profile" : "Open a Reels tab"}</h3>
+        {
+          site.release11 ? (
+            <p>Visit any profile you can see, a competitor's or your own: an Instagram <b>Reels</b> tab, or a TikTok profile at <code>tiktok.com/@handle</code>.</p>
+          ) : (
+            <p>Visit any profile you can see, a competitor's or your own, and switch to its <b>Reels</b> tab, where view counts are shown.</p>
+          )
+        }
+      </li>
+      <li>
+        <div class="step-fig" aria-hidden="true">
+          <div class="fig-card fig-run">
+            <span class="fig-row"><span>Active threshold</span><b>{barLabel}</b></span>
+            <span class="fig-run-btn">Run Outliers Scan</span>
+          </div>
+        </div>
+        <span class="step-n" aria-hidden="true">3</span>
+        <h3>Click the icon, press Run</h3>
+        <p>The side panel reads the follower count and shows the bar. Press <b>Run Outliers Scan</b>. Outliers scrolls the Reels for you and ranks what clears it.</p>
+      </li>
+    </ol>
+  </div>
+</section>

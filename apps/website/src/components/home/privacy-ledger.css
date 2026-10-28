@@ -1,0 +1,27 @@
+/* Dark ink section with a ledger list */
+.privacy { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 72px; align-items: start; }
+.section-ink h2 { color: var(--paper); font-size: clamp(40px, 5vw, 68px); margin-top: 14px; }
+.section-ink .smallcaps { color: #f0a15e; }
+.privacy-lede { margin-top: 22px; font-size: 19px; color: #cfc6b6; max-width: 460px; }
+.privacy-site { margin-top: 16px; font-size: 17px; color: #cfc6b6; max-width: 460px; }
+.ledger-title { margin: 0 0 12px; font: 600 12.5px/1.2 var(--sans); letter-spacing: 0.16em; text-transform: uppercase; color: #a89f8f; }
+.privacy-more { margin-top: 28px; }
+.section-ink .link-arrow { color: var(--paper); border-bottom-color: #5a5348; }
+.section-ink .link-arrow:hover { border-bottom-color: #f0a15e; }
+.section-ink :focus-visible { outline-color: #f0a15e; }
+.ledger { list-style: none; margin: 0; padding: 0; }
+.ledger li { display: flex; align-items: baseline; gap: 12px; padding: 16px 0; border-bottom: 1px solid #3a352e; }
+.ledger li:first-child { border-top: 1px solid #3a352e; }
+.ledger span { flex: none; color: #a89f8f; font-size: 15px; }
+.ledger li::after { content: ""; order: 1; flex: 1; border-bottom: 1px dotted #5a5348; transform: translateY(-4px); min-width: 20px; }
+.ledger b { order: 2; flex: 0 1 auto; max-width: 60%; text-align: right; color: var(--paper); font: italic 400 19px/1.35 var(--serif); font-variation-settings: "SOFT" 100, "WONK" 1; }
+
+@media (max-width: 1080px) {
+  .privacy { grid-template-columns: minmax(0, 1fr); gap: 40px; }
+}
+
+@media (max-width: 560px) {
+  .ledger li { flex-wrap: wrap; }
+  .ledger li::after { display: none; }
+  .ledger b { max-width: none; text-align: left; width: 100%; }
+}

@@ -1,0 +1,30 @@
+---
+// Editorial document page (privacy, support, 404): a masthead-style header and a numbered body.
+import Base from "./Base.astro";
+import "../styles/doc.css";
+
+interface Props {
+  title: string;
+  description: string;
+  kicker: string;
+  noindex?: boolean;
+  canonical?: boolean;
+}
+
+const { title, description, kicker, noindex, canonical } = Astro.props;
+---
+
+<Base title={title} description={description} noindex={noindex} canonical={canonical}>
+  <article class="doc">
+    <header class="doc-head">
+      <div class="wrap">
+        <p class="smallcaps">{kicker}</p>
+        <h1><slot name="heading" /></h1>
+        <div class="doc-lede"><slot name="lede" /></div>
+      </div>
+    </header>
+    <div class="wrap doc-body">
+      <slot />
+    </div>
+  </article>
+</Base>

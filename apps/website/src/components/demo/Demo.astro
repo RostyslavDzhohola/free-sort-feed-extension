@@ -1,0 +1,168 @@
+---
+// Chapter I: a replay of a real snapshot (DESIGN-SPEC §6.4). A website can't scan Instagram for visitors
+// (cross-origin, login wall, Instagram's terms, and no server by design), so this replays snapshots
+// captured once through the extension, ranked by @outliers/core with the extension's exact rule.
+import {
+  DEFAULT_MIN_VIEWS,
+  MULTIPLIER,
+  formatCount,
+  formatExact,
+  formatScanLimit,
+  minViewsToSliderPosition,
+  scanLimitToSliderPosition,
+  thresholdFor,
+  thresholdLabel,
+} from "@outliers/core";
+import Chapter from "../Chapter.astro";
+import { DemoPanel, panelHints, type PanelInitialState } from "../panel";
+import { demoProfiles } from "../../data/demo/profiles";
+import { initialsFor } from "../../data/demo/initials";
+import { DEFAULT_SETTINGS, capScanLimit } from "../../lib/demo-engine";
+import { limitNote, tileHtml } from "../../lib/demo-render";
+import { creditFor, honestyLabel, type CopyProfile } from "../../lib/demo-copy";
+import "../../styles/tiles.css";
+import "./demo.css";
+
+const profiles = demoProfiles;
+const first = profiles[0]!;
+const hasReal = profiles.some((p) => p.kind === "real");
+
+const initial: PanelInitialState = {
+  thresholdLabel: thresholdLabel(thresholdFor(DEFAULT_SETTINGS.mode, first.snapshot.followers, DEFAULT_SETTINGS.minViews)),
+  mode: DEFAULT_SETTINGS.mode,
+  scanLimit: {
+    position: scanLimitToSliderPosition(capScanLimit(DEFAULT_SETTINGS.scanLimit, first.snapshot.reels.length)),
+    label: formatScanLimit(capScanLimit(DEFAULT_SETTINGS.scanLimit, first.snapshot.reels.length)),
+    capPosition: scanLimitToSliderPosition(first.snapshot.reels.length),
+    note: limitNote(first.kind, first.snapshot.reels.length),
+  },
+  minViews: { position: minViewsToSliderPosition(DEFAULT_MIN_VIEWS), label: formatExact(DEFAULT_MIN_VIEWS) + " views" },
+};
+
+const gridHtml = first.snapshot.reels.map((reel, i) => tileHtml(reel, i, first.assetBase)).join("");
+
+// The label fields (CopyProfile) travel to the island inside each profile, so both render the same copy.
+const copyOf = (p: (typeof profiles)[number]): CopyProfile => ({
+  handle: p.snapshot.handle,
+  kind: p.kind,
+  permission: p.permission,
+  owner: !!p.owner,
+  capturedLabel: p.capturedLabel,
+});
+
+const payload = {
+  profiles: profiles.map((p) => ({
+    ...copyOf(p),
+    followers: p.snapshot.followers,
+    followersText: p.snapshot.followersText,
+    assetBase: p.assetBase,
+    reels: p.snapshot.reels,
+  })),
+};
+// Inline JSON: escape "<" so a value can never close the script element.
+const payloadJson = JSON.stringify(payload).replace(/</g, "\\u003c");
+
+const meta = (p: (typeof profiles)[number]) =>
+  `${p.snapshot.followersText} followers · 5× bar ${formatCount(p.snapshot.followers * MULTIPLIER)} · ` +
+  (p.kind === "sample" ? "sample data" : `Snapshot · ${p.capturedLabel}`);
+const firstCredit = creditFor(copyOf(first));
+---
+
+<section class="section" id="demo" aria-labelledby="demo-title">
+  <div class="wrap">
+    <Chapter numeral="I." kicker="Demo" title={hasReal ? "Real Reels, replayed." : "Watch a scan play out."} id="demo-title" />
+    <p class="demo-lede">
+      {
+        hasReal ? (
+          <Fragment>
+            {profiles.length > 1 ? "Pick a profile and press " : "Press "}<b>Run Outliers Scan</b>. A website can't scan Instagram for you, and Outliers never sends your research to a server, so this replays a real snapshot of the profile's Reels, checked against the extension's own export and ranked with its exact rule.
+          </Fragment>
+        ) : (
+          <Fragment>
+            Press <b>Run Outliers Scan</b> to watch a scan play out on a fictional profile, ranked with the extension's exact rule. Every control works.
+          </Fragment>
+        )
+      }
+    </p>
+
+    <div class="demo" data-demo>
+      <div class="demo-profiles" role="radiogroup" aria-label="Profile to replay">
+        {
+          profiles.map((p, i) => (
+            <button
+              type="button"
+              role="radio"
+              class="demo-profile"
+              aria-checked={i === 0 ? "true" : "false"}
+              tabindex={i === 0 ? 0 : -1}
+              data-demo-profile={p.snapshot.handle}
+            >
+              <span class="demo-profile-handle">@{p.snapshot.handle}</span>
+              {p.featured && <span class="demo-tag">Featured</span>}
+              {p.permission === "pending" && <span class="demo-tag demo-tag-dev">Permission pending · dev only</span>}
+              <span class="demo-profile-meta">{meta(p)}</span>
+            </button>
+          ))
+        }
+      </div>
+
+      <div class="demo-card">
+        <div class="demo-chrome" aria-hidden="true">
+          <span class="demo-dots"><i></i><i></i><i></i></span>
+          <span class="demo-omni">instagram.com/<b data-demo-url>{first.snapshot.handle}</b>/reels/</span>
+        </div>
+        <div class="demo-body">
+          <div class="demo-page">
+            <div class="ig-head">
+              <span class="ig-av" data-demo-avatar>{initialsFor(first.snapshot.handle)}</span>
+              <div><b data-demo-handle>{first.snapshot.handle}</b><small data-demo-followers>{first.snapshot.followersText} followers</small></div>
+            </div>
+            <div class="ig-tabs" aria-hidden="true"><span>Posts</span><span class="on">Reels</span><span>Tagged</span></div>
+            <div class="demo-viewport" tabindex="0" role="region" aria-label="Instagram Reels grid, scrollable" data-demo-viewport>
+              <div class="demo-grid" role="img" aria-label="Instagram Reels grid" data-demo-grid set:html={gridHtml} />
+              <p class="demo-grid-empty" data-demo-grid-empty hidden>No Reels cleared the bar on this scan.</p>
+            </div>
+            <div class="demo-lock" data-demo-lock hidden>
+              <span>Outliers is scanning · page locked</span>
+            </div>
+          </div>
+          <div class="demo-side">
+            <DemoPanel initial={initial} />
+          </div>
+        </div>
+      </div>
+
+      <div class="demo-foot">
+        <p class="demo-hint" aria-hidden="true" data-demo-hint>Point at, tap or tab to a numbered pin to see what each part of the panel does.</p>
+        {
+          panelHints.map((h) => (
+            <p class="visually-hidden" id={`demo-hint-${h.zone}`} data-hint-title={h.title}>
+              <Fragment set:html={h.body} />
+            </p>
+          ))
+        }
+        <p class="demo-honesty" data-demo-honesty>{honestyLabel(copyOf(first))}</p>
+        <p class="demo-credit" data-demo-credit hidden={!firstCredit}>
+          <span data-demo-credit-lead>{firstCredit?.lead ?? "Featured creator:"}</span>{" "}<a
+            data-demo-credit-link
+            href={firstCredit?.href ?? "https://www.instagram.com/"}
+            target="_blank"
+            rel="noopener noreferrer">@<span data-demo-credit-handle>{firstCredit?.handle ?? ""}</span><span aria-hidden="true"> ↗</span></a
+          >.{" "}<span data-demo-credit-detail>{firstCredit?.detail ?? ""}</span>
+        </p>
+        <p class="demo-notice" data-demo-notice hidden>New settings apply to your next scan. Press Reset, then Run.</p>
+        <p class="demo-follow-wrap" data-demo-follow-wrap hidden>
+          <a class="link-arrow" data-demo-follow href={`https://www.instagram.com/${first.snapshot.handle}/`} target="_blank" rel="noopener noreferrer">
+            Follow @<span data-demo-follow-handle>{first.snapshot.handle}</span> on Instagram <span aria-hidden="true">→</span>
+          </a>
+        </p>
+      </div>
+      <p class="visually-hidden" aria-live="polite" data-demo-live></p>
+      <script type="application/json" data-demo-data set:html={payloadJson} />
+    </div>
+  </div>
+</section>
+
+<script>
+  import "./demo-client";
+</script>

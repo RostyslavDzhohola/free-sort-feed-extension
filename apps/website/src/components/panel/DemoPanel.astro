@@ -1,0 +1,126 @@
+---
+// The v1.0.7 side panel (unchanged in v1.0.8), as an interactive replica for the demo. Markup and initial state only:
+// components/demo/demo-client.ts drives it through the hooks listed in ./types.ts.
+import { MIN_VIEWS_SLIDER_MAX, SCAN_SLIDER_MAX } from "@outliers/core";
+import icon128 from "../../assets/icon-128.png";
+import Pin from "./Pin.astro";
+import { PANEL_ZONES, type PanelInitialState } from "./types";
+import "./demo-panel.css";
+
+interface Props {
+  initial: PanelInitialState;
+}
+
+const { initial } = Astro.props;
+const limitFill = ((initial.scanLimit.position / SCAN_SLIDER_MAX) * 100).toFixed(2) + "%";
+const limitCap = ((initial.scanLimit.capPosition / SCAN_SLIDER_MAX) * 100).toFixed(2) + "%";
+const minFill = ((initial.minViews.position / MIN_VIEWS_SLIDER_MAX) * 100).toFixed(2) + "%";
+const modes = [
+  { value: "ratio5x", label: "5× Outliers" },
+  { value: "minViews", label: "Min Views" },
+];
+---
+
+<div class="sp" data-panel>
+  <div class="sp-head">
+    <div><b>Outliers</b><small>Find viral outlier Reels</small></div>
+    <img src={icon128.src} alt="" width="40" height="40" />
+  </div>
+  <div class="sp-switch" aria-hidden="true"><span class="on">Outliers</span><span>Library</span></div>
+
+  <div class="sp-zone" data-zone="1">
+    <div class="sp-stats"><span>Active threshold</span><b data-panel-threshold>{initial.thresholdLabel}</b></div>
+    <Pin n={1} label={PANEL_ZONES[1]} />
+  </div>
+
+  <div class="sp-zone" data-zone="2">
+    <div class="sp-ctl">
+      <label for="demo-scan-limit">Scan limit</label>
+      <b data-panel-limit-value>{initial.scanLimit.label}</b>
+    </div>
+    <input
+      id="demo-scan-limit"
+      class="sp-range"
+      type="range"
+      min="0"
+      max={SCAN_SLIDER_MAX}
+      value={initial.scanLimit.position}
+      aria-valuetext={initial.scanLimit.label}
+      style={`--fill: ${limitFill}; --cap: ${limitCap}`}
+      data-panel-limit
+    />
+    <div class="sp-marks" aria-hidden="true"><span>1</span><span>100</span><span>150</span><span>200</span><span>500</span><span>All</span></div>
+    <p class="sp-limit-note" data-panel-limit-note>{initial.scanLimit.note}</p>
+    <Pin n={2} label={PANEL_ZONES[2]} />
+  </div>
+
+  <div class="sp-zone" data-zone="3">
+    <div class="sp-ctl"><span id="demo-mode-label">Filter mode</span></div>
+    <div class="sp-modes" role="radiogroup" aria-labelledby="demo-mode-label">
+      {
+        modes.map((m) => (
+          <button
+            type="button"
+            role="radio"
+            class:list={{ on: m.value === initial.mode }}
+            aria-checked={m.value === initial.mode ? "true" : "false"}
+            tabindex={m.value === initial.mode ? 0 : -1}
+            data-panel-mode={m.value}
+          >
+            {m.label}
+          </button>
+        ))
+      }
+    </div>
+    <div class="sp-minviews" data-panel-minviews-area hidden={initial.mode !== "minViews"}>
+      <div class="sp-ctl">
+        <label for="demo-min-views">Minimum views</label>
+        <b data-panel-minviews-value>{initial.minViews.label}</b>
+      </div>
+      <input
+        id="demo-min-views"
+        class="sp-range"
+        type="range"
+        min="0"
+        max={MIN_VIEWS_SLIDER_MAX}
+        value={initial.minViews.position}
+        aria-valuetext={initial.minViews.label}
+        style={`--fill: ${minFill}`}
+        data-panel-minviews
+      />
+      <div class="sp-marks" aria-hidden="true"><span>1K</span><span>10K</span><span>100K</span><span>1M</span></div>
+    </div>
+    <Pin n={3} label={PANEL_ZONES[3]} />
+  </div>
+
+  <div class="sp-controls">
+    <button class="sp-btn sp-run" type="button" data-panel-run>Run Outliers Scan</button>
+    <button class="sp-btn sp-soft" type="button" data-panel-stop hidden>Stop</button>
+    <button class="sp-btn sp-soft" type="button" data-panel-reset hidden>Reset</button>
+  </div>
+  <p class="sp-status" data-panel-status></p>
+
+  <div class="sp-progress" data-panel-progress hidden>
+    <div class="sp-progress-track"><i data-panel-progress-fill></i></div>
+    <p data-panel-progress-text></p>
+  </div>
+
+  <div class="sp-results" data-panel-results hidden>
+    <div class="sp-results-head">
+      <span>Outliers <small data-panel-meta></small></span>
+      <span class="sp-zone sp-zone-inline" data-zone="5">
+        <button class="sp-tool" type="button" data-panel-csv aria-label="Download CSV">CSV</button>
+        <button class="sp-tool" type="button" data-panel-copy aria-label="Copy outliers as text">Copy</button>
+        <Pin n={5} label={PANEL_ZONES[5]} />
+      </span>
+    </div>
+    <div class="sp-zone" data-zone="4">
+      <ol class="sp-list" data-panel-list></ol>
+      <div class="sp-empty" data-panel-empty hidden>
+        <strong data-panel-empty-title></strong>
+        <p data-panel-empty-detail></p>
+      </div>
+      <Pin n={4} label={PANEL_ZONES[4]} />
+    </div>
+  </div>
+</div>

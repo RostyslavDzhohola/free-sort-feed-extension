@@ -1,0 +1,27 @@
+---
+import StoreButton from "../StoreButton.astro";
+import { site, socialLinks } from "../../config/site";
+import "./close.css";
+
+// The owner's main profiles, spelled out (the footer repeats them, with the rest, as icons).
+const maker = (["portfolio", "github", "x", "instagram"] as const).flatMap((icon) => {
+  const link = socialLinks.find((l) => l.icon === icon && l.href);
+  return link ? [{ href: link.href!, label: link.label }] : [];
+});
+---
+
+<section class="close" aria-labelledby="close-title">
+  <div class="wrap close-inner">
+    <h2 id="close-title">Start your <em>swipe&nbsp;file.</em></h2>
+    <div class="close-cta">
+      <StoreButton size="lg" location="close" />
+      <p class="close-note">Free. No sign-up, no trial, no paid plan.</p>
+    </div>
+    <div class="close-maker">
+      <p>Made by Rosty. The code is <a href={site.repoUrl} target="_blank" rel="noopener noreferrer">on GitHub</a>.</p>
+      <p class="close-links">
+        {maker.map((link) => <a href={link.href} target="_blank" rel="noopener noreferrer">{link.label}</a>)}
+      </p>
+    </div>
+  </div>
+</section>

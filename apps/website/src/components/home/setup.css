@@ -1,0 +1,29 @@
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 36px; }
+.steps li { position: relative; }
+.step-fig { height: 190px; display: grid; place-items: center; padding: 22px; background: var(--card); border: 1px solid var(--rule); border-radius: 14px; margin-bottom: 26px; }
+.step-n { position: absolute; top: -26px; left: -8px; font: italic 400 76px/1 var(--serif); color: var(--orange); font-variation-settings: "SOFT" 100, "WONK" 1, "opsz" 144; text-shadow: 3px 3px 0 var(--paper); }
+.steps h3 { font-size: 28px; margin-bottom: 10px; }
+.steps p { font-size: 16.5px; }
+.fig-card { width: 100%; background: #fff; border: 1px solid var(--rule); border-radius: 12px; padding: 14px; box-shadow: 0 14px 30px -18px rgba(28, 25, 21, 0.35); font-family: var(--sans); }
+/* Wraps the pill onto its own line when the card is narrow (834px three-up, 320px) instead of overflowing. */
+.fig-store { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; }
+.fig-store > div { min-width: 0; }
+.fig-store img { border-radius: 10px; }
+.fig-store b { display: block; font-size: 15px; line-height: 1.2; }
+.fig-store small { font-size: 12px; color: var(--muted); }
+.fig-btn { margin-left: auto; padding: 8px 12px; border-radius: 999px; background: #1a73e8; color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.fig-url { display: grid; gap: 12px; }
+.fig-omni { padding: 8px 12px; border-radius: 999px; background: var(--paper); font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fig-omni b { color: var(--ink); }
+.fig-tabs { display: flex; justify-content: center; gap: 20px; font: 600 10.5px/1 var(--sans); letter-spacing: 0.1em; text-transform: uppercase; color: #737373; }
+.fig-tabs span { padding-top: 8px; border-top: 2px solid transparent; }
+.fig-tabs .on { color: var(--ink); border-top-color: var(--ink); }
+.fig-run { background: #f7f0ff; font-family: var(--panel-font); }
+.fig-row { display: flex; justify-content: space-between; padding: 9px 12px; background: #fff; border: 1px solid #ddcef8; border-radius: 10px; font-size: 12.5px; }
+.fig-row span { color: #7c6a9a; }
+.fig-row b { color: #7008a0; }
+.fig-run-btn { display: block; margin-top: 10px; padding: 10px; text-align: center; border-radius: 12px; background: #950acc; color: #fff; font-size: 13.5px; font-weight: 700; box-shadow: 0 3px 0 rgba(112, 8, 160, 0.4); }
+
+@media (max-width: 820px) {
+  .steps { grid-template-columns: minmax(0, 1fr); gap: 56px; max-width: 520px; }
+}

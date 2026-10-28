@@ -1,0 +1,21 @@
+---
+import Base from "../layouts/Base.astro";
+import Hero from "../components/home/Hero.astro";
+import Demo from "../components/demo/Demo.astro";
+import Features from "../components/home/Features.astro";
+import Setup from "../components/home/Setup.astro";
+import PrivacyLedger from "../components/home/PrivacyLedger.astro";
+import FaqSection from "../components/home/FaqSection.astro";
+import CloseCta from "../components/home/CloseCta.astro";
+---
+
+<!-- Hero → Demo → Features → Setup → Privacy → FAQ → closing CTA. -->
+<Base home>
+  <Hero />
+  <Demo />
+  <Features />
+  <Setup />
+  <PrivacyLedger />
+  <FaqSection />
+  <CloseCta />
+</Base>
