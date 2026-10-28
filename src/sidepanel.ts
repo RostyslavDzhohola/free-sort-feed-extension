@@ -134,6 +134,9 @@ let hasTikTokAccess = false;
 let viewPushTimer: number | null = null;
 // Reset reloads the page; its "Waiting for page reload…" note clears once the profile is back.
 let awaitingResetReload = false;
+// True while Run is injecting the scanner. The controls hold the user's latest Show/Sort then,
+// so a rehydrate that reads the scanner's first state must not pull them back.
+let scanStarting = false;
 let activePanelView: "outliers" | "saved" = "outliers";
 let helpTooltipOpen = false;
 let reviewPromptState: ReviewPromptState = createDefaultReviewPromptState();
@@ -2420,7 +2423,7 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
     if (rawState && (rawState.status === "scanning" || rawState.status === "done")) {
       profileReady = true;
       profileWaitStartedAt = null;
-      renderState(rawState, true);
+      renderState(rawState, !scanStarting);
       return;
     }
     if (rawState && rawState.status === "error") errorText = rawState.errorText;
@@ -2898,6 +2901,7 @@ savedClearBtn.addEventListener("click", function () {
 
 runBtn.addEventListener("click", async function () {
   const generation = bindGeneration;
+  scanStarting = true;
   setButtonsDisabled();
   reviewPromptShownThisSession = false;
   reviewPromptClosedThisSession = false;
@@ -2987,6 +2991,8 @@ runBtn.addEventListener("click", async function () {
     statusEl.textContent = message;
     statusEl.className = "status-msg error";
     setButtonsForIdle();
+  } finally {
+    scanStarting = false;
   }
 });
 
