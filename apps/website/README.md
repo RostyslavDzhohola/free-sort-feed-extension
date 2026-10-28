@@ -54,7 +54,7 @@ When 1.1 is approved and live in the store: drop the promo video into `public/pr
 
 ## Analytics (DataFast)
 
-`layouts/Base.astro` loads `https://datafa.st/js/script.cookieless.js` in production builds only, after a small inline queue (`#datafast-queue`) that keeps goals sent before the script loads. Cookieless mode is also switched on in the DataFast dashboard, so the site sets no cookies and needs no banner. DataFast counts only `outliers-extension.vercel.app`: localhost and Vercel preview URLs send nothing.
+In production builds, `layouts/Base.astro` inlines a small script (`#datafast-queue`). It queues goals sent before the tracker loads, and it loads `https://datafa.st/js/script.cookieless.js` only when the page's hostname is `outliers-extension.vercel.app`, so localhost, Vercel preview URLs and per-deployment URLs send nothing. Cookieless mode is also switched on in the DataFast dashboard, so the site sets no cookies and needs no banner.
 
 Custom goals (created in DataFast on their first event):
 - `install_click`: any **Add to Chrome** button (`StoreButton.astro`), with `location` = `nav`, `hero` or `close`.

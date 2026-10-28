@@ -64,11 +64,21 @@ const analytics = import.meta.env.PROD && site.analytics;
     {
       analytics && (
         <Fragment>
-          <!-- DataFast, cookieless. The queue keeps goals sent before the script loads (lib/analytics.ts). -->
-          <script is:inline id="datafast-queue">
+          <!--
+            DataFast, cookieless. The queue keeps goals sent before the tracker loads (lib/analytics.ts). The tracker
+            loads only on the production domain: preview deployments and local builds would otherwise send events.
+          -->
+          <script is:inline id="datafast-queue" data-website-id={analytics.websiteId} data-domain={analytics.domain}>
             window.datafast = window.datafast || function () { (window.datafast.q = window.datafast.q || []).push(arguments); };
+            (function (config) {
+              if (location.hostname !== config.domain) return;
+              var tracker = document.createElement("script");
+              tracker.src = "https://datafa.st/js/script.cookieless.js";
+              tracker.dataset.websiteId = config.websiteId;
+              tracker.dataset.domain = config.domain;
+              document.head.appendChild(tracker);
+            })(document.currentScript.dataset);
           </script>
-          <script is:inline defer data-website-id={analytics.websiteId} data-domain={analytics.domain} src="https://datafa.st/js/script.cookieless.js"></script>
         </Fragment>
       )
     }

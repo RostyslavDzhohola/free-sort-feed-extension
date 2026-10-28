@@ -2,6 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { runInNewContext } from "node:vm";
 import { DATAFAST, RELEASE_1_1, SITE_INDEXABLE, SITE_URL } from "../site.config.mjs";
 
 const dist = new URL("../dist/", import.meta.url);
@@ -46,23 +47,50 @@ test("each page has exactly one h1 and a skip link to main", () => {
   }
 });
 
-test("the only third-party script is DataFast's cookieless tracker, and JS stays under the 60 KB budget", () => {
+/** Runs the inline DataFast loader as a browser would on `hostname`; returns the queue and any script it added. */
+function runDataFastLoader(page, hostname) {
+  const tag = page.match(/<script id="datafast-queue"([^>]*)>([\s\S]*?)<\/script>/);
+  assert.ok(tag, "the DataFast queue script is present");
+  const dataset = {
+    websiteId: tag[1].match(/data-website-id="([^"]+)"/)?.[1],
+    domain: tag[1].match(/data-domain="([^"]+)"/)?.[1],
+  };
+  const added = [];
+  const window = {};
+  const document = {
+    currentScript: { dataset },
+    createElement: () => ({ dataset: {} }),
+    head: { appendChild: (el) => added.push(el) },
+  };
+  runInNewContext(tag[2], { window, document, location: { hostname } });
+  return { window, added, dataset };
+}
+
+test("DataFast loads only on the production domain, with goals queued until it does; no other third-party scripts", () => {
   for (const [route, page] of Object.entries(html)) {
-    const external = [];
-    for (const [tag, src] of page.matchAll(/<script[^>]*\ssrc="([^"]+)"[^>]*>/g)) {
-      if (!src.startsWith("/_astro/")) external.push(tag);
+    for (const [, src] of page.matchAll(/<script[^>]*\ssrc="([^"]+)"/g)) {
+      assert.ok(src.startsWith("/_astro/"), `${route} has no static third-party script: ${src}`);
     }
     if (!DATAFAST) {
-      assert.deepEqual(external, [], `${route} loads no third-party script`);
+      assert.ok(!page.includes("datafa.st"), `${route} has no DataFast code`);
       continue;
     }
-    assert.equal(external.length, 1, `${route} loads one third-party script`);
-    const [tag] = external;
-    assert.ok(tag.includes('src="https://datafa.st/js/script.cookieless.js"'), `${route} uses the cookieless script: ${tag}`);
-    assert.ok(tag.includes(`data-website-id="${DATAFAST.websiteId}"`) && tag.includes(`data-domain="${DATAFAST.domain}"`), tag);
-    assert.ok(/\sdefer[\s>=]/.test(tag), "the tracker is deferred");
-    assert.ok(page.indexOf('id="datafast-queue"') < page.indexOf(tag), `${route} queues goals before the tracker loads`);
+    const live = runDataFastLoader(page, DATAFAST.domain);
+    assert.deepEqual(live.dataset, { websiteId: DATAFAST.websiteId, domain: DATAFAST.domain });
+    assert.equal(live.added.length, 1, `${route} loads the tracker on ${DATAFAST.domain}`);
+    assert.equal(live.added[0].src, "https://datafa.st/js/script.cookieless.js", "the cookieless tracker");
+    assert.deepEqual({ ...live.added[0].dataset }, { websiteId: DATAFAST.websiteId, domain: DATAFAST.domain });
+    live.window.datafast("install_click", { location: "hero" });
+    assert.deepEqual(Array.from(live.window.datafast.q[0]), ["install_click", { location: "hero" }], "early goals are buffered");
+    for (const host of ["outliers-extension-abc123-rostyslav-dzhoholas-projects.vercel.app", "localhost", "127.0.0.1"]) {
+      const other = runDataFastLoader(page, host);
+      assert.equal(other.added.length, 0, `${route} sends nothing from ${host}`);
+      assert.equal(typeof other.window.datafast, "function", `goals still queue harmlessly on ${host}`);
+    }
   }
+});
+
+test("JS stays under the 60 KB budget", () => {
   const assets = new URL("_astro/", dist);
   const external = readdirSync(assets).filter((f) => f.endsWith(".js")).reduce((sum, f) => sum + statSync(new URL(f, assets)).size, 0);
   const inline = [...html["/"].matchAll(/<script type="module">([\s\S]*?)<\/script>/g)].reduce((sum, m) => sum + m[1].length, 0);
