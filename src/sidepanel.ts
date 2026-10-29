@@ -2441,11 +2441,29 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
     adoptProfileFromUrl(url);
     const rawState = payload?.state ?? null;
     if (rawState && (rawState.status === "scanning" || rawState.status === "done")) {
+      if (scanIsForAnotherProfile(rawState, url)) {
+        // The tab moved to another profile while the panel was closed, so nothing retired
+        // this scan. Clear it like a navigation does; the page reloads and the poll re-reads it.
+        await retireScanInPage(tabId);
+        if (isStale()) return;
+        clearRenderedScan();
+        profileReady = false;
+        latestFollowers = null;
+        latestProfileInfo = null;
+        updateRunAvailability();
+        showLoading();
+        return;
+      }
       profileReady = true;
       profileWaitStartedAt = null;
-      const keepControls = startedDuringStartup || isScanStarting(tabId, generation)
+      const editing = startedDuringStartup || isScanStarting(tabId, generation);
+      const keepControls = editing
         || activityAtStart !== viewActivityOf(tabId, generation) || hasViewWrites(tabId, generation);
       renderState(rawState, !keepControls);
+      // An edit made before the scan was restored queued no write; send it now that it's known.
+      if (keepControls && !editing && !hasViewWrites(tabId, generation) && !viewMatchesState(currentView(), rawState)) {
+        schedulePushView();
+      }
       return;
     }
     if (rawState && rawState.status === "error") errorText = rawState.errorText;
@@ -2638,23 +2656,7 @@ async function handleNavigation(details: { tabId: number; url: string }, generat
   lastKnownProfileRef = newRef;
   cancelViewPush();
 
-  try {
-    await chrome.scripting.executeScript({
-      target: { tabId: details.tabId },
-      func: function () {
-        const w = window as unknown as {
-          __outliers_reset?: () => void;
-          __outliers_state?: unknown;
-          __outliers_active?: boolean;
-        };
-        if (typeof w.__outliers_reset === "function") w.__outliers_reset();
-        w.__outliers_state = undefined;
-        w.__outliers_active = false;
-      },
-    });
-  } catch {
-    // Non-fatal
-  }
+  await retireScanInPage(details.tabId);
   if (!isStillBound(details.tabId, generation)) return;
 
   hideProgress();
@@ -2669,6 +2671,43 @@ async function handleNavigation(details: { tabId: number; url: string }, generat
   statusEl.className = "status-msg";
   showLoading();
   // The navigation poll rehydrates on its next tick, once the new profile has rendered.
+}
+
+// Drops the page's scan (its reset reloads the page) so it can't be restored onto another profile.
+async function retireScanInPage(tabId: number): Promise<void> {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: function () {
+        const w = window as unknown as {
+          __outliers_reset?: () => void;
+          __outliers_state?: unknown;
+          __outliers_active?: boolean;
+        };
+        if (typeof w.__outliers_reset === "function") w.__outliers_reset();
+        w.__outliers_state = undefined;
+        w.__outliers_active = false;
+      },
+    });
+  } catch {
+    // Non-fatal
+  }
+}
+
+// True when the URL shows a profile other than the one the scan belongs to. A video viewer
+// (no profile in the URL) keeps its profile's scan.
+function scanIsForAnotherProfile(state: OutliersState, url: string | null): boolean {
+  const shown = url ? getProfileRef(url) : null;
+  if (!shown || !state.profileHandle) return false;
+  if (state.platform && state.platform !== shown.platform) return true;
+  return state.profileHandle.toLowerCase() !== shown.handle;
+}
+
+function viewMatchesState(view: ViewSettings, state: OutliersState): boolean {
+  return view.filterMode === state.filterMode
+    && view.sortKey === (state.sortKey ?? "views")
+    && view.sortDir === (state.sortDir ?? "desc")
+    && (view.filterMode !== "minViews" || view.minViews === state.minViews);
 }
 
 async function readTabUrl(tabId: number): Promise<string | null> {
