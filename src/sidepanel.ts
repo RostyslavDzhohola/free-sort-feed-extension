@@ -159,6 +159,9 @@ interface ScanStartup {
   view: ViewSettings;
 }
 const startingScans = new Map<number, ScanStartup>();
+// Counts scan states the page has pushed to the panel, so a read that a newer push overtook
+// can tell and step aside.
+let statePushes = 0;
 let activePanelView: "outliers" | "saved" = "outliers";
 let helpTooltipOpen = false;
 let reviewPromptState: ReviewPromptState = createDefaultReviewPromptState();
@@ -2641,6 +2644,7 @@ chrome.runtime.onMessage.addListener(function (
   if (cachedTabId != null && sender.tab?.id !== cachedTabId) return;
 
   if (msg.type === "outliers:state") {
+    statePushes++;
     renderState(msg.state);
     updateRunAvailability();
   } else if (msg.type === "outliers:reset") {
@@ -3119,24 +3123,27 @@ runBtn.addEventListener("click", async function () {
     });
     if (pageChanged()) return;
 
+    const pushesBefore = statePushes;
     await chrome.scripting.executeScript({
       target,
       files: ["injected.js"],
     });
     if (pageChanged() || !showsTab()) return;
 
-    // The scanner may already have stopped with an error (the page left the scan tab, say), and
-    // its message can beat this point; show what it actually reports rather than "scanning".
+    // The scanner may already have stopped with an error (the page left the scan tab, say), or
+    // finished a short scan; show what it actually reports rather than assuming "scanning".
+    // Its own pushes are newer than this read, so once one has arrived it has the last word.
     const started = await chrome.scripting.executeScript({
       target,
       func: function (): OutliersState | null {
         return (window as unknown as { __outliers_state?: OutliersState }).__outliers_state ?? null;
       },
     });
-    if (pageChanged() || !showsTab()) return;
+    if (pageChanged() || !showsTab() || statePushes !== pushesBefore) return;
     const startedState = (started?.[0]?.result as OutliersState | null | undefined) ?? null;
-    if (startedState && (startedState.status === "error" || startedState.status === "done")) {
+    if (startedState) {
       renderState(startedState);
+      updateRunAvailability();
       return;
     }
 
