@@ -1,6 +1,6 @@
 # Outliers
 
-A free, open source Chrome extension for researching short-form video. Open any Instagram or TikTok profile, yours or a competitor's, and Outliers lists its videos sorted by the numbers that matter: views, likes, comments, shares, saves, engagement rate, views ÷ followers, post date or length. Or keep only the outliers: videos with 5× more views than the account has followers.
+A free Chrome extension for researching short-form video; its code is all here. Open any Instagram or TikTok profile, yours or a competitor's, and Outliers lists its videos sorted by the numbers that matter: views, likes, comments, shares, saves, engagement rate, views ÷ followers, post date or length. Or keep only the outliers: videos with 5× more views than the account has followers.
 
 ## What It Does
 

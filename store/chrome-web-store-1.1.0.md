@@ -8,13 +8,13 @@ Paste these into the Developer Dashboard for item `heogkfpbeagpoodininnfhdgjmpda
 
 **Summary** (manifest `description`, 132 characters max; this one is 116):
 
-> Find outlier videos on Instagram and TikTok. Sort any profile by views, likes, comments and more. Free, open source.
+> Find outlier videos on Instagram and TikTok. Sort any profile by views, likes, comments and more. Free, with the code on GitHub.
 
 **Category:** Tools (unchanged)
 
 **Description:**
 
-> Research your competition in seconds. Outliers is a free, open source Chrome extension that finds the videos that broke out on any Instagram or TikTok profile, yours or anyone else's.
+> Research your competition in seconds. Outliers is a free Chrome extension that finds the videos that broke out on any Instagram or TikTok profile, yours or anyone else's.
 >
 > Open a profile, click Run, and Outliers scrolls the grid for you and lists every video with its numbers:
 >
@@ -31,7 +31,7 @@ Paste these into the Developer Dashboard for item `heogkfpbeagpoodininnfhdgjmpda
 >
 > Private by design: everything runs in your browser. Outliers has no servers, no accounts, no analytics and no tracking. It reads only what the profile page already shows you.
 >
-> Free and open source: https://github.com/RostyslavDzhohola/free-sort-feed-extension
+> Free, with the code on GitHub: https://github.com/RostyslavDzhohola/free-sort-feed-extension
 >
 > What's new in 1.1
 > • Sort by likes, comments, shares, saves, engagement, date and more (you asked for it!)

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Outliers",
   "version": "1.1.0",
-  "description": "Find outlier videos on Instagram and TikTok. Sort any profile by views, likes, comments and more. Free, open source.",
+  "description": "Find outlier videos on Instagram and TikTok. Sort any profile by views, likes, comments and more. Free, with the code on GitHub.",
   "permissions": [
     "scripting",
     "sidePanel",
