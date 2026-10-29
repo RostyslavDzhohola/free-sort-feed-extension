@@ -149,12 +149,16 @@ const viewWritesInFlight = new Map<string, number>();
 const viewActivity = new Map<string, number>();
 // Reset reloads the page; its "Waiting for page reload…" note clears once the profile is back.
 let awaitingResetReload = false;
-// Set while Run is injecting the scanner into a tab. The controls hold the user's latest
-// Show/Sort then, so a rehydrate of that tab that reads the scanner's first state must not pull
-// them back. Keyed to the tab, so another tab's rehydrate still syncs its own controls, and a
-// return to the tab mid-startup still finds it.
+// Scan startups in progress, by tab: Run is injecting the scanner there. The controls hold the
+// user's latest Show/Sort then, so a rehydrate of that tab that reads the scanner's first state
+// must not pull them back. Keyed by tab, so another tab's rehydrate still syncs its own
+// controls, a return to the tab mid-startup still finds it, and startups on two tabs coexist.
 // `view` is the Show/Sort the scanner will start with: the latest edit made on that tab.
-let scanStarting: { tabId: number; view: ViewSettings } | null = null;
+interface ScanStartup {
+  tabId: number;
+  view: ViewSettings;
+}
+const startingScans = new Map<number, ScanStartup>();
 let activePanelView: "outliers" | "saved" = "outliers";
 let helpTooltipOpen = false;
 let reviewPromptState: ReviewPromptState = createDefaultReviewPromptState();
@@ -3008,8 +3012,8 @@ savedClearBtn.addEventListener("click", function () {
 
 runBtn.addEventListener("click", async function () {
   const generation = bindGeneration;
-  const startup = { tabId: cachedTabId ?? -1, view: currentView() };
-  scanStarting = startup;
+  const startup: ScanStartup = { tabId: cachedTabId ?? -1, view: currentView() };
+  if (cachedTabId != null) startingScans.set(cachedTabId, startup);
   // The panel may follow other tabs and come back while this runs; it speaks for the startup
   // whenever it shows this tab again.
   const showsTab = function (): boolean {
@@ -3030,7 +3034,10 @@ runBtn.addEventListener("click", async function () {
       setButtonsForIdle();
       return;
     }
-    startup.tabId = tabId;
+    if (startup.tabId !== tabId) {
+      startup.tabId = tabId;
+      startingScans.set(tabId, startup);
+    }
 
     const limit = getScanLimitFromUI();
     const view = startup.view;
@@ -3127,8 +3134,10 @@ runBtn.addEventListener("click", async function () {
     statusEl.className = "status-msg error";
     setButtonsForIdle();
   } finally {
-    // A newer Run owns the guard now if one started meanwhile.
-    if (scanStarting === startup) scanStarting = null;
+    // A newer Run on this tab owns its entry now if one started meanwhile.
+    if (startingScans.get(startup.tabId) === startup) startingScans.delete(startup.tabId);
+    // Run was held off while this started; let it reflect the tab again.
+    if (showsTab()) updateRunAvailability();
   }
 });
 
@@ -3220,8 +3229,9 @@ function onViewChanged(): void {
     return;
   }
   // While Run is starting a scan the page takes the change too: the scanner reads it as it begins.
-  if (scanStarting && cachedTabId != null && isScanStarting(cachedTabId)) {
-    scanStarting.view = currentView();
+  const startup = cachedTabId != null ? startingScans.get(cachedTabId) : undefined;
+  if (startup) {
+    startup.view = currentView();
     schedulePushView();
   }
   updateRunAvailability();
@@ -3250,7 +3260,7 @@ function flushViewPush(): void {
 }
 
 function isScanStarting(tabId: number): boolean {
-  return scanStarting != null && scanStarting.tabId === tabId;
+  return startingScans.has(tabId);
 }
 
 function viewWriteKey(tabId: number, generation: number): string {
@@ -3487,8 +3497,9 @@ async function bindToTab(tabId: number): Promise<void> {
   showLoading();
   // Back on a tab whose scan is still starting: show the Show/Sort it starts with and keep Run
   // off until it's running (its first state message takes over).
-  if (scanStarting && scanStarting.tabId === tabId) {
-    syncControlsToView(scanStarting.view);
+  const startup = startingScans.get(tabId);
+  if (startup) {
+    syncControlsToView(startup.view);
     setButtonsDisabled();
   }
 
