@@ -132,8 +132,20 @@ let currentPlatform: Platform | null = null;
 let latestProfileInfo: ProfileInfo | null = null;
 let hasTikTokAccess = false;
 let viewPushTimer: number | null = null;
-// The Show/Sort change waiting on viewPushTimer, with the tab and document it was made for.
-let pendingViewPush: { tabId: number; generation: number; epoch: number; view: ViewSettings } | null = null;
+interface PendingViewPush {
+  tabId: number;
+  generation: number;
+  epoch: number;
+  view: ViewSettings;
+  handle: string | null;
+}
+// The Show/Sort change waiting on viewPushTimer, with the tab, document and profile it was made for.
+let pendingViewPush: PendingViewPush | null = null;
+// Show/Sort writes sent to a page but not yet run there, per tab and bind. While any are out
+// the controls are ahead of the page, so a rehydrate must not sync them from what it reads.
+const viewWritesInFlight = new Map<string, number>();
+// Bumped on every Show/Sort edit, so a rehydrate can tell an edit landed while it was reading.
+let viewEditVersion = 0;
 // Reset reloads the page; its "Waiting for page reload…" note clears once the profile is back.
 let awaitingResetReload = false;
 // Set while Run is injecting the scanner into a tab. The controls hold the user's latest
@@ -2406,9 +2418,10 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
   const isStale = function (): boolean {
     return !isStillBound(tabId, generation) || epoch !== documentEpoch;
   };
-  // A read that began during Run's startup may return the scanner's first view, which the
-  // latest Show/Sort replaces; it must not overwrite the controls even if it lands later.
+  // A read that began during Run's startup, or before the latest Show/Sort reached the page,
+  // may return an older view; it must not overwrite the controls even if it lands later.
   const startedDuringStartup = isScanStarting(tabId, generation);
+  const editsAtStart = viewEditVersion;
   let url: string | null = null;
   let errorText: string | null = null;
   try {
@@ -2429,7 +2442,9 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
     if (rawState && (rawState.status === "scanning" || rawState.status === "done")) {
       profileReady = true;
       profileWaitStartedAt = null;
-      renderState(rawState, !(startedDuringStartup || isScanStarting(tabId, generation)));
+      const keepControls = startedDuringStartup || isScanStarting(tabId, generation)
+        || editsAtStart !== viewEditVersion || hasViewWrites(tabId, generation);
+      renderState(rawState, !keepControls);
       return;
     }
     if (rawState && rawState.status === "error") errorText = rawState.errorText;
@@ -2987,7 +3002,9 @@ runBtn.addEventListener("click", async function () {
         w.__outliers_view = v;
         w.__outliers_profile = p;
       }) as unknown as () => void,
-      args: [limit, view, { handle: info.handle, followers: info.followers }],
+      // The latest Show/Sort: it may have changed since the click. Later edits reach the page
+      // through schedulePushView, before or after the scanner starts.
+      args: [limit, currentView(), { handle: info.handle, followers: info.followers }],
     });
     if (!stillHere()) return;
 
@@ -2999,13 +3016,6 @@ runBtn.addEventListener("click", async function () {
 
     setButtonsForScanning();
     statusEl.textContent = "";
-    // Show or Sort may have changed while the scanner was starting. Hand it the latest before
-    // the startup guard lifts, so no rehydrate can read the first view back into the controls.
-    const latest = currentView();
-    if (JSON.stringify(latest) !== JSON.stringify(view)) {
-      cancelViewPush();
-      await pushViewToPage(tabId, generation, epoch, latest);
-    }
   } catch (err: unknown) {
     if (generation !== bindGeneration) return;
     const message = err instanceof Error ? err.message : "Something went wrong.";
@@ -3099,11 +3109,14 @@ for (let i = 0; i < filterModeBtns.length; i++) {
 // Before a scan, keep the stats in step with the controls. During and after one, the page
 // refilters what it collected and answers with a new state.
 function onViewChanged(): void {
+  viewEditVersion++;
   const status = currentRenderedState?.status;
   if (status === "done" || status === "scanning") {
     schedulePushView();
     return;
   }
+  // While Run is starting a scan the page takes the change too: the scanner reads it as it begins.
+  if (cachedTabId != null && isScanStarting(cachedTabId, bindGeneration)) schedulePushView();
   updateRunAvailability();
   if (latestProfileInfo) {
     const waitedLong = profileWaitStartedAt != null && Date.now() - profileWaitStartedAt >= PROFILE_WAIT_HINT_MS;
@@ -3124,7 +3137,7 @@ function flushViewPush(): void {
   const pending = pendingViewPush;
   cancelViewPush();
   if (!pending) return;
-  pushViewToPage(pending.tabId, pending.generation, pending.epoch, pending.view).catch(function () {
+  pushViewToPage(pending).catch(function () {
     // Non-fatal
   });
 }
@@ -3133,39 +3146,76 @@ function isScanStarting(tabId: number, generation: number): boolean {
   return scanStarting != null && scanStarting.tabId === tabId && scanStarting.generation === generation;
 }
 
+function viewWriteKey(tabId: number, generation: number): string {
+  return tabId + ":" + generation;
+}
+
+function hasViewWrites(tabId: number, generation: number): boolean {
+  if (pendingViewPush && pendingViewPush.tabId === tabId && pendingViewPush.generation === generation) return true;
+  return (viewWritesInFlight.get(viewWriteKey(tabId, generation)) ?? 0) > 0;
+}
+
 function schedulePushView(): void {
   cancelViewPush();
   const tabId = cachedTabId;
   if (tabId == null) return;
-  const generation = bindGeneration;
-  const epoch = documentEpoch;
-  const view = currentView();
-  pendingViewPush = { tabId, generation, epoch, view };
+  const push: PendingViewPush = {
+    tabId,
+    generation: bindGeneration,
+    epoch: documentEpoch,
+    view: currentView(),
+    handle: lastKnownProfileRef?.handle ?? currentRenderedState?.profileHandle ?? null,
+  };
+  pendingViewPush = push;
   // Coalesce slider drags into one redraw of the page grid.
   viewPushTimer = window.setTimeout(function () {
     viewPushTimer = null;
     pendingViewPush = null;
-    pushViewToPage(tabId, generation, epoch, view).catch(function () {
+    pushViewToPage(push).catch(function () {
       // Non-fatal
     });
   }, 90);
 }
 
-async function pushViewToPage(tabId: number, generation: number, epoch: number, view: ViewSettings): Promise<void> {
-  if (!isStillBound(tabId, generation) || epoch !== documentEpoch) return;
+async function pushViewToPage(push: PendingViewPush): Promise<void> {
+  const { tabId, generation } = push;
+  if (!isStillBound(tabId, generation) || push.epoch !== documentEpoch) return;
+  const key = viewWriteKey(tabId, generation);
+  viewWritesInFlight.set(key, (viewWritesInFlight.get(key) ?? 0) + 1);
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
-      args: [view],
-      func: (function (v: ViewSettings) {
-        const apply = (window as unknown as { __outliers_apply_view?: (view: ViewSettings) => void }).__outliers_apply_view;
-        if (typeof apply === "function") apply(v);
+      args: [push.view, push.handle],
+      func: (function (v: ViewSettings, handle: string | null) {
+        const w = window as unknown as {
+          __outliers_apply_view?: (view: ViewSettings) => void;
+          __outliers_view?: ViewSettings;
+          __outliers_state?: { profileHandle?: string | null };
+        };
+        // The tab may have moved on since the change was made (a flushed write runs after the
+        // panel has left it): apply it only to the profile it was made on.
+        if (handle) {
+          const want = handle.toLowerCase();
+          const first = (window.location.pathname.split("/")[1] ?? "").toLowerCase();
+          // A video viewer (Instagram /reel/…, /p/…) keeps the profile's scan underneath.
+          const shown = /^(reel|reels|p|tv)$/.test(first) ? null : first.replace(/^@/, "");
+          if (shown !== null && shown !== want) return;
+          const scanned = w.__outliers_state?.profileHandle;
+          if (scanned && scanned.toLowerCase() !== want) return;
+        }
+        if (typeof w.__outliers_apply_view === "function") w.__outliers_apply_view(v);
+        // The scanner is still starting; it reads this view when it begins.
+        else w.__outliers_view = v;
       }) as unknown as () => void,
     });
   } catch {
     if (!isStillBound(tabId, generation)) return;
     statusEl.textContent = "Couldn't update the page. Reset and scan again.";
     statusEl.className = "status-msg error";
+  } finally {
+    const left = (viewWritesInFlight.get(key) ?? 1) - 1;
+    if (left > 0) viewWritesInFlight.set(key, left);
+    else viewWritesInFlight.delete(key);
   }
 }
 
