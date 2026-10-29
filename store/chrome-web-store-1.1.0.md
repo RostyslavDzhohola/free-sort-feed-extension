@@ -37,7 +37,7 @@ Paste these into the Developer Dashboard for item `heogkfpbeagpoodininnfhdgjmpda
 > • Sort by likes, comments, shares, saves, engagement, date and more (you asked for it!)
 > • TikTok support
 > • "All" view: every scanned video, sorted
-> • Exact counts where the page provides them, in any language; Min Views no longer needs a follower count
+> • Exact counts where the page provides them; Min Views no longer needs a follower count
 
 **Video:** the store takes a YouTube URL. The 1.1 promo MP4 is ready locally; upload it to YouTube once approved and paste the link here.
 

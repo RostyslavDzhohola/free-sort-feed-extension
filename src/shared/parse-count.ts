@@ -1,7 +1,8 @@
 /**
  * Parse abbreviated count strings like "2.5K", "1,2M", "1M", "1,234" to numbers.
- * With a K/M/B suffix a single "." or "," is the decimal mark ("1,2M" is 1.2M);
- * without one every separator groups thousands ("1.234" is 1234).
+ * With a K/M/B suffix a single "." or "," is the decimal mark ("1,2M" is 1.2M), as is a last
+ * mark that differs from the grouping marks before it ("1,234.5K" and "1.234,5K" are 1,234,500);
+ * without a suffix every separator groups thousands ("1.234" is 1234).
  * Returns NaN if the string cannot be parsed.
  */
 export function parseCount(raw: unknown): number {
@@ -14,9 +15,16 @@ export function parseCount(raw: unknown): number {
   let num: number;
   if (suffix) {
     const separators = digits.match(/[.,]/g) ?? [];
-    num = separators.length === 1
-      ? parseFloat(digits.replace(",", "."))
-      : parseFloat(digits.replace(/[.,]/g, ""));
+    const last = separators[separators.length - 1];
+    const hasDecimal = last !== undefined && separators.slice(0, -1).every(function (mark) {
+      return mark !== last;
+    });
+    if (hasDecimal) {
+      const at = digits.lastIndexOf(last);
+      num = parseFloat(digits.slice(0, at).replace(/[.,]/g, "") + "." + digits.slice(at + 1));
+    } else {
+      num = parseFloat(digits.replace(/[.,]/g, ""));
+    }
   } else {
     num = parseInt(digits.replace(/[.,]/g, ""), 10);
   }

@@ -76,7 +76,8 @@ test("TikTok-only sort keys fall back to views on Instagram", async () => {
 test("formats metric phrases", async () => {
   const { formatMetricPhrase, formatPercent, formatDuration } = await load();
   assert.equal(formatMetricPhrase("comments", 1_234), "1.2K comments");
-  assert.equal(formatMetricPhrase("likes", null), "likes hidden");
+  assert.equal(formatMetricPhrase("likes", null, true), "likes hidden");
+  assert.equal(formatMetricPhrase("likes", null), "likes not shown");
   assert.equal(formatMetricPhrase("shares", 1), "1 share");
   assert.equal(formatMetricPhrase("views", 0), "0 views");
   assert.equal(formatMetricPhrase("multiple", 12.44), "12.4× followers");

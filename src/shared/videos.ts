@@ -216,8 +216,11 @@ export function formatMetricValue(key: SortKey, value: number | null): string {
   }
 }
 
-/** The metric with its unit, e.g. "1.2K comments", "1 share", "4.1% engagement", "posted Oct 3, 2026". */
-export function formatMetricPhrase(key: SortKey, value: number | null): string {
+/**
+ * The metric with its unit, e.g. "1.2K comments", "1 share", "4.1% engagement", "posted Oct 3, 2026".
+ * `likesHidden` says the creator hid the like count; otherwise a missing count is just not shown.
+ */
+export function formatMetricPhrase(key: SortKey, value: number | null, likesHidden = false): string {
   const shown = formatMetricValue(key, value);
   const unit = function (singular: string): string {
     return shown + " " + singular + (value === 1 ? "" : "s");
@@ -226,7 +229,8 @@ export function formatMetricPhrase(key: SortKey, value: number | null): string {
     case "views":
       return unit("view");
     case "likes":
-      return value === null ? "likes hidden" : unit("like");
+      if (value !== null) return unit("like");
+      return likesHidden ? "likes hidden" : "likes not shown";
     case "comments":
       return unit("comment");
     case "shares":

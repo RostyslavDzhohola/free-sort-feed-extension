@@ -11,6 +11,9 @@ test("parses English and comma-decimal counts", async () => {
   assert.equal(parseCount("1.234.567"), 1_234_567);
   assert.equal(parseCount("0.9B"), 900_000_000);
   assert.equal(parseCount("1 234"), 1234);
+  assert.equal(parseCount("1,234.5K"), 1_234_500);
+  assert.equal(parseCount("1.234,5K"), 1_234_500);
+  assert.equal(parseCount("1.234.567K"), 1_234_567_000);
   assert.ok(Number.isNaN(parseCount("12..3K")));
   assert.ok(Number.isNaN(parseCount("Followed by")));
 });
@@ -45,4 +48,15 @@ test("CSV keeps the 1.0.x columns first and appends every metric", async () => {
 
 test.after(async () => {
   await rm(tempDirPath, { recursive: true, force: true });
+});
+
+test("CSV writes a known zero ratio and skips dates it can't represent", async () => {
+  const { buildOutliersCsv } = await loadModule("src/shared/export-csv.ts");
+  const csv = buildOutliersCsv(
+    [{ href: "/@a/video/1", url: "https://www.tiktok.com/@a/video/1", views: 0, ratio: 0, postedAt: 1e13 }],
+    { profilePath: "https://www.tiktok.com/@a", filterMode: "all", thresholdLabel: "All", exportedAt: "2026-10-29T00:00:00.000Z", followers: 500 }
+  );
+  const row = csv.split("\n")[1].split(",");
+  assert.equal(row[3], "0.0000");
+  assert.equal(row[14], "");
 });

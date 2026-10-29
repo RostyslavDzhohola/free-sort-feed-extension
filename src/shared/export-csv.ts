@@ -30,8 +30,19 @@ function ratio(value: number | null | undefined): string {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value.toFixed(4) : "";
 }
 
+// Views ÷ followers for a scan row. The entry's stored ratio uses 0 for "unknown", so a known
+// zero (a video with no views yet) is worked out from the counts instead.
+function scanRatio(entry: OutliersEntry, followers: number | null | undefined): string {
+  if (typeof entry.views === "number" && typeof followers === "number" && followers > 0) {
+    return (entry.views / followers).toFixed(4);
+  }
+  return ratio(entry.ratio);
+}
+
 function postedAt(entry: OutliersEntry): string {
-  return typeof entry.postedAt === "number" ? new Date(entry.postedAt * 1000).toISOString() : "";
+  if (typeof entry.postedAt !== "number") return "";
+  const date = new Date(entry.postedAt * 1000);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }
 
 function metricColumns(entry: OutliersEntry): string[] {
@@ -66,7 +77,7 @@ export function buildOutliersCsv(outliers: OutliersEntry[], ctx: CsvExportContex
       String(i + 1),
       escapeCsv(reel.url),
       num(reel.views),
-      ratio(reel.ratio),
+      scanRatio(reel, ctx.followers),
       escapeCsv(ctx.profilePath ?? ""),
       ctx.filterMode,
       escapeCsv(ctx.thresholdLabel),
