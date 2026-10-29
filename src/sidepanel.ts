@@ -2444,7 +2444,10 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
       if (scanIsForAnotherProfile(rawState, url)) {
         // The tab moved to another profile while the panel was closed, so nothing retired
         // this scan. Clear it like a navigation does; the page reloads and the poll re-reads it.
-        await retireScanInPage(tabId);
+        await retireScanInPage(tabId, {
+          documentId: stateResult?.[0]?.documentId,
+          staleHandle: rawState.profileHandle ?? "",
+        });
         if (isStale()) return;
         clearRenderedScan();
         profileReady = false;
@@ -2674,23 +2677,41 @@ async function handleNavigation(details: { tabId: number; url: string }, generat
 }
 
 // Drops the page's scan (its reset reloads the page) so it can't be restored onto another profile.
-async function retireScanInPage(tabId: number): Promise<void> {
+// With `onlyIf`, the reset goes to the document that was read and runs only if that page still
+// holds the stale profile's scan away from its profile: the tab may be back on it by now.
+async function retireScanInPage(
+  tabId: number,
+  onlyIf?: { documentId: string | undefined; staleHandle: string }
+): Promise<void> {
   try {
     await chrome.scripting.executeScript({
-      target: { tabId },
-      func: function () {
+      target: onlyIf?.documentId ? { tabId, documentIds: [onlyIf.documentId] } : { tabId },
+      args: [onlyIf ? onlyIf.staleHandle : null],
+      func: (function (staleHandle: string | null) {
         const w = window as unknown as {
           __outliers_reset?: () => void;
-          __outliers_state?: unknown;
+          __outliers_state?: { profileHandle?: string | null };
           __outliers_active?: boolean;
         };
+        if (staleHandle !== null) {
+          const stale = staleHandle.toLowerCase();
+          if (String(w.__outliers_state?.profileHandle ?? "").toLowerCase() !== stale) return;
+          let first = window.location.pathname.split("/")[1] ?? "";
+          try {
+            first = decodeURIComponent(first);
+          } catch {
+            // Keep the raw segment
+          }
+          first = first.toLowerCase();
+          if (/^(reel|reels|p|tv)$/.test(first) || first.replace(/^@/, "") === stale) return;
+        }
         if (typeof w.__outliers_reset === "function") w.__outliers_reset();
         w.__outliers_state = undefined;
         w.__outliers_active = false;
-      },
+      }) as unknown as () => void,
     });
   } catch {
-    // Non-fatal
+    // Non-fatal: the document is gone, so there is nothing left to retire.
   }
 }
 
