@@ -6,7 +6,7 @@ Paste these into the Developer Dashboard for item `heogkfpbeagpoodininnfhdgjmpda
 
 **Name:** Outliers
 
-**Summary** (manifest `description`, 132 characters max; this one is 116):
+**Summary** (manifest `description`, 132 characters max; this one is 128):
 
 > Find outlier videos on Instagram and TikTok. Sort any profile by views, likes, comments and more. Free, with the code on GitHub.
 
