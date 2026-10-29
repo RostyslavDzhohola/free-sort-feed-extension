@@ -2677,8 +2677,9 @@ async function handleNavigation(details: { tabId: number; url: string }, generat
 }
 
 // Drops the page's scan (its reset reloads the page) so it can't be restored onto another profile.
-// With `onlyIf`, the reset goes to the document that was read and runs only if that page still
-// holds the stale profile's scan away from its profile: the tab may be back on it by now.
+// A scan whose profile the page shows again (or a video viewer over it) is kept: the tab may be
+// back on that profile by the time this runs. With `onlyIf`, the reset goes to the document
+// that was read and runs only while that page still holds the stale profile's scan.
 async function retireScanInPage(
   tabId: number,
   onlyIf?: { documentId: string | undefined; staleHandle: string }
@@ -2693,9 +2694,9 @@ async function retireScanInPage(
           __outliers_state?: { profileHandle?: string | null };
           __outliers_active?: boolean;
         };
-        if (staleHandle !== null) {
-          const stale = staleHandle.toLowerCase();
-          if (String(w.__outliers_state?.profileHandle ?? "").toLowerCase() !== stale) return;
+        const scanned = String(w.__outliers_state?.profileHandle ?? "").toLowerCase();
+        if (staleHandle !== null && scanned !== staleHandle.toLowerCase()) return;
+        if (scanned) {
           let first = window.location.pathname.split("/")[1] ?? "";
           try {
             first = decodeURIComponent(first);
@@ -2703,7 +2704,7 @@ async function retireScanInPage(
             // Keep the raw segment
           }
           first = first.toLowerCase();
-          if (/^(reel|reels|p|tv)$/.test(first) || first.replace(/^@/, "") === stale) return;
+          if (/^(reel|reels|p|tv)$/.test(first) || first.replace(/^@/, "") === scanned) return;
         }
         if (typeof w.__outliers_reset === "function") w.__outliers_reset();
         w.__outliers_state = undefined;
