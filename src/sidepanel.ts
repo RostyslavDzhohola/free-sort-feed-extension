@@ -132,11 +132,14 @@ let currentPlatform: Platform | null = null;
 let latestProfileInfo: ProfileInfo | null = null;
 let hasTikTokAccess = false;
 let viewPushTimer: number | null = null;
+// The Show/Sort change waiting on viewPushTimer, with the tab and document it was made for.
+let pendingViewPush: { tabId: number; generation: number; epoch: number; view: ViewSettings } | null = null;
 // Reset reloads the page; its "Waiting for page reload…" note clears once the profile is back.
 let awaitingResetReload = false;
-// True while Run is injecting the scanner. The controls hold the user's latest Show/Sort then,
-// so a rehydrate that reads the scanner's first state must not pull them back.
-let scanStarting = false;
+// Set while Run is injecting the scanner into a tab. The controls hold the user's latest
+// Show/Sort then, so a rehydrate of that tab that reads the scanner's first state must not pull
+// them back. Keyed to the tab and bind, so another tab's rehydrate still syncs its own controls.
+let scanStarting: { tabId: number; generation: number } | null = null;
 let activePanelView: "outliers" | "saved" = "outliers";
 let helpTooltipOpen = false;
 let reviewPromptState: ReviewPromptState = createDefaultReviewPromptState();
@@ -1376,7 +1379,7 @@ function setShareButtonsEnabled(enabled: boolean): void {
 // "#1 | 1.2K comments | 120K views | 4.5K likes | 12.4x", led by the metric the list is sorted by.
 function formatOutlierLine(reel: OutliersEntry, rank: number, state: OutliersState): string {
   const sortKey = state.sortKey ?? "views";
-  const parts = ["#" + rank, formatMetricPhrase(sortKey, metricValue(reel, sortKey, state.followers))];
+  const parts = ["#" + rank, formatMetricPhrase(sortKey, metricValue(reel, sortKey, state.followers), reel.likesHidden)];
   const platform = reel.platform ?? "instagram";
   const others: SortKey[] = platform === "tiktok"
     ? ["views", "likes", "comments", "shares", "saves"]
@@ -1891,7 +1894,7 @@ async function buildStoryCardBlob(state: OutliersState): Promise<StoryCardBuildR
 
       ctx.fillStyle = "#ffffff";
       ctx.font = "800 50px " + FONT;
-      drawTruncatedText(ctx, formatMetricPhrase(sortKey, metricValue(reel, sortKey, state.followers)), cardX + 248, y + 122, 660);
+      drawTruncatedText(ctx, formatMetricPhrase(sortKey, metricValue(reel, sortKey, state.followers), reel.likesHidden), cardX + 248, y + 122, 660);
 
       const others: string[] = [];
       const keys: SortKey[] = ["views", "likes", "comments"];
@@ -2191,7 +2194,7 @@ function renderResults(outliers: OutliersEntry[], scannedCount: number, state: O
     info.className = "result-info";
     const primary = document.createElement("div");
     primary.className = "result-primary";
-    primary.textContent = formatMetricPhrase(sortKey, metricValue(reel, sortKey, state.followers));
+    primary.textContent = formatMetricPhrase(sortKey, metricValue(reel, sortKey, state.followers), reel.likesHidden);
     info.appendChild(primary);
     info.appendChild(buildMetricChips(reel, state.followers, sortKey));
 
@@ -2403,6 +2406,9 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
   const isStale = function (): boolean {
     return !isStillBound(tabId, generation) || epoch !== documentEpoch;
   };
+  // A read that began during Run's startup may return the scanner's first view, which the
+  // latest Show/Sort replaces; it must not overwrite the controls even if it lands later.
+  const startedDuringStartup = isScanStarting(tabId, generation);
   let url: string | null = null;
   let errorText: string | null = null;
   try {
@@ -2423,7 +2429,7 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
     if (rawState && (rawState.status === "scanning" || rawState.status === "done")) {
       profileReady = true;
       profileWaitStartedAt = null;
-      renderState(rawState, !scanStarting);
+      renderState(rawState, !(startedDuringStartup || isScanStarting(tabId, generation)));
       return;
     }
     if (rawState && rawState.status === "error") errorText = rawState.errorText;
@@ -2901,7 +2907,8 @@ savedClearBtn.addEventListener("click", function () {
 
 runBtn.addEventListener("click", async function () {
   const generation = bindGeneration;
-  scanStarting = true;
+  const startup = { tabId: cachedTabId ?? -1, generation };
+  scanStarting = startup;
   setButtonsDisabled();
   reviewPromptShownThisSession = false;
   reviewPromptClosedThisSession = false;
@@ -2917,6 +2924,7 @@ runBtn.addEventListener("click", async function () {
       setButtonsForIdle();
       return;
     }
+    startup.tabId = tabId;
 
     const limit = getScanLimitFromUI();
     const view = currentView();
@@ -2946,6 +2954,14 @@ runBtn.addEventListener("click", async function () {
       || info.platform !== expected.platform || info.handle !== expected.handle) {
       profileReady = false;
       statusEl.textContent = "The page changed. Wait for the profile to load, then run the scan again.";
+      statusEl.className = "status-msg error";
+      setButtonsForIdle();
+      return;
+    }
+    // 5× compares views with followers; without a count every video would be filtered out.
+    if (view.filterMode === "ratio5x" && !(typeof info.followers === "number" && info.followers > 0)) {
+      profileReady = false;
+      statusEl.textContent = "Couldn't read the follower count yet. Wait for the profile to load, or choose Min Views or All.";
       statusEl.className = "status-msg error";
       setButtonsForIdle();
       return;
@@ -2983,8 +2999,13 @@ runBtn.addEventListener("click", async function () {
 
     setButtonsForScanning();
     statusEl.textContent = "";
-    // Show or Sort may have changed while the scanner was starting; hand it the latest.
-    if (JSON.stringify(currentView()) !== JSON.stringify(view)) schedulePushView();
+    // Show or Sort may have changed while the scanner was starting. Hand it the latest before
+    // the startup guard lifts, so no rehydrate can read the first view back into the controls.
+    const latest = currentView();
+    if (JSON.stringify(latest) !== JSON.stringify(view)) {
+      cancelViewPush();
+      await pushViewToPage(tabId, generation, epoch, latest);
+    }
   } catch (err: unknown) {
     if (generation !== bindGeneration) return;
     const message = err instanceof Error ? err.message : "Something went wrong.";
@@ -2992,7 +3013,8 @@ runBtn.addEventListener("click", async function () {
     statusEl.className = "status-msg error";
     setButtonsForIdle();
   } finally {
-    scanStarting = false;
+    // A newer Run owns the guard now if one started meanwhile.
+    if (scanStarting === startup) scanStarting = null;
   }
 });
 
@@ -3090,9 +3112,25 @@ function onViewChanged(): void {
 }
 
 function cancelViewPush(): void {
+  pendingViewPush = null;
   if (viewPushTimer == null) return;
   clearTimeout(viewPushTimer);
   viewPushTimer = null;
+}
+
+// Switching tabs must not drop a Show/Sort change still waiting to reach the page: send it to
+// the tab it was made on right away. Call before the bind moves to another tab.
+function flushViewPush(): void {
+  const pending = pendingViewPush;
+  cancelViewPush();
+  if (!pending) return;
+  pushViewToPage(pending.tabId, pending.generation, pending.epoch, pending.view).catch(function () {
+    // Non-fatal
+  });
+}
+
+function isScanStarting(tabId: number, generation: number): boolean {
+  return scanStarting != null && scanStarting.tabId === tabId && scanStarting.generation === generation;
 }
 
 function schedulePushView(): void {
@@ -3102,9 +3140,11 @@ function schedulePushView(): void {
   const generation = bindGeneration;
   const epoch = documentEpoch;
   const view = currentView();
+  pendingViewPush = { tabId, generation, epoch, view };
   // Coalesce slider drags into one redraw of the page grid.
   viewPushTimer = window.setTimeout(function () {
     viewPushTimer = null;
+    pendingViewPush = null;
     pushViewToPage(tabId, generation, epoch, view).catch(function () {
       // Non-fatal
     });
@@ -3243,9 +3283,9 @@ async function init(): Promise<void> {
 
 // The side panel belongs to the window, so it follows whichever tab is active.
 async function bindToTab(tabId: number): Promise<void> {
+  flushViewPush();
   const generation = ++bindGeneration;
   cachedTabId = tabId;
-  cancelViewPush();
   stopNavigationPolling();
   lastKnownUrl = null;
   lastKnownProfile = null;

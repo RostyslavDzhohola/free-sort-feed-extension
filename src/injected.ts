@@ -728,7 +728,7 @@ function init(): void {
     info.className = "outliers-card-info";
     const primary = document.createElement("div");
     primary.className = "outliers-card-primary";
-    primary.textContent = formatMetricPhrase(sortKey, metricValue(entry, sortKey, f));
+    primary.textContent = formatMetricPhrase(sortKey, metricValue(entry, sortKey, f), entry.likesHidden);
     info.appendChild(primary);
 
     const stats = document.createElement("div");
@@ -1009,6 +1009,12 @@ function init(): void {
 
     if (!onScanPage) {
       reportError(adapter.wrongPageMessage());
+      return;
+    }
+    // The panel seeds the profile it checked. If the page has moved to another one since,
+    // this isn't the scan the user asked for.
+    if (seeded && seeded.handle !== PROFILE_HANDLE) {
+      reportError("The page changed. Wait for the profile to load, then run the scan again.");
       return;
     }
 
