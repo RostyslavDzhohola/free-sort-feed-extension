@@ -3125,6 +3125,21 @@ runBtn.addEventListener("click", async function () {
     });
     if (pageChanged() || !showsTab()) return;
 
+    // The scanner may already have stopped with an error (the page left the scan tab, say), and
+    // its message can beat this point; show what it actually reports rather than "scanning".
+    const started = await chrome.scripting.executeScript({
+      target,
+      func: function (): OutliersState | null {
+        return (window as unknown as { __outliers_state?: OutliersState }).__outliers_state ?? null;
+      },
+    });
+    if (pageChanged() || !showsTab()) return;
+    const startedState = (started?.[0]?.result as OutliersState | null | undefined) ?? null;
+    if (startedState && (startedState.status === "error" || startedState.status === "done")) {
+      renderState(startedState);
+      return;
+    }
+
     setButtonsForScanning();
     statusEl.textContent = "";
   } catch (err: unknown) {
