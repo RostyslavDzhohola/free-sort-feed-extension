@@ -144,8 +144,9 @@ let pendingViewPush: PendingViewPush | null = null;
 // Show/Sort writes sent to a page but not yet run there, per tab and bind. While any are out
 // the controls are ahead of the page, so a rehydrate must not sync them from what it reads.
 const viewWritesInFlight = new Map<string, number>();
-// Bumped on every Show/Sort edit, so a rehydrate can tell an edit landed while it was reading.
-let viewEditVersion = 0;
+// Per tab and bind, bumped on every Show/Sort edit and whenever a write to the page starts or
+// finishes, so a rehydrate can tell its read overlapped one and may hold an outdated view.
+const viewActivity = new Map<string, number>();
 // Reset reloads the page; its "Waiting for page reload…" note clears once the profile is back.
 let awaitingResetReload = false;
 // Set while Run is injecting the scanner into a tab. The controls hold the user's latest
@@ -2421,7 +2422,7 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
   // A read that began during Run's startup, or before the latest Show/Sort reached the page,
   // may return an older view; it must not overwrite the controls even if it lands later.
   const startedDuringStartup = isScanStarting(tabId, generation);
-  const editsAtStart = viewEditVersion;
+  const activityAtStart = viewActivityOf(tabId, generation);
   let url: string | null = null;
   let errorText: string | null = null;
   try {
@@ -2443,7 +2444,7 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
       profileReady = true;
       profileWaitStartedAt = null;
       const keepControls = startedDuringStartup || isScanStarting(tabId, generation)
-        || editsAtStart !== viewEditVersion || hasViewWrites(tabId, generation);
+        || activityAtStart !== viewActivityOf(tabId, generation) || hasViewWrites(tabId, generation);
       renderState(rawState, !keepControls);
       return;
     }
@@ -3109,7 +3110,7 @@ for (let i = 0; i < filterModeBtns.length; i++) {
 // Before a scan, keep the stats in step with the controls. During and after one, the page
 // refilters what it collected and answers with a new state.
 function onViewChanged(): void {
-  viewEditVersion++;
+  if (cachedTabId != null) bumpViewActivity(cachedTabId, bindGeneration);
   const status = currentRenderedState?.status;
   if (status === "done" || status === "scanning") {
     schedulePushView();
@@ -3150,6 +3151,15 @@ function viewWriteKey(tabId: number, generation: number): string {
   return tabId + ":" + generation;
 }
 
+function viewActivityOf(tabId: number, generation: number): number {
+  return viewActivity.get(viewWriteKey(tabId, generation)) ?? 0;
+}
+
+function bumpViewActivity(tabId: number, generation: number): void {
+  const key = viewWriteKey(tabId, generation);
+  viewActivity.set(key, (viewActivity.get(key) ?? 0) + 1);
+}
+
 function hasViewWrites(tabId: number, generation: number): boolean {
   if (pendingViewPush && pendingViewPush.tabId === tabId && pendingViewPush.generation === generation) return true;
   return (viewWritesInFlight.get(viewWriteKey(tabId, generation)) ?? 0) > 0;
@@ -3182,12 +3192,15 @@ async function pushViewToPage(push: PendingViewPush): Promise<void> {
   if (!isStillBound(tabId, generation) || push.epoch !== documentEpoch) return;
   const key = viewWriteKey(tabId, generation);
   viewWritesInFlight.set(key, (viewWritesInFlight.get(key) ?? 0) + 1);
+  bumpViewActivity(tabId, generation);
+  let accepted = true;
   try {
-    await chrome.scripting.executeScript({
+    const results = await chrome.scripting.executeScript({
       target: { tabId },
       args: [push.view, push.handle],
-      func: (function (v: ViewSettings, handle: string | null) {
+      func: (function (v: ViewSettings, handle: string | null): boolean {
         const w = window as unknown as {
+          __outliers_active?: boolean;
           __outliers_apply_view?: (view: ViewSettings) => void;
           __outliers_view?: ViewSettings;
           __outliers_state?: { profileHandle?: string | null };
@@ -3196,18 +3209,27 @@ async function pushViewToPage(push: PendingViewPush): Promise<void> {
         // panel has left it): apply it only to the profile it was made on.
         if (handle) {
           const want = handle.toLowerCase();
-          const first = (window.location.pathname.split("/")[1] ?? "").toLowerCase();
+          let first = window.location.pathname.split("/")[1] ?? "";
+          try {
+            first = decodeURIComponent(first);
+          } catch {
+            // Keep the raw segment
+          }
+          first = first.toLowerCase();
           // A video viewer (Instagram /reel/…, /p/…) keeps the profile's scan underneath.
           const shown = /^(reel|reels|p|tv)$/.test(first) ? null : first.replace(/^@/, "");
-          if (shown !== null && shown !== want) return;
+          if (shown !== null && shown !== want) return false;
           const scanned = w.__outliers_state?.profileHandle;
-          if (scanned && scanned.toLowerCase() !== want) return;
+          if (scanned && scanned.toLowerCase() !== want) return false;
         }
-        if (typeof w.__outliers_apply_view === "function") w.__outliers_apply_view(v);
-        // The scanner is still starting; it reads this view when it begins.
-        else w.__outliers_view = v;
+        // A scanner that is still starting reads this as it begins; a running or finished one
+        // redraws now. One that failed or was reset is retired and must not take it.
+        w.__outliers_view = v;
+        if (w.__outliers_active === true && typeof w.__outliers_apply_view === "function") w.__outliers_apply_view(v);
+        return true;
       }) as unknown as () => void,
     });
+    accepted = (results?.[0]?.result as boolean | undefined) !== false;
   } catch {
     if (!isStillBound(tabId, generation)) return;
     statusEl.textContent = "Couldn't update the page. Reset and scan again.";
@@ -3216,6 +3238,11 @@ async function pushViewToPage(push: PendingViewPush): Promise<void> {
     const left = (viewWritesInFlight.get(key) ?? 1) - 1;
     if (left > 0) viewWritesInFlight.set(key, left);
     else viewWritesInFlight.delete(key);
+    bumpViewActivity(tabId, generation);
+  }
+  // The page is no longer on that profile, so the controls may be ahead of it: re-read it.
+  if (!accepted && isStillBound(tabId, generation)) {
+    profileReady = false;
   }
 }
 
