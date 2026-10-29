@@ -1217,9 +1217,9 @@ function showLoading(): void {
   statsArea.appendChild(wrapper);
 }
 
-function showNotice(msg: string): void {
+function showNotice(msg: string, hint?: string): void {
   const offerTikTok = !hasTikTokAccess;
-  const key = "notice:" + msg + (offerTikTok ? ":tiktok" : "");
+  const key = "notice:" + msg + ":" + (hint ?? "") + (offerTikTok ? ":tiktok" : "");
   if (statsMessageKey === key) return;
   statsMessageKey = key;
   clearElement(statsArea);
@@ -1227,6 +1227,12 @@ function showNotice(msg: string): void {
   el.className = "status-msg";
   el.textContent = msg;
   statsArea.appendChild(el);
+  if (hint) {
+    const hintEl = document.createElement("div");
+    hintEl.className = "stat-hint";
+    hintEl.textContent = hint;
+    statsArea.appendChild(hintEl);
+  }
   if (offerTikTok) statsArea.appendChild(buildTikTokCard());
 }
 
@@ -2479,7 +2485,14 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
     clearRenderedScan();
     updateRunAvailability();
     hideReviewPrompt();
-    showNotice("Open an Instagram or TikTok profile to scan its videos.");
+    // Chrome can also refuse a profile page itself, when the user limits Outliers' site access.
+    // The TikTok card covers TikTok while it's off; otherwise say how to let Outliers in.
+    showNotice(
+      "Open an Instagram or TikTok profile to scan its videos.",
+      hasTikTokAccess
+        ? "On a profile already? Chrome may be blocking Outliers on this site: click the puzzle icon in the toolbar and allow Outliers here."
+        : undefined
+    );
     return;
   }
 
