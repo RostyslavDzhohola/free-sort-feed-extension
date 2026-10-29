@@ -699,6 +699,7 @@
       letter-spacing: 0.01em;
     }
     .filter-mode-label {
+      display: block;
       margin-bottom: 10px;
     }
     .value-pill {
@@ -1212,6 +1213,184 @@
       outline: none;
       box-shadow: var(--focus-ring);
     }
+
+    /* ── 1.1: sort, metrics, platform ─────────────── */
+    #sort-area {
+      margin-bottom: 14px;
+    }
+    .sort-row {
+      display: flex;
+      gap: 6px;
+    }
+    .sort-select {
+      flex: 1;
+      min-width: 0;
+      padding: 8px 10px;
+      border: 1px solid #b991e6;
+      border-radius: 12px;
+      background: var(--surface-soft);
+      color: var(--purple-key-strong);
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.92),
+        0 3px 0 rgba(112, 8, 160, 0.26),
+        0 8px 12px rgba(92, 6, 131, 0.1);
+    }
+    .sort-select:focus-visible {
+      outline: none;
+      box-shadow: var(--focus-ring);
+    }
+    .sort-dir-btn {
+      flex: 0 0 auto;
+      padding: 8px 12px;
+      background: var(--surface-soft);
+      color: var(--purple-key-strong);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .stats .stat-row + .stat-row {
+      margin-top: 6px;
+    }
+    .stat-value.handle {
+      color: var(--text);
+      font-weight: 700;
+    }
+    .stat-hint {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .stat-action {
+      margin-top: 8px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 800;
+      background: var(--surface-soft);
+      color: var(--purple-key-strong);
+    }
+    .platform-card {
+      margin: 10px 0 14px;
+      padding: 12px 14px;
+      border: 1px dashed #b991e6;
+      border-radius: 14px;
+      background: var(--surface);
+    }
+    .platform-card-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--text);
+    }
+    .platform-card p {
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .platform-card button {
+      margin-top: 10px;
+      width: 100%;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 800;
+      background: linear-gradient(180deg, #b315ef 0%, #930ccc 100%);
+      color: #fff;
+      border-color: #8d0fc3;
+    }
+    .result-item,
+    .saved-item {
+      display: grid;
+      grid-template-columns: auto 44px minmax(0, 1fr);
+      grid-template-areas:
+        "rank thumb info"
+        "rank thumb actions";
+      column-gap: 10px;
+      row-gap: 6px;
+      align-items: start;
+    }
+    .saved-item {
+      grid-template-columns: 44px minmax(0, 1fr);
+      grid-template-areas:
+        "thumb info"
+        "thumb actions";
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .result-rank {
+      grid-area: rank;
+      align-self: center;
+      min-width: 26px;
+    }
+    .result-thumb {
+      grid-area: thumb;
+      width: 44px;
+      height: 66px;
+      border-radius: 8px;
+      object-fit: cover;
+      background: linear-gradient(160deg, var(--purple-key-soft), var(--orange-accent-soft));
+      border: 1px solid var(--line);
+      display: block;
+    }
+    .result-info,
+    .saved-info {
+      grid-area: info;
+      min-width: 0;
+    }
+    .result-item .result-actions,
+    .saved-item .result-actions {
+      grid-area: actions;
+      flex-wrap: wrap;
+    }
+    .result-item .btn-sm.action-open,
+    .result-item .btn-sm.action-tail,
+    .saved-item .btn-sm.action-open,
+    .saved-item .btn-sm.action-tail {
+      width: auto;
+      min-width: 62px;
+      padding: 4px 10px;
+    }
+    .result-item .btn-sm.action-copy {
+      width: 32px;
+      min-width: 32px;
+      padding: 4px 0;
+    }
+    .result-primary {
+      font-size: 14px;
+      font-weight: 800;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .metric-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3px 9px;
+      margin-top: 3px;
+      font-size: 11.5px;
+      color: var(--muted);
+    }
+    .metric-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      white-space: nowrap;
+    }
+    .metric-chip svg {
+      width: 11px;
+      height: 11px;
+      flex: 0 0 auto;
+    }
+    .metric-chip.active {
+      color: var(--purple-key-strong);
+      font-weight: 800;
+    }
+    .metric-chip.multiple {
+      color: var(--orange-accent-strong);
+      font-weight: 700;
+    }
   </style>
 </head>
 <body>
@@ -1219,7 +1398,7 @@
     <div class="header-text">
       <h1>Outliers</h1>
       <div class="header-subrow">
-        <div class="subtitle">Find viral outlier Reels</div>
+        <div class="subtitle">Find outlier videos on Instagram &amp; TikTok</div>
         <div class="help-wrap">
           <button
             id="help-btn"
@@ -1232,8 +1411,10 @@
           <div id="help-tooltip" class="help-tooltip" role="tooltip">
             <div class="help-title">Quick fixes</div>
             <ul class="help-list">
-              <li>If followers stay at 0, close and reopen the side panel.</li>
-              <li>If hidden reels remain after Reset, refresh the Instagram page.</li>
+              <li>Instagram: open the profile&rsquo;s Reels tab. TikTok: open the profile&rsquo;s Videos tab.</li>
+              <li>If the follower count doesn&rsquo;t load, scroll to the top of the profile. Min Views and All work without it.</li>
+              <li>Change Show or Sort by after a scan; the results update without scanning again.</li>
+              <li>If hidden videos remain after Reset, refresh the page.</li>
               <li id="review-dev-mode-row" class="help-dev-row">
                 <span class="help-dev-label">Review modal dev mode</span>
                 <button id="review-dev-mode-btn" class="help-dev-btn" type="button">
@@ -1269,7 +1450,7 @@
     <div id="scan-limit-area">
       <div class="control-head">
         <label class="scan-limit-label" for="scan-limit-slider">Scan limit</label>
-        <span id="scan-limit-value" class="value-pill">100 reels</span>
+        <span id="scan-limit-value" class="value-pill">100 videos</span>
       </div>
       <div class="slider-wrap">
         <input
@@ -1294,10 +1475,11 @@
     </div>
 
     <div id="filter-mode-area">
-      <label class="filter-mode-label">Filter mode</label>
-      <div class="filter-mode-buttons">
-        <button id="mode-ratio-btn" class="filter-mode-btn active" data-mode="ratio5x">5× Outliers</button>
-        <button id="mode-min-views-btn" class="filter-mode-btn" data-mode="minViews">Min Views</button>
+      <span class="filter-mode-label" id="show-label">Show</span>
+      <div class="filter-mode-buttons" role="group" aria-labelledby="show-label">
+        <button id="mode-ratio-btn" class="filter-mode-btn active" data-mode="ratio5x" title="Videos with 5× more views than the profile has followers">5× Outliers</button>
+        <button id="mode-min-views-btn" class="filter-mode-btn" data-mode="minViews" title="Videos over a view count you choose">Min Views</button>
+        <button id="mode-all-btn" class="filter-mode-btn" data-mode="all" title="Every scanned video, sorted">All</button>
       </div>
     </div>
 
@@ -1326,6 +1508,14 @@
       </div>
     </div>
 
+    <div id="sort-area">
+      <label class="filter-mode-label" for="sort-key-select">Sort by</label>
+      <div class="sort-row">
+        <select id="sort-key-select" class="sort-select" aria-label="Sort videos by"></select>
+        <button id="sort-dir-btn" class="sort-dir-btn" type="button" aria-label="Highest first">↓ Highest</button>
+      </div>
+    </div>
+
     <div class="controls">
       <button id="run-btn" disabled>Run Outliers Scan</button>
       <button id="stop-btn">Stop</button>
@@ -1342,7 +1532,7 @@
     <div id="results-area">
       <div class="results-header">
         <div class="results-headline">
-          <span>Outliers <span class="results-meta" id="results-meta"></span></span>
+          <span><span id="results-title">Outliers</span> <span class="results-meta" id="results-meta"></span></span>
           <div class="results-tools">
             <button
               id="export-btn"
@@ -1350,7 +1540,7 @@
               type="button"
               disabled
               aria-label="Download CSV"
-              data-tooltip="Download all current outliers as CSV for spreadsheet tracking."
+              data-tooltip="Download the list below as CSV, with every metric, for spreadsheet tracking."
             >CSV</button>
             <button
               id="share-outliers-btn"
@@ -1366,7 +1556,7 @@
               type="button"
               disabled
               aria-label="Copy outliers"
-              data-tooltip="Copy your current outliers as plain text for external review or coaching."
+              data-tooltip="Copy the list below as plain text for external review or coaching."
             >Copy</button>
           </div>
         </div>
@@ -1379,7 +1569,7 @@
   <div id="review-prompt" aria-live="polite" role="dialog" aria-modal="true" aria-label="Review request">
     <div class="review-prompt-card">
       <p class="review-prompt-body">Loving Outliers?</p>
-      <p class="review-prompt-subtitle">If this helped you find winning Reels fast, leave us a review.</p>
+      <p class="review-prompt-subtitle">If this helped you find winning videos fast, leave us a review.</p>
       <div class="review-prompt-actions">
         <button id="review-prompt-rate-btn" class="review-btn primary" type="button">Leave a review</button>
         <button id="review-prompt-dismiss-btn" class="review-btn secondary" type="button">Not now</button>
@@ -1390,7 +1580,7 @@
   <div id="share-modal" role="dialog" aria-modal="true" aria-label="Share outliers">
     <div class="share-modal-card">
       <div class="share-modal-title">Share Your Outliers</div>
-      <p class="share-modal-subtitle">Turn your top-performing reels into a quick share package for social and portfolio use.</p>
+      <p class="share-modal-subtitle">Turn your top-performing videos into a quick share package for social and portfolio use.</p>
       <div class="share-modal-actions">
         <button id="share-download-story-btn" class="share-modal-btn primary" type="button">Story Card</button>
         <button id="share-copy-caption-btn" class="share-modal-btn ghost" type="button">Copy Caption</button>
@@ -1436,7 +1626,7 @@
         </svg>
       </a>
 
-      <a class="icon-link" href="https://www.instagram.com/dzhohola_/" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
+      <a class="icon-link" href="https://www.instagram.com/heyrostyslav/" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
         <!-- Instagram gradient camera icon -->
         <svg viewBox="0 0 24 24" role="img" aria-hidden="true" focusable="false">
           <defs>
@@ -1451,6 +1641,12 @@
           <rect x="6.6" y="6.6" width="10.8" height="10.8" rx="3" fill="none" stroke="#fff" stroke-width="1.8" />
           <circle cx="12" cy="12" r="3.1" fill="none" stroke="#fff" stroke-width="1.8" />
           <circle cx="16.8" cy="7.2" r="1.05" fill="#fff" />
+        </svg>
+      </a>
+      <a class="icon-link" href="https://www.tiktok.com/@rostyslavdzhohola" target="_blank" rel="noopener noreferrer" aria-label="TikTok">
+        <!-- TikTok note -->
+        <svg viewBox="0 0 24 24" role="img" aria-hidden="true" focusable="false">
+          <path fill="currentColor" d="M16.6 5.82A4.28 4.28 0 0 1 15.54 3h-3.09v12.4a2.59 2.59 0 0 1-2.59 2.5c-1.42 0-2.6-1.16-2.6-2.6 0-1.72 1.66-3.01 3.37-2.48V9.66c-3.45-.46-6.47 2.22-6.47 5.64 0 3.33 2.76 5.7 5.69 5.7 3.14 0 5.69-2.55 5.69-5.7V9.01a7.35 7.35 0 0 0 4.3 1.38V7.3s-1.88.09-3.24-1.48z"/>
         </svg>
       </a>
     </div>

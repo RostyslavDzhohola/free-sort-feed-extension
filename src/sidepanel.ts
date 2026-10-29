@@ -1,13 +1,45 @@
 import { startHotReload } from "./hot-reload";
 import { buildOutliersCsv, buildSavedCsv } from "./shared/export-csv";
 import { buildEmptyStateCopy } from "./shared/empty-state-copy";
-import { readProfileFollowers } from "./shared/read-followers";
+import { readProfileInfo, type ProfileInfo } from "./shared/read-profile";
+import {
+  TIKTOK_ORIGINS,
+  detectPlatform,
+  getProfileRef,
+  getProfileUrlFromVideoUrl,
+  isContentPermalink,
+  platformName,
+  profileKey,
+  profileLabel,
+  profileUrl,
+  videoNoun,
+  type ProfileRef,
+} from "./shared/platform";
+import {
+  DEFAULT_MIN_VIEWS,
+  formatCount,
+  formatExact,
+  formatMetricPhrase,
+  formatMultiple,
+  getThreshold,
+  isFilterMode,
+  isSortKey,
+  metricValue,
+  resolveSortKey,
+  sortLabel,
+  sortOptionsFor,
+  viewsMultiple,
+} from "./shared/videos";
 import type {
   FilterMode,
   OutliersEntry,
   OutliersMessage,
   OutliersState,
+  Platform,
   SavedReel,
+  SortDir,
+  SortKey,
+  ViewSettings,
 } from "./types/state";
 
 declare const __OUTLIERS_WATCH__: boolean;
@@ -62,11 +94,16 @@ const filterModeBtns = document.querySelectorAll(".filter-mode-btn") as NodeList
 const minViewsArea = document.getElementById("min-views-area") as HTMLDivElement;
 const minViewsSlider = document.getElementById("min-views-slider") as HTMLInputElement;
 const minViewsValue = document.getElementById("min-views-value") as HTMLSpanElement;
+const sortKeySelect = document.getElementById("sort-key-select") as HTMLSelectElement;
+const sortDirBtn = document.getElementById("sort-dir-btn") as HTMLButtonElement;
+const resultsTitle = document.getElementById("results-title") as HTMLSpanElement;
 
 // ── Local state ───────────────────────────────────────────────────────────
 let cachedTabId: number | null = null;
 let lastKnownUrl: string | null = null;
+// profileKey() of the profile the bound tab shows, e.g. "tiktok:khaby.lame".
 let lastKnownProfile: string | null = null;
+let lastKnownProfileRef: ProfileRef | null = null;
 let navPollTimer: number | null = null;
 let navPollInFlight = false;
 let panelWindowId: number | null = null;
@@ -85,14 +122,51 @@ let statsMessageKey: string | null = null;
 
 let selectedFilterMode: FilterMode = "ratio5x";
 let selectedMinViews: number | null = null;
+let selectedSortKey: SortKey = "views";
+let selectedSortDir: SortDir = "desc";
 let currentRenderedState: OutliersState | null = null;
 let latestFollowers: number | null = null;
+// The platform the bound tab is on, once known; drives copy and the sort options.
+let currentPlatform: Platform | null = null;
+// The last profile read from the bound tab. Run needs its header and the scan tab.
+let latestProfileInfo: ProfileInfo | null = null;
+let hasTikTokAccess = false;
+let viewPushTimer: number | null = null;
+interface PendingViewPush {
+  tabId: number;
+  generation: number;
+  epoch: number;
+  view: ViewSettings;
+  handle: string | null;
+}
+// The Show/Sort change waiting on viewPushTimer, with the tab, document and profile it was made for.
+let pendingViewPush: PendingViewPush | null = null;
+// Show/Sort writes sent to a page but not yet run there, per tab and bind. While any are out
+// the controls are ahead of the page, so a rehydrate must not sync them from what it reads.
+const viewWritesInFlight = new Map<string, number>();
+// Per tab and bind, bumped on every Show/Sort edit and whenever a write to the page starts or
+// finishes, so a rehydrate can tell its read overlapped one and may hold an outdated view.
+const viewActivity = new Map<string, number>();
+// Reset reloads the page; its "Waiting for page reload…" note clears once the profile is back.
+let awaitingResetReload = false;
+// Scan startups in progress, by tab: Run is injecting the scanner there. The controls hold the
+// user's latest Show/Sort then, so a rehydrate of that tab that reads the scanner's first state
+// must not pull them back. Keyed by tab, so another tab's rehydrate still syncs its own
+// controls, a return to the tab mid-startup still finds it, and startups on two tabs coexist.
+// `view` is the Show/Sort the scanner will start with: the latest edit made on that tab.
+interface ScanStartup {
+  tabId: number;
+  view: ViewSettings;
+}
+const startingScans = new Map<number, ScanStartup>();
+// Counts scan states the page has pushed to the panel, so a read that a newer push overtook
+// can tell and step aside.
+let statePushes = 0;
 let activePanelView: "outliers" | "saved" = "outliers";
 let helpTooltipOpen = false;
 let reviewPromptState: ReviewPromptState = createDefaultReviewPromptState();
 let reviewPromptShownThisSession = false;
 let reviewPromptClosedThisSession = false;
-let reviewPromptEligibleSinceMs: number | null = null;
 let reviewPromptDelayTimer: number | null = null;
 let reviewPromptDevMode: ReviewPromptDevMode = "auto";
 let storyCardGenerationInFlight = false;
@@ -103,6 +177,8 @@ const savedByUrl = new Map<string, SavedReel>();
 const SCAN_LIMIT_KEY = "outliers_scan_limit";
 const FILTER_MODE_KEY = "outliers_filter_mode";
 const MIN_VIEWS_KEY = "outliers_min_views";
+const SORT_KEY_KEY = "outliers_sort_key";
+const SORT_DIR_KEY = "outliers_sort_dir";
 const SAVED_REELS_KEY = "outliers_saved_reels";
 const REVIEW_PROMPT_STATE_KEY = "outliers_review_prompt_state";
 // Persisted in localStorage so you can flip modal testing modes quickly.
@@ -114,11 +190,10 @@ const REVIEW_PROMPT_NOT_NOW_SECOND_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 const REVIEW_PROMPT_NOT_NOW_MAX_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const REVIEW_PROMPT_MAX_PROMPTS_PER_DAY = 2;
 const REVIEW_URL = "https://chromewebstore.google.com/detail/outliers/heogkfpbeagpoodininnfhdgjmpdalgj/reviews";
-// Keep activation broad: show after the first successful 5x result set.
+// Keep activation broad: any finished scan with at least one result counts as a success.
 const REVIEW_PROMPT_MIN_OUTLIERS = 1;
-// Delay the ask so users can scan results first before we interrupt them.
-const REVIEW_PROMPT_DELAY_MS = 20_000;
-const DEFAULT_MIN_VIEWS = 10_000;
+// On a later panel open, wait a moment so the ask doesn't land on top of loading.
+const REVIEW_PROMPT_OPEN_DELAY_MS = 1_500;
 // After this long without a follower count on a profile, stop showing the spinner and explain.
 const PROFILE_WAIT_HINT_MS = 8_000;
 
@@ -157,17 +232,6 @@ interface ReviewPromptState {
 type ReviewPromptDevMode = "auto" | "forceOn" | "forceOff";
 
 // ── Formatting helpers ────────────────────────────────────────────────────
-function formatExact(n: number): string {
-  return n.toLocaleString("en-US");
-}
-
-function formatCount(n: number): string {
-  if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(1).replace(/\.0$/, "") + "B";
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
-  if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "K";
-  return String(n);
-}
-
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -205,7 +269,8 @@ function paintRange(slider: HTMLInputElement): void {
 }
 
 function formatScanLimitValue(limit: number | null): string {
-  return limit === null ? "All reels" : formatExact(limit) + " reels";
+  const noun = currentPlatform === "tiktok" ? "videos" : currentPlatform === "instagram" ? "Reels" : "videos";
+  return limit === null ? "All " + noun : formatExact(limit) + " " + noun;
 }
 
 function normalizeScanLimit(limit: number | null): number | null {
@@ -450,23 +515,10 @@ function setReviewPromptDebug(message: string): void {
   reviewDevDebugEl.textContent = "Review modal: " + message;
 }
 
-function clearReviewPromptDelayTimer(): void {
+function clearReviewPromptDelayState(): void {
   if (reviewPromptDelayTimer == null) return;
   clearTimeout(reviewPromptDelayTimer);
   reviewPromptDelayTimer = null;
-}
-
-function clearReviewPromptDelayState(): void {
-  reviewPromptEligibleSinceMs = null;
-  clearReviewPromptDelayTimer();
-}
-
-function scheduleReviewPromptDelayRefresh(waitMs: number): void {
-  if (reviewPromptDelayTimer != null) return;
-  reviewPromptDelayTimer = window.setTimeout(function () {
-    reviewPromptDelayTimer = null;
-    updateReviewPromptVisibility(currentRenderedState);
-  }, waitMs);
 }
 
 function cycleReviewPromptDevMode(): void {
@@ -610,14 +662,9 @@ function getLocalTimestampForFilename(): string {
 }
 
 function getThresholdLabel(mode: FilterMode, followers: number | null, minViews: number | null): string {
-  if (mode === "minViews") {
-    const resolved = minViews && minViews > 0 ? minViews : DEFAULT_MIN_VIEWS;
-    return formatExact(resolved) + " views";
-  }
-  if (followers && followers > 0) {
-    return formatExact(followers * 5) + " views";
-  }
-  return "5× follower count";
+  if (mode === "all") return "All " + videoNoun(currentPlatform);
+  const threshold = getThreshold(mode, followers, minViews);
+  return threshold === null ? "5× follower count" : formatExact(threshold) + " views";
 }
 
 // ── Scan limit helpers ────────────────────────────────────────────────────
@@ -666,7 +713,8 @@ function setScanLimitControlsDisabled(disabled: boolean): void {
 // ── Filter mode helpers ───────────────────────────────────────────────────
 function loadFilterMode(): FilterMode {
   try {
-    return localStorage.getItem(FILTER_MODE_KEY) === "minViews" ? "minViews" : "ratio5x";
+    const raw = localStorage.getItem(FILTER_MODE_KEY);
+    return isFilterMode(raw) ? raw : "ratio5x";
   } catch {
     return "ratio5x";
   }
@@ -704,6 +752,79 @@ function saveMinViews(minViews: number | null): void {
   }
 }
 
+function loadSort(): { key: SortKey; dir: SortDir } {
+  try {
+    const key = localStorage.getItem(SORT_KEY_KEY);
+    const dir = localStorage.getItem(SORT_DIR_KEY);
+    return { key: isSortKey(key) ? key : "views", dir: dir === "asc" ? "asc" : "desc" };
+  } catch {
+    return { key: "views", dir: "desc" };
+  }
+}
+
+function saveSort(key: SortKey, dir: SortDir): void {
+  try {
+    localStorage.setItem(SORT_KEY_KEY, key);
+    localStorage.setItem(SORT_DIR_KEY, dir);
+  } catch {
+    // Non-fatal
+  }
+}
+
+/** The sort key shown for the current platform; a TikTok-only key falls back to views on Instagram. */
+function effectiveSortKey(): SortKey {
+  return resolveSortKey(selectedSortKey, currentPlatform);
+}
+
+function sortDirLabel(key: SortKey, dir: SortDir): { text: string; aria: string } {
+  if (key === "date") {
+    return dir === "desc"
+      ? { text: "↓ Newest", aria: "Newest first" }
+      : { text: "↑ Oldest", aria: "Oldest first" };
+  }
+  if (key === "duration") {
+    return dir === "desc"
+      ? { text: "↓ Longest", aria: "Longest first" }
+      : { text: "↑ Shortest", aria: "Shortest first" };
+  }
+  return dir === "desc"
+    ? { text: "↓ Highest", aria: "Highest first" }
+    : { text: "↑ Lowest", aria: "Lowest first" };
+}
+
+// Rebuild the options when the platform changes: shares, saves, date and length are TikTok-only.
+function syncSortUI(): void {
+  const options = sortOptionsFor(currentPlatform);
+  const wanted = options.map(function (o) {
+    return o.key;
+  }).join(",");
+  if (sortKeySelect.getAttribute("data-options") !== wanted) {
+    clearElement(sortKeySelect);
+    for (let i = 0; i < options.length; i++) {
+      const option = document.createElement("option");
+      option.value = options[i]!.key;
+      option.textContent = options[i]!.label;
+      sortKeySelect.appendChild(option);
+    }
+    sortKeySelect.setAttribute("data-options", wanted);
+  }
+  const key = effectiveSortKey();
+  sortKeySelect.value = key;
+  const label = sortDirLabel(key, selectedSortDir);
+  sortDirBtn.textContent = label.text;
+  sortDirBtn.setAttribute("aria-label", label.aria);
+  sortDirBtn.title = label.aria;
+}
+
+function currentView(): ViewSettings {
+  return {
+    filterMode: selectedFilterMode,
+    minViews: resolveMinViewsForRun(),
+    sortKey: effectiveSortKey(),
+    sortDir: selectedSortDir,
+  };
+}
+
 function resolveMinViewsForRun(): number {
   if (selectedMinViews && selectedMinViews > 0) {
     return normalizeMinViews(selectedMinViews) ?? DEFAULT_MIN_VIEWS;
@@ -713,6 +834,7 @@ function resolveMinViewsForRun(): number {
 
 function syncFilterModeUI(mode: FilterMode): void {
   selectedFilterMode = mode;
+  updateRunAvailability();
   for (let i = 0; i < filterModeBtns.length; i++) {
     const btn = filterModeBtns[i]!;
     if (btn.getAttribute("data-mode") === mode) btn.classList.add("active");
@@ -731,11 +853,14 @@ function syncMinViewsUI(minViews: number | null): void {
   paintRange(minViewsSlider);
 }
 
+// Show and Sort by only reshape what was scanned, so they stay usable during and after a scan.
 function setFilterControlsDisabled(disabled: boolean): void {
   for (let i = 0; i < filterModeBtns.length; i++) {
     filterModeBtns[i]!.disabled = disabled;
   }
   minViewsSlider.disabled = disabled || selectedFilterMode !== "minViews";
+  sortKeySelect.disabled = disabled;
+  sortDirBtn.disabled = disabled;
 }
 
 // ── Saved reels helpers ───────────────────────────────────────────────────
@@ -784,7 +909,7 @@ async function saveReelFromResult(reel: OutliersEntry): Promise<void> {
   const saved: SavedReel = {
     ...reel,
     savedAt: nowIso(),
-    profilePath: normalizeProfileUrl(lastKnownProfile, reel.url),
+    profilePath: normalizeProfileUrl(currentProfileUrl(), reel.url),
   };
   savedByUrl.set(reel.url, saved);
   await persistSavedReels();
@@ -843,15 +968,17 @@ function renderSavedReels(): void {
     const info = document.createElement("div");
     info.className = "saved-info";
 
-    const views = document.createElement("div");
-    views.className = "result-views";
-    views.textContent = formatCount(reel.views) + " views";
+    const primary = document.createElement("div");
+    primary.className = "result-primary";
+    primary.textContent = formatMetricPhrase("views", reel.views ?? null);
 
     const meta = document.createElement("div");
     meta.className = "saved-meta";
-    meta.textContent = reel.ratio.toFixed(1) + "×";
+    const owner = reel.profilePath ? getProfileRef(reel.profilePath) : null;
+    meta.textContent = (owner ? profileLabel(owner) + " · " : "") + platformName(reel.platform);
 
-    info.appendChild(views);
+    info.appendChild(primary);
+    info.appendChild(buildMetricChips(reel, null, "views"));
     info.appendChild(meta);
 
     const actions = document.createElement("div");
@@ -877,84 +1004,122 @@ function renderSavedReels(): void {
     actions.appendChild(open);
     actions.appendChild(remove);
 
+    row.appendChild(buildThumb(reel));
     row.appendChild(info);
     row.appendChild(actions);
     savedList.appendChild(row);
   }
 }
 
+// ── Result rows ───────────────────────────────────────────────────────────
+const METRIC_ICONS: Record<string, string> = {
+  views: "M8 5.5v13l10.5-6.5z",
+  likes: "M12 20.5s-7.6-4.6-9.5-9.3C1.2 7.9 3.3 4.5 6.7 4.5c2.1 0 3.6 1.2 5.3 3 1.7-1.8 3.2-3 5.3-3 3.4 0 5.5 3.4 4.2 6.7-1.9 4.7-9.5 9.3-9.5 9.3z",
+  comments: "M5 4.5h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9.5L5 21v-3.5a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2z",
+  shares: "M13.5 5v4C6.5 9.6 4 14 3.5 19.5c2-3.2 4.8-4.6 10-4.6V19L21 12z",
+  saves: "M6.5 3.5h11v17l-5.5-3.8-5.5 3.8z",
+};
+
+function buildThumbPlaceholder(): HTMLElement {
+  const placeholder = document.createElement("div");
+  placeholder.className = "result-thumb";
+  placeholder.setAttribute("aria-hidden", "true");
+  return placeholder;
+}
+
+function buildThumb(entry: OutliersEntry): HTMLElement {
+  if (!entry.thumbnailUrl) return buildThumbPlaceholder();
+  const img = document.createElement("img");
+  img.className = "result-thumb";
+  img.alt = "";
+  img.loading = "lazy";
+  img.decoding = "async";
+  img.referrerPolicy = "no-referrer";
+  img.src = entry.thumbnailUrl;
+  // Signed CDN thumbnails expire; an old Library entry falls back to the plain tile.
+  img.addEventListener("error", function () {
+    img.replaceWith(buildThumbPlaceholder());
+  });
+  return img;
+}
+
+function metricChip(className: string, text: string, title: string, icon?: string): HTMLElement {
+  const chip = document.createElement("span");
+  chip.className = "metric-chip " + className;
+  chip.title = title;
+  if (icon) {
+    chip.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="' + icon + '"/></svg>';
+  }
+  chip.appendChild(document.createTextNode(text));
+  return chip;
+}
+
+/** Every number we have for a video, with the one it's sorted by highlighted. */
+function buildMetricChips(entry: OutliersEntry, followers: number | null, activeKey: SortKey): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = "metric-chips";
+  const platform = entry.platform ?? "instagram";
+  const counts: SortKey[] = platform === "tiktok"
+    ? ["views", "likes", "comments", "shares", "saves"]
+    : ["views", "likes", "comments"];
+  for (let i = 0; i < counts.length; i++) {
+    const key = counts[i]!;
+    const value = metricValue(entry, key, followers);
+    const exact = value === null
+      ? (key === "likes" && entry.likesHidden ? "Likes hidden by the creator" : "Not shown for this video")
+      : formatExact(value) + " " + key;
+    wrap.appendChild(metricChip(key === activeKey ? "active" : "", value === null ? "—" : formatCount(value), exact, METRIC_ICONS[key]));
+  }
+  const multiple = viewsMultiple(entry, followers);
+  if (multiple !== null) {
+    wrap.appendChild(metricChip("multiple" + (activeKey === "multiple" ? " active" : ""), formatMultiple(multiple), "Views ÷ followers"));
+  }
+  // The post date helps with every sort; the headline above already shows the sorted metric.
+  const postedAt = metricValue(entry, "date", followers);
+  if (postedAt !== null && activeKey !== "date") {
+    wrap.appendChild(metricChip("", formatMetricPhrase("date", postedAt), sortLabel("date")));
+  }
+  return wrap;
+}
+
 // ── URL helpers ──────────────────────────────────────────────────────────
-function getProfilePath(url: string): string | null {
-  try {
-    const u = new URL(url);
-    if (!/instagram\.com$/i.test(u.hostname.replace(/^www\./, ""))) return null;
-    const parts = u.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
-    if (parts.length === 0) return null;
-    const reserved = ["explore", "p", "stories", "direct", "accounts", "reel", "reels"];
-    if (reserved.includes(parts[0]!.toLowerCase())) return null;
-    return "/" + parts[0]!.toLowerCase();
-  } catch {
-    return null;
-  }
-}
-
-function getProfileUrlFromReelUrl(reelUrl: string): string | null {
-  try {
-    const u = new URL(reelUrl);
-    if (!/instagram\.com$/i.test(u.hostname.replace(/^www\./, ""))) return null;
-    const parts = u.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
-    if (parts.length < 3) return null;
-    for (let i = 1; i < parts.length; i++) {
-      const part = parts[i]!.toLowerCase();
-      if (part === "reel" || part === "reels" || part === "p") {
-        const username = parts[i - 1];
-        if (!username) return null;
-        return u.origin + "/" + username.replace(/^@/, "") + "/";
-      }
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 function normalizeProfileUrl(profilePathOrUrl: string | null, reelUrl?: string): string | null {
   if (reelUrl) {
-    const fromReel = getProfileUrlFromReelUrl(reelUrl);
+    const fromReel = getProfileUrlFromVideoUrl(reelUrl);
     if (fromReel) return fromReel;
   }
 
   if (!profilePathOrUrl) return null;
+  // Pre-release 1.1 builds stored the internal key, e.g. instagram.com/instagram:natgeo/.
+  const fromKey = profilePathOrUrl.match(/^https?:\/\/[^/]+\/(instagram|tiktok):([^/?#]+)\/?$/i);
+  if (fromKey) {
+    return profileUrl({ platform: fromKey[1]!.toLowerCase() as Platform, handle: fromKey[2]!.toLowerCase() });
+  }
   if (/^https?:\/\//i.test(profilePathOrUrl)) {
+    if (detectPlatform(profilePathOrUrl) === "tiktok") return profilePathOrUrl.replace(/\/+$/, "");
     return profilePathOrUrl.endsWith("/") ? profilePathOrUrl : profilePathOrUrl + "/";
   }
+  // 1.0.x stored Instagram profile paths like "/natgeo".
   if (profilePathOrUrl.startsWith("/")) {
     return "https://www.instagram.com" + profilePathOrUrl + (profilePathOrUrl.endsWith("/") ? "" : "/");
   }
   return "https://www.instagram.com/" + profilePathOrUrl.replace(/^@/, "") + "/";
 }
 
-function isContentPermalink(url: string): boolean {
-  try {
-    const u = new URL(url);
-    return /^\/(reel|reels|p)\//i.test(u.pathname);
-  } catch {
-    return false;
-  }
+function currentProfileUrl(): string | null {
+  return lastKnownProfileRef ? profileUrl(lastKnownProfileRef) : null;
 }
 
 // ── State normalization ───────────────────────────────────────────────────
 function normalizeState(raw: OutliersState): OutliersState {
-  const mode: FilterMode = raw.filterMode === "minViews" ? "minViews" : "ratio5x";
+  const mode: FilterMode = isFilterMode(raw.filterMode) ? raw.filterMode : "ratio5x";
   const minViews = normalizeMinViews(
     Number.isFinite(raw.minViews) && (raw.minViews ?? 0) > 0 ? raw.minViews : null
   );
   const followers = raw.followers && raw.followers > 0 ? raw.followers : null;
   const threshold = Number.isFinite(raw.threshold) && (raw.threshold ?? 0) > 0
     ? raw.threshold
-    : mode === "ratio5x" && followers
-      ? followers * 5
-      : minViews;
+    : getThreshold(mode, followers, minViews);
 
   const activeThresholdLabel = raw.activeThresholdLabel
     ? raw.activeThresholdLabel
@@ -971,30 +1136,71 @@ function normalizeState(raw: OutliersState): OutliersState {
     phase,
     filterMode: mode,
     minViews: minViews,
+    sortKey: isSortKey(raw.sortKey) ? raw.sortKey : "views",
+    sortDir: raw.sortDir === "asc" ? "asc" : "desc",
     threshold: threshold ?? null,
     activeThresholdLabel,
+    outliers: Array.isArray(raw.outliers) ? raw.outliers : [],
   };
 }
 
 // ── UI rendering ──────────────────────────────────────────────────────────
-function showStats(thresholdLabel: string): void {
-  statsMessageKey = null;
-  clearElement(statsArea);
-  const box = document.createElement("div");
-  box.className = "stats";
-
+function statRow(labelText: string, valueText: string, valueClass: string): HTMLElement {
   const row = document.createElement("div");
   row.className = "stat-row";
   const label = document.createElement("span");
   label.className = "stat-label";
-  label.textContent = "Active threshold";
+  label.textContent = labelText;
   const value = document.createElement("span");
-  value.className = "stat-value threshold";
-  value.textContent = thresholdLabel;
+  value.className = "stat-value " + valueClass;
+  value.textContent = valueText;
   row.appendChild(label);
   row.appendChild(value);
+  return row;
+}
 
-  box.appendChild(row);
+interface StatsHint {
+  text: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}
+
+function showStats(thresholdLabel: string, hint?: StatsHint): void {
+  // The poll re-renders every tick; rebuilding identical stats would eat clicks on the hint button.
+  const key = "stats:" + [
+    profileKey(lastKnownProfileRef),
+    latestFollowers,
+    selectedFilterMode,
+    thresholdLabel,
+    hint?.text ?? "",
+    hint?.actionLabel ?? "",
+  ].join("|");
+  if (statsMessageKey === key) return;
+  statsMessageKey = key;
+  clearElement(statsArea);
+  const box = document.createElement("div");
+  box.className = "stats";
+
+  if (lastKnownProfileRef) {
+    box.appendChild(statRow(platformName(lastKnownProfileRef.platform), profileLabel(lastKnownProfileRef), "handle"));
+    box.appendChild(statRow("Followers", latestFollowers ? formatExact(latestFollowers) : "—", "followers"));
+  }
+  box.appendChild(statRow(selectedFilterMode === "all" ? "Showing" : "Active threshold", thresholdLabel, "threshold"));
+
+  if (hint) {
+    const hintEl = document.createElement("div");
+    hintEl.className = "stat-hint";
+    hintEl.textContent = hint.text;
+    box.appendChild(hintEl);
+    if (hint.actionLabel && hint.onAction) {
+      const action = document.createElement("button");
+      action.type = "button";
+      action.className = "stat-action";
+      action.textContent = hint.actionLabel;
+      action.addEventListener("click", hint.onAction);
+      box.appendChild(action);
+    }
+  }
   statsArea.appendChild(box);
 }
 
@@ -1020,14 +1226,73 @@ function showLoading(): void {
   statsArea.appendChild(wrapper);
 }
 
-function showNotice(msg: string): void {
-  if (statsMessageKey === "notice:" + msg) return;
-  statsMessageKey = "notice:" + msg;
+function showNotice(msg: string, hint?: string): void {
+  const offerTikTok = !hasTikTokAccess;
+  const key = "notice:" + msg + ":" + (hint ?? "") + (offerTikTok ? ":tiktok" : "");
+  if (statsMessageKey === key) return;
+  statsMessageKey = key;
   clearElement(statsArea);
   const el = document.createElement("div");
   el.className = "status-msg";
   el.textContent = msg;
   statsArea.appendChild(el);
+  if (hint) {
+    const hintEl = document.createElement("div");
+    hintEl.className = "stat-hint";
+    hintEl.textContent = hint;
+    statsArea.appendChild(hintEl);
+  }
+  if (offerTikTok) statsArea.appendChild(buildTikTokCard());
+}
+
+// TikTok access is optional, so updating Outliers never asks existing users to re-approve it.
+function buildTikTokCard(): HTMLElement {
+  const card = document.createElement("div");
+  card.className = "platform-card";
+  const title = document.createElement("div");
+  title.className = "platform-card-title";
+  title.textContent = "Scan TikTok profiles too";
+  const body = document.createElement("p");
+  body.textContent = "Outliers works on TikTok. Chrome will ask once to let it read tiktok.com; nothing leaves your browser.";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = "Turn on TikTok";
+  button.addEventListener("click", requestTikTokAccess);
+  card.appendChild(title);
+  card.appendChild(body);
+  card.appendChild(button);
+  return card;
+}
+
+function requestTikTokAccess(): void {
+  // permissions.request needs the click's user gesture, so nothing may be awaited before it.
+  chrome.permissions.request({ origins: TIKTOK_ORIGINS }).then(function (granted) {
+    hasTikTokAccess = granted;
+    if (!granted) {
+      statusEl.textContent = "TikTok stays off. You can turn it on here any time.";
+      statusEl.className = "status-msg";
+      return;
+    }
+    statusEl.textContent = "TikTok is on. Open a TikTok profile to scan it.";
+    statusEl.className = "status-msg";
+    statsMessageKey = null;
+    if (cachedTabId != null) {
+      bindToTab(cachedTabId).catch(function () {
+        // Non-fatal
+      });
+    }
+  }).catch(function () {
+    statusEl.textContent = "Chrome couldn't turn on TikTok access. Please try again.";
+    statusEl.className = "status-msg error";
+  });
+}
+
+async function refreshTikTokAccess(): Promise<void> {
+  try {
+    hasTikTokAccess = await chrome.permissions.contains({ origins: TIKTOK_ORIGINS });
+  } catch {
+    hasTikTokAccess = false;
+  }
 }
 
 function hideReviewPrompt(): void {
@@ -1068,44 +1333,25 @@ function updateReviewPromptVisibility(state: OutliersState | null): void {
     return;
   }
 
-  // Show review ask only after a meaningful 5x success, not min-views mode.
-  if (
-    !state ||
-    state.status !== "done" ||
-    state.filterMode !== "ratio5x" ||
-    state.outliers.length < REVIEW_PROMPT_MIN_OUTLIERS
-  ) {
-    const stateLabel = state ? state.status : "no state";
-    const modeLabel = state ? state.filterMode : "n/a";
-    const outlierCount = state ? state.outliers.length : 0;
-    setReviewPromptDebug(
-      "blocked (status=" + stateLabel + ", mode=" + modeLabel + ", outliers=" + outlierCount + ")"
-    );
-    clearReviewPromptDelayState();
+  // Record the first finished scan with results so a later open or export can ask.
+  if (state && state.status === "done" && state.outliers.length >= REVIEW_PROMPT_MIN_OUTLIERS) {
+    ensureFirstSuccessfulScanRecorded(new Date());
+  }
+
+  if (state?.status === "scanning" || !reviewPromptShownThisSession || reviewPromptClosedThisSession) {
     hideReviewPrompt();
     return;
   }
+  showReviewPrompt();
+}
 
-  if (reviewPromptClosedThisSession) {
-    clearReviewPromptDelayState();
-    setReviewPromptDebug("blocked (already closed in this session)");
-    hideReviewPrompt();
-    return;
-  }
-
+// The ask comes at a win (an export, a copy, a story card) or on a later panel open, never mid-scan.
+function offerReviewPrompt(reason: string): void {
+  if (reviewPromptDevMode !== "auto") return;
+  if (reviewPromptShownThisSession || reviewPromptClosedThisSession) return;
+  if (currentRenderedState?.status === "scanning") return;
   const now = new Date();
-  // Record the first qualifying success so eligibility is deterministic across reopen/reload.
-  ensureFirstSuccessfulScanRecorded(now);
-
-  if (reviewPromptShownThisSession) {
-    clearReviewPromptDelayState();
-    setReviewPromptDebug("showing (already shown this session)");
-    showReviewPrompt();
-    return;
-  }
-
   if (!isReviewPromptEligible(now, reviewPromptState)) {
-    clearReviewPromptDelayState();
     if (isWithinCooldown(reviewPromptState.lastReviewVisitAt, now.getTime(), REVIEW_PROMPT_POST_REVIEW_COOLDOWN_MS)) {
       setReviewPromptDebug("blocked (30-day cooldown after review visit)");
     } else if (hasReachedDailyPromptCap(now, reviewPromptState)) {
@@ -1114,46 +1360,30 @@ function updateReviewPromptVisibility(state: OutliersState | null): void {
       const remaining = getRemainingNotNowCooldownMs(now, reviewPromptState);
       setReviewPromptDebug("blocked (Not now cooldown " + formatCooldownForDebug(remaining) + " left)");
     } else {
-      setReviewPromptDebug("blocked (not eligible)");
+      setReviewPromptDebug("blocked (no finished scan yet)");
     }
-    hideReviewPrompt();
     return;
   }
-
-  if (reviewPromptEligibleSinceMs == null) {
-    reviewPromptEligibleSinceMs = now.getTime();
-  }
-
-  const elapsedMs = now.getTime() - reviewPromptEligibleSinceMs;
-  if (elapsedMs < REVIEW_PROMPT_DELAY_MS) {
-    const remainingMs = REVIEW_PROMPT_DELAY_MS - elapsedMs;
-    const remainingSeconds = Math.ceil(remainingMs / 1000);
-    setReviewPromptDebug("waiting " + remainingSeconds + "s before showing");
-    scheduleReviewPromptDelayRefresh(remainingMs);
-    hideReviewPrompt();
-    return;
-  }
-
-  clearReviewPromptDelayState();
-  setReviewPromptDebug("eligible (auto, delay complete)");
-  showReviewPrompt();
   reviewPromptShownThisSession = true;
   markPromptShown(now);
+  setReviewPromptDebug("showing (" + reason + ")");
+  showReviewPrompt();
 }
 
 function setProgress(scannedCount: number, scanLimit: number | null): void {
   progressArea.style.display = "block";
+  const noun = videoNoun(currentPlatform);
   if (scanLimit !== null && scanLimit > 0) {
     const pct = Math.min(100, (scannedCount / scanLimit) * 100);
     progressFill.style.width = pct + "%";
     progressFill.style.opacity = "1";
     progressFill.style.animation = "";
-    progressText.textContent = "Scanning… " + scannedCount + " / " + scanLimit + " reels";
+    progressText.textContent = "Scanning… " + scannedCount + " / " + scanLimit + " " + noun;
   } else {
     progressFill.style.width = "100%";
     progressFill.style.opacity = "0.4";
     progressFill.style.animation = "pulse 1.5s ease-in-out infinite";
-    progressText.textContent = "Scanning… " + scannedCount + " reels found";
+    progressText.textContent = "Scanning… " + scannedCount + " " + noun + " found";
   }
 }
 
@@ -1174,19 +1404,40 @@ function setShareButtonsEnabled(enabled: boolean): void {
   shareOutliersBtn.disabled = !enabled;
 }
 
-function formatOutlierLine(reel: OutliersEntry, rank: number): string {
-  return "#" + rank + " | " + formatCount(reel.views) + " views | " + reel.ratio.toFixed(1) + "x";
+// "#1 | 1.2K comments | 120K views | 4.5K likes | 12.4x", led by the metric the list is sorted by.
+function formatOutlierLine(reel: OutliersEntry, rank: number, state: OutliersState): string {
+  const sortKey = state.sortKey ?? "views";
+  const parts = ["#" + rank, formatMetricPhrase(sortKey, metricValue(reel, sortKey, state.followers), reel.likesHidden)];
+  const platform = reel.platform ?? "instagram";
+  const others: SortKey[] = platform === "tiktok"
+    ? ["views", "likes", "comments", "shares", "saves"]
+    : ["views", "likes", "comments"];
+  for (let i = 0; i < others.length; i++) {
+    const key = others[i]!;
+    if (key === sortKey) continue;
+    const value = metricValue(reel, key, state.followers);
+    if (value !== null) parts.push(formatMetricPhrase(key, value));
+  }
+  const multiple = viewsMultiple(reel, state.followers);
+  if (multiple !== null && sortKey !== "multiple") parts.push(formatMultiple(multiple));
+  return parts.join(" | ");
+}
+
+function describeView(state: OutliersState): string {
+  const sortKey = state.sortKey ?? "views";
+  return state.activeThresholdLabel + ", sorted by " + sortLabel(sortKey).toLowerCase()
+    + (state.sortDir === "asc" ? " ↑" : " ↓");
 }
 
 function buildOutliersPlainText(state: OutliersState, limit: number | null = null): string {
   const outliers = limit == null ? state.outliers : state.outliers.slice(0, Math.max(0, limit));
-  const profileLabel = lastKnownProfile ? lastKnownProfile.replace(/^\//, "@") : "profile";
+  const label = profileLabel(lastKnownProfileRef);
   const lines: string[] = [];
-  lines.push("Outliers report for " + profileLabel + " (" + state.activeThresholdLabel + ")");
+  lines.push("Outliers report for " + label + " on " + platformName(state.platform) + " (" + describeView(state) + ")");
   lines.push("");
   for (let i = 0; i < outliers.length; i++) {
     const reel = outliers[i]!;
-    lines.push(formatOutlierLine(reel, i + 1));
+    lines.push(formatOutlierLine(reel, i + 1, state));
     lines.push(reel.url);
     lines.push("");
   }
@@ -1194,14 +1445,14 @@ function buildOutliersPlainText(state: OutliersState, limit: number | null = nul
 }
 
 function buildShareCaption(state: OutliersState): string {
-  const profileLabel = lastKnownProfile ? lastKnownProfile.replace(/^\//, "@") : "this profile";
+  const label = lastKnownProfileRef ? profileLabel(lastKnownProfileRef) : "this profile";
   const top = state.outliers.slice(0, 5);
   const lines: string[] = [];
-  lines.push("Outliers portfolio for " + profileLabel);
-  lines.push("Threshold: " + state.activeThresholdLabel);
+  lines.push("Outliers portfolio for " + label + " on " + platformName(state.platform));
+  lines.push("Showing: " + describeView(state));
   lines.push("");
   for (let i = 0; i < top.length; i++) {
-    lines.push(formatOutlierLine(top[i]!, i + 1));
+    lines.push(formatOutlierLine(top[i]!, i + 1, state));
   }
   lines.push("");
   lines.push("Built with Outliers extension.");
@@ -1333,7 +1584,7 @@ async function lookupTopOutlierThumbnailUrls(
       args: [targetHrefs],
       func: function (): ReelThumbLookupRow[] {
         const requestedHrefs = (arguments[0] as string[] | undefined) ?? [];
-        const REEL_LINK_SELECTOR = 'a[href*="/reel/"], a[href*="/reels/"]';
+        const REEL_LINK_SELECTOR = 'a[href*="/reel/"], a[href*="/reels/"], a[href*="/video/"], a[href*="/photo/"]';
 
         function normalizeHref(href: string | null | undefined): string | null {
           if (!href) return null;
@@ -1542,106 +1793,98 @@ async function buildStoryCardBlob(state: OutliersState): Promise<StoryCardBuildR
   const top = state.outliers.slice(0, 5);
   const tabId = cachedTabId ?? (await getActiveTabId());
   if (tabId == null) {
-    return { ok: false, reason: "No active Instagram tab found.", failures: [] };
+    return { ok: false, reason: "No active tab found.", failures: [] };
   }
 
-  statusEl.textContent = "Reading thumbnail URLs…";
-  statusEl.className = "status-msg";
-
-  const lookup = await lookupTopOutlierThumbnailUrls(tabId, top);
-  const failures = lookup.failures.slice();
-  const rowByHref = new Map<string, ReelThumbLookupRow>();
-  for (let i = 0; i < lookup.rows.length; i++) {
-    const row = lookup.rows[i]!;
-    rowByHref.set(row.href, row);
-  }
-
-  const thumbnails: ImageBitmap[] = [];
+  // Thumbnails captured during the scan come first; the page fills in any that are missing.
+  const urlByHref = new Map<string, string>();
+  const missing: OutliersEntry[] = [];
   for (let i = 0; i < top.length; i++) {
     const reel = top[i]!;
-    const row = rowByHref.get(reel.href);
-    if (!row || !row.imageUrl) {
-      if (!failures.some(function (f) { return f.href === reel.href; })) {
-        failures.push({
-          rank: i + 1,
-          href: reel.href,
-          reason: row?.reason ?? "No thumbnail URL resolved.",
-        });
-      }
-      continue;
+    if (reel.thumbnailUrl) urlByHref.set(reel.href, reel.thumbnailUrl);
+    else missing.push(reel);
+  }
+  const failures: ReelThumbCaptureFailure[] = [];
+  if (missing.length > 0) {
+    statusEl.textContent = "Reading thumbnail URLs…";
+    const lookup = await lookupTopOutlierThumbnailUrls(tabId, missing);
+    for (let i = 0; i < lookup.rows.length; i++) {
+      const row = lookup.rows[i]!;
+      if (row.imageUrl) urlByHref.set(row.href, row.imageUrl);
     }
+  }
 
+  const thumbnails: Array<ImageBitmap | null> = [];
+  for (let i = 0; i < top.length; i++) {
+    const reel = top[i]!;
+    const imageUrl = urlByHref.get(reel.href);
     statusEl.textContent = "Loading thumbnails… " + (i + 1) + "/" + top.length;
-    statusEl.className = "status-msg";
-
-    const fetched = await remoteUrlToBitmap(row.imageUrl);
-    if (!fetched.bitmap) {
-      failures.push({
-        rank: i + 1,
-        href: reel.href,
-        reason: (fetched.error ?? "Unknown image fetch failure.") + " source=" + row.source,
-      });
+    if (!imageUrl) {
+      failures.push({ rank: i + 1, href: reel.href, reason: "No thumbnail URL resolved." });
+      thumbnails.push(null);
       continue;
     }
-
+    const fetched = await remoteUrlToBitmap(imageUrl);
+    if (!fetched.bitmap) {
+      failures.push({ rank: i + 1, href: reel.href, reason: fetched.error ?? "Unknown image fetch failure." });
+    }
     thumbnails.push(fetched.bitmap);
   }
-
-  if (failures.length > 0 || thumbnails.length !== top.length) {
-    for (let i = 0; i < thumbnails.length; i++) {
-      thumbnails[i]?.close();
-    }
-    return {
-      ok: false,
-      reason: "Failed to resolve all story thumbnails.",
-      failures,
-    };
+  if (failures.length > 0) {
+    // A missing cover gets a placeholder tile rather than sinking the whole card.
+    console.warn("[outliers] Story thumbnails drawn as placeholders:", failures);
   }
 
+  const FONT = "-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
+  const sortKey = state.sortKey ?? "views";
   try {
-    // High-contrast vertical canvas for quick Instagram Story uploads.
+    // High-contrast vertical canvas for quick Instagram/TikTok Story uploads.
     const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    gradient.addColorStop(0, "#0a1024");
-    gradient.addColorStop(0.5, "#111b3b");
-    gradient.addColorStop(1, "#121e40");
+    gradient.addColorStop(0, "#1a0b2e");
+    gradient.addColorStop(0.55, "#2b1146");
+    gradient.addColorStop(1, "#3a1352");
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    ctx.fillStyle = "rgba(125, 211, 252, 0.12)";
+    ctx.fillStyle = "rgba(249, 155, 33, 0.14)";
     drawRoundedRect(ctx, 740, -120, 480, 480, 240);
     ctx.fill();
-    ctx.fillStyle = "rgba(56, 189, 248, 0.12)";
+    ctx.fillStyle = "rgba(179, 21, 239, 0.16)";
     drawRoundedRect(ctx, -110, 1410, 420, 420, 210);
     ctx.fill();
 
-    const profileLabel = lastKnownProfile ? lastKnownProfile.replace(/^\//, "@") : "@profile";
-    const followersLabel = state.followers ? formatCount(state.followers) + " followers" : "Followers unavailable";
+    const label = lastKnownProfileRef ? profileLabel(lastKnownProfileRef) : "@profile";
+    const followersLabel = state.followers ? formatCount(state.followers) + " followers" : platformName(state.platform);
     ctx.fillStyle = "rgba(255,255,255,0.1)";
-    drawRoundedRect(ctx, 70, 86, 940, 88, 22);
+    drawRoundedRect(ctx, 70, 70, 940, 88, 22);
     ctx.fill();
     ctx.fillStyle = "#ffffff";
-    ctx.font = "800 52px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
-    drawTruncatedText(ctx, profileLabel, 96, 145, 600);
-    ctx.fillStyle = "#cbd5e1";
-    ctx.font = "700 30px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
+    ctx.font = "800 52px " + FONT;
+    drawTruncatedText(ctx, label, 96, 130, 600);
+    ctx.fillStyle = "#e9d5ff";
+    ctx.font = "700 30px " + FONT;
     const followersWidth = ctx.measureText(followersLabel).width;
-    ctx.fillText(followersLabel, 980 - followersWidth, 145);
+    ctx.fillText(followersLabel, 980 - followersWidth, 130);
+
+    ctx.fillStyle = "#fcd9a8";
+    ctx.font = "800 30px " + FONT;
+    ctx.fillText(storyHeading(sortKey, state.sortDir ?? "desc", top.length), 72, 205);
 
     const cardX = 70;
     const cardW = 940;
-    const cardH = 312;
+    const cardH = 300;
     const thumbX = cardX + 24;
-    const thumbW = 208;
-    const thumbH = 272;
-    let y = 190;
+    const thumbW = 200;
+    const thumbH = 264;
+    let y = 232;
     for (let i = 0; i < top.length; i++) {
       const reel = top[i]!;
-      const bitmap = thumbnails[i]!;
+      const bitmap = thumbnails[i] ?? null;
 
       ctx.fillStyle = "rgba(255,255,255,0.08)";
       drawRoundedRect(ctx, cardX, y, cardW, cardH, 24);
       ctx.fill();
-      ctx.strokeStyle = "rgba(186, 230, 253, 0.22)";
+      ctx.strokeStyle = "rgba(233, 213, 255, 0.22)";
       ctx.lineWidth = 2;
       drawRoundedRect(ctx, cardX, y, cardW, cardH, 24);
       ctx.stroke();
@@ -1649,42 +1892,63 @@ async function buildStoryCardBlob(state: OutliersState): Promise<StoryCardBuildR
       ctx.save();
       drawRoundedRect(ctx, thumbX, y + 18, thumbW, thumbH, 16);
       ctx.clip();
-      const srcW = bitmap.width;
-      const srcH = bitmap.height;
-      const srcRatio = srcW / srcH;
-      const dstRatio = thumbW / thumbH;
-      let sx = 0;
-      let sy = 0;
-      let sw = srcW;
-      let sh = srcH;
-      if (srcRatio > dstRatio) {
-        sw = srcH * dstRatio;
-        sx = (srcW - sw) / 2;
+      if (bitmap) {
+        const srcRatio = bitmap.width / bitmap.height;
+        const dstRatio = thumbW / thumbH;
+        let sx = 0;
+        let sy = 0;
+        let sw = bitmap.width;
+        let sh = bitmap.height;
+        if (srcRatio > dstRatio) {
+          sw = bitmap.height * dstRatio;
+          sx = (bitmap.width - sw) / 2;
+        } else {
+          sh = bitmap.width / dstRatio;
+          sy = (bitmap.height - sh) / 2;
+        }
+        ctx.drawImage(bitmap, sx, sy, sw, sh, thumbX, y + 18, thumbW, thumbH);
       } else {
-        sh = srcW / dstRatio;
-        sy = (srcH - sh) / 2;
+        const placeholder = ctx.createLinearGradient(thumbX, y, thumbX + thumbW, y + thumbH);
+        placeholder.addColorStop(0, "#950acc");
+        placeholder.addColorStop(1, "#f99b21");
+        ctx.fillStyle = placeholder;
+        ctx.fillRect(thumbX, y + 18, thumbW, thumbH);
       }
-      ctx.drawImage(bitmap, sx, sy, sw, sh, thumbX, y + 18, thumbW, thumbH);
       ctx.restore();
 
+      ctx.fillStyle = "#f99b21";
+      ctx.font = "800 30px " + FONT;
+      ctx.fillText("#" + (i + 1), cardX + 248, y + 62);
+
       ctx.fillStyle = "#ffffff";
-      ctx.font = "800 50px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
-      ctx.fillText(formatCount(reel.views) + " views", cardX + 256, y + 90);
+      ctx.font = "800 50px " + FONT;
+      drawTruncatedText(ctx, formatMetricPhrase(sortKey, metricValue(reel, sortKey, state.followers), reel.likesHidden), cardX + 248, y + 122, 660);
 
-      ctx.fillStyle = "#dbeafe";
-      ctx.font = "700 34px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
-      ctx.fillText(reel.ratio.toFixed(1) + "x follower reach", cardX + 256, y + 152);
+      const others: string[] = [];
+      const keys: SortKey[] = ["views", "likes", "comments"];
+      for (let k = 0; k < keys.length; k++) {
+        const key = keys[k]!;
+        if (key === sortKey) continue;
+        const value = metricValue(reel, key, state.followers);
+        if (value !== null) others.push(formatMetricPhrase(key, value));
+      }
+      ctx.fillStyle = "#e9d5ff";
+      ctx.font = "700 32px " + FONT;
+      drawTruncatedText(ctx, others.join("  ·  "), cardX + 248, y + 180, 660);
 
-      ctx.fillStyle = "#cbd5e1";
-      ctx.font = "500 24px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
-      const shortUrl = reel.url.replace(/^https?:\/\//, "").slice(0, 56);
-      ctx.fillText(shortUrl, cardX + 256, y + 214);
-      y += 324;
+      const multiple = viewsMultiple(reel, state.followers);
+      ctx.fillStyle = "#cbb7e6";
+      ctx.font = "600 26px " + FONT;
+      const tail = multiple !== null && sortKey !== "multiple"
+        ? formatMultiple(multiple) + " follower reach"
+        : reel.url.replace(/^https?:\/\//, "");
+      drawTruncatedText(ctx, tail, cardX + 248, y + 236, 660);
+      y += 316;
     }
 
-    ctx.fillStyle = "#93c5fd";
-    ctx.font = "600 20px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif";
-    ctx.fillText("Generated with Outliers extension", 70, 1860);
+    ctx.fillStyle = "#d8b4fe";
+    ctx.font = "600 22px " + FONT;
+    ctx.fillText("Generated with Outliers, free Chrome extension", 70, 1860);
 
     const blob = await canvasToBlob(canvas, "image/png");
     if (!blob) {
@@ -1701,6 +1965,15 @@ async function buildStoryCardBlob(state: OutliersState): Promise<StoryCardBuildR
       thumbnails[i]?.close();
     }
   }
+}
+
+// "Top 5 by views", or "Lowest 5 by views" when the list runs lowest first.
+function storyHeading(key: SortKey, dir: SortDir, count: number): string {
+  let lead: string;
+  if (key === "date") lead = dir === "desc" ? "Newest" : "Oldest";
+  else if (key === "duration") lead = dir === "desc" ? "Longest" : "Shortest";
+  else lead = dir === "desc" ? "Top" : "Lowest";
+  return lead + " " + count + " by " + sortLabel(key).toLowerCase();
 }
 
 async function showStoryCardPreview(state: OutliersState): Promise<void> {
@@ -1722,7 +1995,7 @@ async function showStoryCardPreview(state: OutliersState): Promise<void> {
     }
     const tabId = cachedTabId ?? (await getActiveTabId());
     if (tabId == null) {
-      statusEl.textContent = "No active Instagram tab found to preview the story card.";
+      statusEl.textContent = "No active tab found to preview the story card.";
       statusEl.className = "status-msg error";
       return;
     }
@@ -1848,8 +2121,9 @@ async function showStoryCardPreview(state: OutliersState): Promise<void> {
       },
     });
     closeShareModal();
-    statusEl.textContent = "Story card preview opened on the Instagram page.";
+    statusEl.textContent = "Story card preview opened on the " + platformName(state.platform) + " page.";
     statusEl.className = "status-msg";
+    offerReviewPrompt("story card");
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     statusEl.textContent = "Failed to open story preview on page: " + message;
@@ -1902,16 +2176,23 @@ function copyToClipboard(text: string, button: HTMLButtonElement): void {
 
 function renderResults(outliers: OutliersEntry[], scannedCount: number, state: OutliersState): void {
   resultsArea.style.display = "block";
-  resultsMeta.textContent = "— " + outliers.length + " of " + scannedCount + " reels";
+  const noun = videoNoun(state.platform ?? currentPlatform);
+  resultsTitle.textContent = state.filterMode === "all"
+    ? noun.charAt(0).toUpperCase() + noun.slice(1)
+    : "Outliers";
+  resultsMeta.textContent = "— " + outliers.length + " of " + scannedCount + " " + noun;
   clearElement(resultsList);
+  const sortKey = state.sortKey ?? "views";
 
   if (outliers.length === 0) {
     const copy = buildEmptyStateCopy({
+      platform: state.platform ?? currentPlatform,
       filterMode: state.filterMode,
       followers: state.followers,
       threshold: state.threshold,
       minViews: state.minViews,
       scanLimit: state.scanLimit,
+      scannedCount: state.scannedCount,
     });
     const empty = document.createElement("div");
     empty.className = "empty-msg";
@@ -1939,14 +2220,11 @@ function renderResults(outliers: OutliersEntry[], scannedCount: number, state: O
 
     const info = document.createElement("div");
     info.className = "result-info";
-    const views = document.createElement("div");
-    views.className = "result-views";
-    views.textContent = formatCount(reel.views) + " views";
-    const ratio = document.createElement("div");
-    ratio.className = "result-ratio";
-    ratio.textContent = reel.ratio.toFixed(1) + "×";
-    info.appendChild(views);
-    info.appendChild(ratio);
+    const primary = document.createElement("div");
+    primary.className = "result-primary";
+    primary.textContent = formatMetricPhrase(sortKey, metricValue(reel, sortKey, state.followers), reel.likesHidden);
+    info.appendChild(primary);
+    info.appendChild(buildMetricChips(reel, state.followers, sortKey));
 
     const actions = document.createElement("div");
     actions.className = "result-actions";
@@ -1988,6 +2266,7 @@ function renderResults(outliers: OutliersEntry[], scannedCount: number, state: O
     actions.appendChild(saveBtn);
 
     item.appendChild(rank);
+    item.appendChild(buildThumb(reel));
     item.appendChild(info);
     item.appendChild(actions);
     resultsList.appendChild(item);
@@ -2006,11 +2285,11 @@ function hideResults(): void {
 
 function setButtonsForIdle(): void {
   runBtn.style.display = "block";
-  runBtn.disabled = false;
   stopBtn.style.display = "none";
   resetBtn.style.display = "none";
   setScanLimitControlsDisabled(false);
   setFilterControlsDisabled(false);
+  updateRunAvailability();
 }
 
 function setButtonsForScanning(): void {
@@ -2019,7 +2298,7 @@ function setButtonsForScanning(): void {
   stopBtn.disabled = false;
   resetBtn.style.display = "none";
   setScanLimitControlsDisabled(true);
-  setFilterControlsDisabled(true);
+  setFilterControlsDisabled(false);
   exportBtn.disabled = true;
   setShareButtonsEnabled(false);
 }
@@ -2039,24 +2318,33 @@ function setButtonsDisabled(): void {
   resetBtn.disabled = true;
 }
 
-function renderState(rawState: OutliersState): void {
+// syncControls: adopt the page's view settings (on rehydrate). Live updates leave the controls
+// alone, so a reply to an earlier slider position can't pull the slider back mid-drag.
+function renderState(rawState: OutliersState, syncControls = false): void {
   const state = normalizeState(rawState);
   currentRenderedState = state;
   if (state.followers && state.followers > 0) latestFollowers = state.followers;
+  if (state.platform && state.platform !== currentPlatform) {
+    currentPlatform = state.platform;
+    syncSortUI();
+    syncScanLimitUI(getScanLimitFromUI());
+  }
 
-  selectedFilterMode = state.filterMode;
-  selectedMinViews = state.minViews;
-  syncFilterModeUI(state.filterMode);
-  syncMinViewsUI(state.minViews);
-  saveFilterMode(state.filterMode);
-  saveMinViews(state.minViews);
+  if (syncControls) {
+    syncFilterModeUI(state.filterMode);
+    if (state.minViews) syncMinViewsUI(state.minViews);
+    if (state.sortKey) selectedSortKey = state.sortKey;
+    if (state.sortDir) selectedSortDir = state.sortDir;
+    syncSortUI();
+    saveFilterMode(state.filterMode);
+    if (state.minViews) saveMinViews(state.minViews);
+    saveSort(selectedSortKey, selectedSortDir);
+  }
 
   statusEl.textContent = "";
   statusEl.className = "status-msg";
 
-  if (state.followers) {
-    showStats(state.activeThresholdLabel);
-  }
+  showStats(state.activeThresholdLabel);
 
   switch (state.status) {
     case "idle":
@@ -2146,7 +2434,12 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
   const isStale = function (): boolean {
     return !isStillBound(tabId, generation) || epoch !== documentEpoch;
   };
+  // A read that began during Run's startup, or before the latest Show/Sort reached the page,
+  // may return an older view; it must not overwrite the controls even if it lands later.
+  const startedDuringStartup = isScanStarting(tabId);
+  const activityAtStart = viewActivityOf(tabId, generation);
   let url: string | null = null;
+  let errorText: string | null = null;
   try {
     const stateResult = await chrome.scripting.executeScript({
       target: { tabId },
@@ -2160,60 +2453,110 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
     if (isStale()) return;
     const payload = stateResult?.[0]?.result as { state: OutliersState | null; url: string } | undefined;
     url = payload?.url ?? null;
+    adoptProfileFromUrl(url);
     const rawState = payload?.state ?? null;
-    if (rawState && rawState.status !== "idle") {
+    if (rawState && (rawState.status === "scanning" || rawState.status === "done")) {
+      if (scanIsForAnotherProfile(rawState, url)) {
+        // The tab moved to another profile while the panel was closed, so nothing retired
+        // this scan. Clear it like a navigation does; the page reloads and the poll re-reads it.
+        await retireScanInPage(tabId, {
+          documentId: stateResult?.[0]?.documentId,
+          staleHandle: rawState.profileHandle ?? "",
+        });
+        if (isStale()) return;
+        clearRenderedScan();
+        profileReady = false;
+        latestFollowers = null;
+        latestProfileInfo = null;
+        updateRunAvailability();
+        showLoading();
+        return;
+      }
       profileReady = true;
       profileWaitStartedAt = null;
-      renderState(rawState);
+      const editing = startedDuringStartup || isScanStarting(tabId);
+      const keepControls = editing
+        || activityAtStart !== viewActivityOf(tabId, generation) || hasViewWrites(tabId, generation);
+      renderState(rawState, !keepControls);
+      // An edit made before the scan was restored queued no write; send it now that it's known.
+      if (keepControls && !editing && !hasViewWrites(tabId, generation) && !viewMatchesState(currentView(), rawState)) {
+        schedulePushView();
+      }
       return;
     }
+    if (rawState && rawState.status === "error") errorText = rawState.errorText;
   } catch {
-    // The tab is not an Instagram page, or it is mid-load. The poll retries.
+    // Not a page Outliers can read (another site, or TikTok before access is on), or mid-load.
     if (isStale()) return;
     profileReady = false;
     latestFollowers = null;
+    latestProfileInfo = null;
     clearRenderedScan();
-    runBtn.disabled = true;
+    updateRunAvailability();
     hideReviewPrompt();
-    showNotice("Open an Instagram profile to scan its Reels.");
+    // Chrome can also refuse a profile page itself, when the user limits Outliers' site access.
+    // The TikTok card covers TikTok while it's off; otherwise say how to let Outliers in.
+    showNotice(
+      "Open an Instagram or TikTok profile to scan its videos.",
+      hasTikTokAccess
+        ? "On a profile already? Chrome may be blocking Outliers on this site: click the puzzle icon in the toolbar and allow Outliers here."
+        : undefined
+    );
     return;
   }
 
   // No scan lives in this page (e.g. after a reload), so drop any stale results.
   clearRenderedScan();
+  if (errorText) {
+    statusEl.textContent = errorText;
+    statusEl.className = "status-msg error";
+  }
 
-  if (!url || getProfilePath(url) == null) {
+  const ref = url ? getProfileRef(url) : null;
+  if (!url || !ref) {
     profileReady = false;
     profileWaitStartedAt = null;
     latestFollowers = null;
-    runBtn.disabled = true;
+    latestProfileInfo = null;
+    updateRunAvailability();
     hideReviewPrompt();
     showNotice(
       url && isContentPermalink(url)
-        ? "Open the creator's profile to scan their Reels."
-        : "Open an Instagram profile to scan its Reels."
+        ? "Open the creator's profile to scan their videos."
+        : "Open an Instagram or TikTok profile to scan its videos."
     );
     return;
   }
 
-  let followers: number | null = null;
+  let info: ProfileInfo | null = null;
   try {
+    // The MAIN world sees the page's own data, so the count is exact in any language.
     const result = await chrome.scripting.executeScript({
       target: { tabId },
-      func: readProfileFollowers,
+      world: "MAIN",
+      func: readProfileInfo,
     });
-    followers = result?.[0]?.result ?? null;
+    info = (result?.[0]?.result as ProfileInfo | null | undefined) ?? null;
   } catch {
-    followers = null;
+    info = null;
   }
   if (isStale()) return;
 
-  if (followers && followers > 0) {
-    profileReady = true;
-    profileWaitStartedAt = null;
-    latestFollowers = followers;
-    showStats(getThresholdLabel(selectedFilterMode, followers, selectedMinViews));
-    runBtn.disabled = false;
+  if (info && info.headerMatches && info.handle === ref.handle) {
+    if (awaitingResetReload) {
+      awaitingResetReload = false;
+      statusEl.textContent = "";
+      statusEl.className = "status-msg";
+    }
+    latestProfileInfo = info;
+    latestFollowers = info.followers;
+    if (profileWaitStartedAt == null) profileWaitStartedAt = Date.now();
+    const waitedLong = Date.now() - profileWaitStartedAt >= PROFILE_WAIT_HINT_MS;
+    // Keep polling until the follower count and the scan tab are both in: either can arrive late.
+    profileReady = info.followers !== null && info.onScanTab;
+    if (profileReady) profileWaitStartedAt = null;
+    updateRunAvailability();
+    showStats(getThresholdLabel(selectedFilterMode, latestFollowers, selectedMinViews), readinessHint(info, waitedLong));
     updateReviewPromptVisibility(currentRenderedState);
     return;
   }
@@ -2221,14 +2564,75 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
   // The profile header has not rendered yet. Keep the spinner up while the poll retries.
   profileReady = false;
   latestFollowers = null;
-  runBtn.disabled = true;
+  latestProfileInfo = null;
+  updateRunAvailability();
   hideReviewPrompt();
   if (profileWaitStartedAt == null) profileWaitStartedAt = Date.now();
   if (Date.now() - profileWaitStartedAt < PROFILE_WAIT_HINT_MS) {
     showLoading();
   } else {
-    showNotice("Couldn't read the follower count yet. Scroll to the top of the profile; Outliers keeps checking.");
+    showNotice("Couldn't read this profile yet. Scroll to the top of the profile; Outliers keeps checking.");
   }
+}
+
+function adoptProfileFromUrl(url: string | null): void {
+  const ref = url ? getProfileRef(url) : null;
+  const platform = url ? detectPlatform(url) : null;
+  if (ref) lastKnownProfileRef = ref;
+  if (platform && platform !== currentPlatform) {
+    currentPlatform = platform;
+    syncSortUI();
+    syncScanLimitUI(getScanLimitFromUI());
+  }
+}
+
+// What stands between the profile and a scan, with a one-click fix when there is one.
+function readinessHint(info: ProfileInfo, waitedLong: boolean): StatsHint | undefined {
+  if (!info.onScanTab) {
+    if (info.platform === "tiktok") {
+      return { text: "Open the Videos tab of this profile to scan it." };
+    }
+    return {
+      text: "Outliers scans the Reels tab.",
+      actionLabel: "Open Reels tab",
+      onAction: openReelsTab,
+    };
+  }
+  if (info.followers === null && selectedFilterMode === "ratio5x") {
+    return waitedLong
+      ? { text: "Couldn't read the follower count, so 5× is off. Min Views and All work without it." }
+      : { text: "Reading the follower count… Min Views and All work without it." };
+  }
+  return undefined;
+}
+
+function openReelsTab(): void {
+  const tabId = cachedTabId;
+  const ref = lastKnownProfileRef;
+  if (tabId == null || !ref || ref.platform !== "instagram") return;
+  chrome.scripting.executeScript({
+    target: { tabId },
+    args: [ref.handle],
+    func: (function (handle: string): void {
+      const path = "/" + handle + "/reels/";
+      const tab = document.querySelector('a[href="' + path + '"]') as HTMLAnchorElement | null;
+      // Clicking Instagram's own tab keeps it a quick in-app navigation.
+      if (tab) tab.click();
+      else window.location.assign(path);
+    }) as unknown as () => void,
+  }).catch(function () {
+    // Non-fatal; the hint stays up.
+  });
+}
+
+// Run needs the profile header and its scan tab. Only 5× needs the follower count.
+function updateRunAvailability(): void {
+  const info = latestProfileInfo;
+  const scanning = currentRenderedState?.status === "scanning";
+  const starting = cachedTabId != null && isScanStarting(cachedTabId);
+  const ready = !!info && info.headerMatches && info.onScanTab
+    && (selectedFilterMode !== "ratio5x" || (latestFollowers !== null && latestFollowers > 0));
+  runBtn.disabled = scanning || starting || !ready;
 }
 
 // ── Message listener ──────────────────────────────────────────────────────
@@ -2240,7 +2644,9 @@ chrome.runtime.onMessage.addListener(function (
   if (cachedTabId != null && sender.tab?.id !== cachedTabId) return;
 
   if (msg.type === "outliers:state") {
+    statePushes++;
     renderState(msg.state);
+    updateRunAvailability();
   } else if (msg.type === "outliers:reset") {
     if (reviewPromptShownThisSession) reviewPromptClosedThisSession = true;
     hideProgress();
@@ -2250,6 +2656,7 @@ chrome.runtime.onMessage.addListener(function (
     statusEl.textContent = "Outliers cleared.";
     statusEl.className = "status-msg";
     currentRenderedState = null;
+    latestProfileInfo = null;
     // The page reloads after a reset; the poll rehydrates once the new document is up.
     runBtn.disabled = true;
     profileReady = false;
@@ -2260,45 +2667,101 @@ chrome.runtime.onMessage.addListener(function (
 async function handleNavigation(details: { tabId: number; url: string }, generation: number): Promise<void> {
   if (!isStillBound(details.tabId, generation)) return;
 
-  const newProfile = getProfilePath(details.url);
+  const newRef = getProfileRef(details.url);
+  const newProfile = profileKey(newRef);
   lastKnownUrl = details.url;
 
+  // Opening a video keeps the scan; its viewer closes back onto the same profile.
   if (newProfile === null && isContentPermalink(details.url)) return;
-  if (newProfile === lastKnownProfile) return;
+  if (newProfile === lastKnownProfile) {
+    // Same profile, another tab of it (profile → Reels). Re-check whether a scan can run there.
+    if (currentRenderedState == null) profileReady = false;
+    return;
+  }
 
   lastKnownProfile = newProfile;
+  lastKnownProfileRef = newRef;
+  cancelViewPush();
 
-  try {
-    await chrome.scripting.executeScript({
-      target: { tabId: details.tabId },
-      func: function () {
-        const w = window as unknown as {
-          __outliers_reset?: () => void;
-          __outliers_state?: unknown;
-          __outliers_active?: boolean;
-        };
-        if (typeof w.__outliers_reset === "function") w.__outliers_reset();
-        w.__outliers_state = undefined;
-        w.__outliers_active = false;
-      },
-    });
-  } catch {
-    // Non-fatal
-  }
+  await retireScanInPage(details.tabId);
   if (!isStillBound(details.tabId, generation)) return;
 
   hideProgress();
   hideResults();
-  setButtonsForIdle();
-  runBtn.disabled = true;
   currentRenderedState = null;
   latestFollowers = null;
+  latestProfileInfo = null;
+  setButtonsForIdle();
   profileReady = false;
   profileWaitStartedAt = null;
   statusEl.textContent = "";
   statusEl.className = "status-msg";
   showLoading();
   // The navigation poll rehydrates on its next tick, once the new profile has rendered.
+}
+
+// Drops the page's scan (its reset reloads the page) so it can't be restored onto another profile.
+// A scan whose profile the page shows again (or a video viewer over it) is kept: the tab may be
+// back on that profile by the time this runs. With `onlyIf`, the reset goes to the document
+// that was read and runs only while that page still holds the stale profile's scan.
+async function retireScanInPage(
+  tabId: number,
+  onlyIf?: { documentId: string | undefined; staleHandle: string }
+): Promise<void> {
+  try {
+    await chrome.scripting.executeScript({
+      target: onlyIf?.documentId ? { tabId, documentIds: [onlyIf.documentId] } : { tabId },
+      args: [onlyIf ? onlyIf.staleHandle : null],
+      func: (function (staleHandle: string | null) {
+        const w = window as unknown as {
+          __outliers_reset?: () => void;
+          __outliers_state?: { profileHandle?: string | null };
+          __outliers_active?: boolean;
+        };
+        const scanned = String(w.__outliers_state?.profileHandle ?? "").toLowerCase();
+        if (staleHandle !== null && scanned !== staleHandle.toLowerCase()) return;
+        if (scanned) {
+          let first = window.location.pathname.split("/")[1] ?? "";
+          try {
+            first = decodeURIComponent(first);
+          } catch {
+            // Keep the raw segment
+          }
+          first = first.toLowerCase();
+          if (/^(reel|reels|p|tv)$/.test(first) || first.replace(/^@/, "") === scanned) return;
+        }
+        if (typeof w.__outliers_reset === "function") w.__outliers_reset();
+        w.__outliers_state = undefined;
+        w.__outliers_active = false;
+      }) as unknown as () => void,
+    });
+  } catch {
+    // Non-fatal: the document is gone, so there is nothing left to retire.
+  }
+}
+
+// True when the URL shows a profile other than the one the scan belongs to. A video viewer
+// (no profile in the URL) keeps its profile's scan.
+function scanIsForAnotherProfile(state: OutliersState, url: string | null): boolean {
+  const shown = url ? getProfileRef(url) : null;
+  if (!shown || !state.profileHandle) return false;
+  if (state.platform && state.platform !== shown.platform) return true;
+  return state.profileHandle.toLowerCase() !== shown.handle;
+}
+
+function syncControlsToView(view: ViewSettings): void {
+  syncFilterModeUI(view.filterMode);
+  if (view.filterMode === "minViews") syncMinViewsUI(view.minViews);
+  selectedSortKey = view.sortKey;
+  selectedSortDir = view.sortDir;
+  syncSortUI();
+}
+
+function viewMatchesState(view: ViewSettings, state: OutliersState): boolean {
+  return view.filterMode === state.filterMode
+    && view.sortKey === (state.sortKey ?? "views")
+    && view.sortDir === (state.sortDir ?? "desc")
+    && (view.filterMode !== "minViews" || view.minViews === state.minViews);
 }
 
 async function readTabUrl(tabId: number): Promise<string | null> {
@@ -2335,7 +2798,8 @@ function startNavigationPolling(tabId: number): void {
         if (url) {
           if (lastKnownUrl == null) {
             lastKnownUrl = url;
-            lastKnownProfile = getProfilePath(url);
+            lastKnownProfileRef = getProfileRef(url);
+            lastKnownProfile = profileKey(lastKnownProfileRef);
           } else if (url !== lastKnownUrl) {
             await handleNavigation({ tabId, url }, generation);
           }
@@ -2357,19 +2821,19 @@ function exportCurrentResults(): void {
   }
 
   if (currentRenderedState.outliers.length === 0) {
-    statusEl.textContent = "No outliers to export for the current filters.";
+    statusEl.textContent = "Nothing to export for the current Show setting.";
     statusEl.className = "status-msg error";
     return;
   }
 
   const csv = buildOutliersCsv(currentRenderedState.outliers, {
-    profilePath: normalizeProfileUrl(
-      lastKnownProfile,
-      currentRenderedState.outliers[0]?.url
-    ),
+    profilePath: currentProfileUrl() ?? normalizeProfileUrl(null, currentRenderedState.outliers[0]?.url),
     filterMode: currentRenderedState.filterMode,
     thresholdLabel: currentRenderedState.activeThresholdLabel,
     exportedAt: nowIso(),
+    followers: currentRenderedState.followers,
+    sortKey: currentRenderedState.sortKey,
+    sortDir: currentRenderedState.sortDir,
   });
 
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -2378,7 +2842,7 @@ function exportCurrentResults(): void {
   a.href = url;
   a.download = [
     "outliers",
-    sanitizeFilenamePart(lastKnownProfile ?? "profile"),
+    sanitizeFilenamePart(lastKnownProfileRef ? lastKnownProfileRef.platform + "_" + lastKnownProfileRef.handle : "profile"),
     getLocalTimestampForFilename(),
   ].join("_") + ".csv";
 
@@ -2389,6 +2853,7 @@ function exportCurrentResults(): void {
 
   statusEl.textContent = "CSV exported.";
   statusEl.className = "status-msg";
+  offerReviewPrompt("CSV export");
 }
 
 function exportSavedResults(): void {
@@ -2418,6 +2883,7 @@ function exportSavedResults(): void {
 
   savedStatusEl.textContent = "CSV exported.";
   savedStatusEl.className = "status-msg";
+  offerReviewPrompt("Library export");
 }
 
 // ── Event handlers ────────────────────────────────────────────────────────
@@ -2491,7 +2957,8 @@ copyOutliersBtn.addEventListener("click", function () {
     statusEl.className = "status-msg error";
     return;
   }
-  copyTextWithStatus(buildOutliersPlainText(state), "Outliers copied.");
+  copyTextWithStatus(buildOutliersPlainText(state), "List copied.");
+  offerReviewPrompt("copy");
 });
 
 shareOutliersBtn.addEventListener("click", function () {
@@ -2549,6 +3016,13 @@ savedClearBtn.addEventListener("click", function () {
 
 runBtn.addEventListener("click", async function () {
   const generation = bindGeneration;
+  const startup: ScanStartup = { tabId: cachedTabId ?? -1, view: currentView() };
+  if (cachedTabId != null) startingScans.set(cachedTabId, startup);
+  // The panel may follow other tabs and come back while this runs; it speaks for the startup
+  // whenever it shows this tab again.
+  const showsTab = function (): boolean {
+    return cachedTabId === startup.tabId;
+  };
   setButtonsDisabled();
   reviewPromptShownThisSession = false;
   reviewPromptClosedThisSession = false;
@@ -2560,51 +3034,132 @@ runBtn.addEventListener("click", async function () {
   try {
     const tabId = cachedTabId ?? (await getActiveTabId());
     if (!tabId) {
-      showError("No active Instagram tab found.");
+      showError("No active tab found.");
       setButtonsForIdle();
       return;
     }
+    if (startup.tabId !== tabId) {
+      startup.tabId = tabId;
+      startingScans.set(tabId, startup);
+    }
 
     const limit = getScanLimitFromUI();
-    const mode = selectedFilterMode;
-    const minViews = mode === "minViews" ? resolveMinViewsForRun() : null;
+    const view = startup.view;
+    // The scan belongs to this document and profile; a reload or navigation mid-startup
+    // abandons it. Switching to another tab doesn't: the startup finishes on its own tab
+    // and the panel shows it on return. Only a panel still on that tab updates the UI.
+    const epoch = documentEpoch;
+    const expected = lastKnownProfileRef;
+    const bound = function (): boolean {
+      return isStillBound(tabId, generation);
+    };
+    const pageChanged = function (): boolean {
+      return bound() && epoch !== documentEpoch;
+    };
 
-    saveFilterMode(mode);
-    saveMinViews(minViews);
-    syncMinViewsUI(minViews);
+    saveFilterMode(view.filterMode);
+    if (view.filterMode === "minViews") saveMinViews(view.minViews);
+    saveSort(selectedSortKey, selectedSortDir);
 
     statusEl.textContent = "Starting scan…";
 
-    await chrome.scripting.executeScript({
+    // Read the profile again right before seeding the scanner, so the follower count it gets
+    // belongs to the page it will scroll, not to one the tab showed a moment ago.
+    const fresh = await chrome.scripting.executeScript({
       target: { tabId },
-      func: (function (l: number | null, m: FilterMode, min: number | null) {
-        const w = window as unknown as {
-          __outliers_scan_limit: number | null | undefined;
-          __outliers_filter_mode: FilterMode | undefined;
-          __outliers_min_views: number | null | undefined;
-        };
-        w.__outliers_scan_limit = l;
-        w.__outliers_filter_mode = m;
-        w.__outliers_min_views = min;
-      }) as unknown as () => void,
-      args: [limit, mode, minViews],
+      world: "MAIN",
+      func: readProfileInfo,
     });
-    if (!isStillBound(tabId, generation)) return;
+    if (pageChanged()) return;
+    // Later injections go to the document read here; if the tab loads another one meanwhile,
+    // Chrome rejects them. The scanner itself stops if the page moved to another profile.
+    const documentId = fresh?.[0]?.documentId;
+    const target = documentId ? { tabId, documentIds: [documentId] } : { tabId };
+    const info = (fresh?.[0]?.result as ProfileInfo | null | undefined) ?? null;
+    if (!info || !info.headerMatches || !info.onScanTab || !expected
+      || info.platform !== expected.platform || info.handle !== expected.handle) {
+      if (showsTab()) {
+        profileReady = false;
+        statusEl.textContent = "The page changed. Wait for the profile to load, then run the scan again.";
+        statusEl.className = "status-msg error";
+        setButtonsForIdle();
+      }
+      return;
+    }
+    // 5× compares views with followers; without a count every video would be filtered out.
+    if (startup.view.filterMode === "ratio5x" && !(typeof info.followers === "number" && info.followers > 0)) {
+      if (showsTab()) {
+        profileReady = false;
+        statusEl.textContent = "Couldn't read the follower count yet. Wait for the profile to load, or choose Min Views or All.";
+        statusEl.className = "status-msg error";
+        setButtonsForIdle();
+      }
+      return;
+    }
+
+    // The bridge runs in the page's own world to read exact counts; it only answers the scanner.
+    await chrome.scripting.executeScript({
+      target,
+      world: "MAIN",
+      files: ["page-bridge.js"],
+    });
+    if (pageChanged()) return;
 
     await chrome.scripting.executeScript({
-      target: { tabId },
+      target,
+      func: (function (l: number | null, v: ViewSettings, p: { handle: string; followers: number | null }) {
+        const w = window as unknown as {
+          __outliers_scan_limit: number | null | undefined;
+          __outliers_view: ViewSettings | undefined;
+          __outliers_profile: { handle: string; followers: number | null } | undefined;
+        };
+        w.__outliers_scan_limit = l;
+        w.__outliers_view = v;
+        w.__outliers_profile = p;
+      }) as unknown as () => void,
+      // The latest Show/Sort made on this tab: it may have changed since the click. Later edits
+      // reach the page through schedulePushView, before or after the scanner starts.
+      args: [limit, startup.view, { handle: info.handle, followers: info.followers }],
+    });
+    if (pageChanged()) return;
+
+    const pushesBefore = statePushes;
+    await chrome.scripting.executeScript({
+      target,
       files: ["injected.js"],
     });
-    if (!isStillBound(tabId, generation)) return;
+    if (pageChanged() || !showsTab()) return;
+
+    // The scanner may already have stopped with an error (the page left the scan tab, say), or
+    // finished a short scan; show what it actually reports rather than assuming "scanning".
+    // Its own pushes are newer than this read, so once one has arrived it has the last word.
+    const started = await chrome.scripting.executeScript({
+      target,
+      func: function (): OutliersState | null {
+        return (window as unknown as { __outliers_state?: OutliersState }).__outliers_state ?? null;
+      },
+    });
+    if (pageChanged() || !showsTab() || statePushes !== pushesBefore) return;
+    const startedState = (started?.[0]?.result as OutliersState | null | undefined) ?? null;
+    if (startedState) {
+      renderState(startedState);
+      updateRunAvailability();
+      return;
+    }
 
     setButtonsForScanning();
     statusEl.textContent = "";
   } catch (err: unknown) {
-    if (generation !== bindGeneration) return;
+    if (!showsTab()) return;
     const message = err instanceof Error ? err.message : "Something went wrong.";
     statusEl.textContent = message;
     statusEl.className = "status-msg error";
     setButtonsForIdle();
+  } finally {
+    // A newer Run on this tab owns its entry now if one started meanwhile.
+    if (startingScans.get(startup.tabId) === startup) startingScans.delete(startup.tabId);
+    // Run was held off while this started; let it reflect the tab again.
+    if (showsTab()) updateRunAvailability();
   }
 });
 
@@ -2659,6 +3214,7 @@ resetBtn.addEventListener("click", async function () {
   currentRenderedState = null;
   latestFollowers = null;
   statusEl.textContent = "Waiting for page reload…";
+  awaitingResetReload = true;
   showLoading();
   // The reload fires tabs.onUpdated, and the poll rehydrates once the page is back.
   profileReady = false;
@@ -2672,7 +3228,8 @@ scanLimitSlider.addEventListener("input", function () {
 
 for (let i = 0; i < filterModeBtns.length; i++) {
   filterModeBtns[i]!.addEventListener("click", function () {
-    const mode = this.getAttribute("data-mode") === "minViews" ? "minViews" : "ratio5x";
+    const raw = this.getAttribute("data-mode");
+    const mode: FilterMode = isFilterMode(raw) ? raw : "ratio5x";
     syncFilterModeUI(mode);
     if (mode === "minViews" && (!selectedMinViews || selectedMinViews <= 0)) {
       syncMinViewsUI(DEFAULT_MIN_VIEWS);
@@ -2680,23 +3237,174 @@ for (let i = 0; i < filterModeBtns.length; i++) {
     }
     saveFilterMode(mode);
     setFilterControlsDisabled(false);
-
-    refreshIdleThreshold();
+    onViewChanged();
   });
 }
 
-// Keep "Active threshold" in step with the filter controls before a scan runs.
-// Done and scanning states show the threshold the scan actually used.
-function refreshIdleThreshold(): void {
-  if (!profileReady || currentRenderedState?.status === "done" || currentRenderedState?.status === "scanning") return;
-  showStats(getThresholdLabel(selectedFilterMode, latestFollowers, selectedMinViews));
+// Before a scan, keep the stats in step with the controls. During and after one, the page
+// refilters what it collected and answers with a new state.
+function onViewChanged(): void {
+  if (cachedTabId != null) bumpViewActivity(cachedTabId, bindGeneration);
+  const status = currentRenderedState?.status;
+  if (status === "done" || status === "scanning") {
+    schedulePushView();
+    return;
+  }
+  // While Run is starting a scan the page takes the change too: the scanner reads it as it begins.
+  const startup = cachedTabId != null ? startingScans.get(cachedTabId) : undefined;
+  if (startup) {
+    startup.view = currentView();
+    schedulePushView();
+  }
+  updateRunAvailability();
+  if (latestProfileInfo) {
+    const waitedLong = profileWaitStartedAt != null && Date.now() - profileWaitStartedAt >= PROFILE_WAIT_HINT_MS;
+    showStats(getThresholdLabel(selectedFilterMode, latestFollowers, selectedMinViews), readinessHint(latestProfileInfo, waitedLong));
+  }
+}
+
+function cancelViewPush(): void {
+  pendingViewPush = null;
+  if (viewPushTimer == null) return;
+  clearTimeout(viewPushTimer);
+  viewPushTimer = null;
+}
+
+// Switching tabs must not drop a Show/Sort change still waiting to reach the page: send it to
+// the tab it was made on right away. Call before the bind moves to another tab.
+function flushViewPush(): void {
+  const pending = pendingViewPush;
+  cancelViewPush();
+  if (!pending) return;
+  pushViewToPage(pending).catch(function () {
+    // Non-fatal
+  });
+}
+
+function isScanStarting(tabId: number): boolean {
+  return startingScans.has(tabId);
+}
+
+function viewWriteKey(tabId: number, generation: number): string {
+  return tabId + ":" + generation;
+}
+
+function viewActivityOf(tabId: number, generation: number): number {
+  return viewActivity.get(viewWriteKey(tabId, generation)) ?? 0;
+}
+
+function bumpViewActivity(tabId: number, generation: number): void {
+  const key = viewWriteKey(tabId, generation);
+  viewActivity.set(key, (viewActivity.get(key) ?? 0) + 1);
+}
+
+function hasViewWrites(tabId: number, generation: number): boolean {
+  if (pendingViewPush && pendingViewPush.tabId === tabId && pendingViewPush.generation === generation) return true;
+  return (viewWritesInFlight.get(viewWriteKey(tabId, generation)) ?? 0) > 0;
+}
+
+function schedulePushView(): void {
+  cancelViewPush();
+  const tabId = cachedTabId;
+  if (tabId == null) return;
+  const push: PendingViewPush = {
+    tabId,
+    generation: bindGeneration,
+    epoch: documentEpoch,
+    view: currentView(),
+    handle: lastKnownProfileRef?.handle ?? currentRenderedState?.profileHandle ?? null,
+  };
+  pendingViewPush = push;
+  // Coalesce slider drags into one redraw of the page grid.
+  viewPushTimer = window.setTimeout(function () {
+    viewPushTimer = null;
+    pendingViewPush = null;
+    pushViewToPage(push).catch(function () {
+      // Non-fatal
+    });
+  }, 90);
+}
+
+async function pushViewToPage(push: PendingViewPush): Promise<void> {
+  const { tabId, generation } = push;
+  if (!isStillBound(tabId, generation) || push.epoch !== documentEpoch) return;
+  const key = viewWriteKey(tabId, generation);
+  viewWritesInFlight.set(key, (viewWritesInFlight.get(key) ?? 0) + 1);
+  bumpViewActivity(tabId, generation);
+  let accepted = true;
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      args: [push.view, push.handle],
+      func: (function (v: ViewSettings, handle: string | null): boolean {
+        const w = window as unknown as {
+          __outliers_active?: boolean;
+          __outliers_apply_view?: (view: ViewSettings) => void;
+          __outliers_view?: ViewSettings;
+          __outliers_state?: { profileHandle?: string | null };
+        };
+        // The tab may have moved on since the change was made (a flushed write runs after the
+        // panel has left it): apply it only to the profile it was made on.
+        if (handle) {
+          const want = handle.toLowerCase();
+          let first = window.location.pathname.split("/")[1] ?? "";
+          try {
+            first = decodeURIComponent(first);
+          } catch {
+            // Keep the raw segment
+          }
+          first = first.toLowerCase();
+          // A video viewer (Instagram /reel/…, /p/…) keeps the profile's scan underneath.
+          const shown = /^(reel|reels|p|tv)$/.test(first) ? null : first.replace(/^@/, "");
+          if (shown !== null && shown !== want) return false;
+          const scanned = w.__outliers_state?.profileHandle;
+          if (scanned && scanned.toLowerCase() !== want) return false;
+        }
+        // A scanner that is still starting reads this as it begins; a running or finished one
+        // redraws now. One that failed or was reset is retired and must not take it.
+        w.__outliers_view = v;
+        if (w.__outliers_active === true && typeof w.__outliers_apply_view === "function") w.__outliers_apply_view(v);
+        return true;
+      }) as unknown as () => void,
+    });
+    accepted = (results?.[0]?.result as boolean | undefined) !== false;
+  } catch {
+    if (!isStillBound(tabId, generation)) return;
+    statusEl.textContent = "Couldn't update the page. Reset and scan again.";
+    statusEl.className = "status-msg error";
+  } finally {
+    const left = (viewWritesInFlight.get(key) ?? 1) - 1;
+    if (left > 0) viewWritesInFlight.set(key, left);
+    else viewWritesInFlight.delete(key);
+    bumpViewActivity(tabId, generation);
+  }
+  // The page is no longer on that profile, so the controls may be ahead of it: re-read it.
+  if (!accepted && isStillBound(tabId, generation)) {
+    profileReady = false;
+  }
 }
 
 minViewsSlider.addEventListener("input", function () {
   const minViews = sliderPositionToMinViews(getRangeValue(minViewsSlider));
   syncMinViewsUI(minViews);
   saveMinViews(minViews);
-  refreshIdleThreshold();
+  onViewChanged();
+});
+
+sortKeySelect.addEventListener("change", function () {
+  const key = sortKeySelect.value;
+  if (!isSortKey(key)) return;
+  selectedSortKey = key;
+  saveSort(selectedSortKey, selectedSortDir);
+  syncSortUI();
+  onViewChanged();
+});
+
+sortDirBtn.addEventListener("click", function () {
+  selectedSortDir = selectedSortDir === "desc" ? "asc" : "desc";
+  saveSort(selectedSortKey, selectedSortDir);
+  syncSortUI();
+  onViewChanged();
 });
 
 exportBtn.addEventListener("click", exportCurrentResults);
@@ -2709,7 +3417,12 @@ async function init(): Promise<void> {
   syncScanLimitUI(loadScanLimit());
   syncFilterModeUI(loadFilterMode());
   syncMinViewsUI(loadMinViews());
+  const sort = loadSort();
+  selectedSortKey = sort.key;
+  selectedSortDir = sort.dir;
+  syncSortUI();
   setFilterControlsDisabled(false);
+  await refreshTikTokAccess();
   if (__OUTLIERS_WATCH__) {
     // Dev-only review toggle is visible only in watch builds.
     reviewPromptDevMode = loadReviewPromptDevMode();
@@ -2728,6 +3441,29 @@ async function init(): Promise<void> {
   clearReviewPromptDelayState();
   hideReviewPrompt();
   await loadSavedReels();
+
+  // A success from an earlier session earns the ask on this open, once the panel has settled.
+  if (reviewPromptState.firstSuccessfulScanAt) {
+    reviewPromptDelayTimer = window.setTimeout(function () {
+      reviewPromptDelayTimer = null;
+      offerReviewPrompt("panel open");
+    }, REVIEW_PROMPT_OPEN_DELAY_MS);
+  }
+
+  const onAccessChanged = function (): void {
+    const wasOn = hasTikTokAccess;
+    refreshTikTokAccess().then(function () {
+      if (wasOn === hasTikTokAccess || cachedTabId == null) return;
+      statsMessageKey = null;
+      bindToTab(cachedTabId).catch(function () {
+        // Non-fatal
+      });
+    }).catch(function () {
+      // Non-fatal
+    });
+  };
+  chrome.permissions.onAdded.addListener(onAccessChanged);
+  chrome.permissions.onRemoved.addListener(onAccessChanged);
 
   try {
     panelWindowId = (await chrome.windows.getCurrent()).id ?? null;
@@ -2754,7 +3490,7 @@ async function init(): Promise<void> {
 
   const tabId = await getActiveTabId();
   if (!tabId) {
-    showNotice("Open an Instagram profile to scan its Reels.");
+    showNotice("Open an Instagram or TikTok profile to scan its videos.");
     return;
   }
   await bindToTab(tabId);
@@ -2762,28 +3498,38 @@ async function init(): Promise<void> {
 
 // The side panel belongs to the window, so it follows whichever tab is active.
 async function bindToTab(tabId: number): Promise<void> {
+  flushViewPush();
   const generation = ++bindGeneration;
   cachedTabId = tabId;
   stopNavigationPolling();
   lastKnownUrl = null;
   lastKnownProfile = null;
+  lastKnownProfileRef = null;
   profileReady = false;
   profileWaitStartedAt = null;
   latestFollowers = null;
+  latestProfileInfo = null;
   currentRenderedState = null;
   hideProgress();
   hideResults();
   hideReviewPrompt();
   setButtonsForIdle();
-  runBtn.disabled = true;
   statusEl.textContent = "";
   statusEl.className = "status-msg";
   showLoading();
+  // Back on a tab whose scan is still starting: show the Show/Sort it starts with and keep Run
+  // off until it's running (its first state message takes over).
+  const startup = startingScans.get(tabId);
+  if (startup) {
+    syncControlsToView(startup.view);
+    setButtonsDisabled();
+  }
 
   const url = await readTabUrl(tabId);
   if (generation !== bindGeneration) return;
   lastKnownUrl = url;
-  lastKnownProfile = url ? getProfilePath(url) : null;
+  lastKnownProfileRef = url ? getProfileRef(url) : null;
+  lastKnownProfile = profileKey(lastKnownProfileRef);
 
   startNavigationPolling(tabId);
   await rehydrate(tabId);
