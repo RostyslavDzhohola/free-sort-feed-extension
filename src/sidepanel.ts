@@ -151,9 +151,10 @@ const viewActivity = new Map<string, number>();
 let awaitingResetReload = false;
 // Set while Run is injecting the scanner into a tab. The controls hold the user's latest
 // Show/Sort then, so a rehydrate of that tab that reads the scanner's first state must not pull
-// them back. Keyed to the tab and bind, so another tab's rehydrate still syncs its own controls.
+// them back. Keyed to the tab, so another tab's rehydrate still syncs its own controls, and a
+// return to the tab mid-startup still finds it.
 // `view` is the Show/Sort the scanner will start with: the latest edit made on that tab.
-let scanStarting: { tabId: number; generation: number; view: ViewSettings } | null = null;
+let scanStarting: { tabId: number; view: ViewSettings } | null = null;
 let activePanelView: "outliers" | "saved" = "outliers";
 let helpTooltipOpen = false;
 let reviewPromptState: ReviewPromptState = createDefaultReviewPromptState();
@@ -2428,7 +2429,7 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
   };
   // A read that began during Run's startup, or before the latest Show/Sort reached the page,
   // may return an older view; it must not overwrite the controls even if it lands later.
-  const startedDuringStartup = isScanStarting(tabId, generation);
+  const startedDuringStartup = isScanStarting(tabId);
   const activityAtStart = viewActivityOf(tabId, generation);
   let url: string | null = null;
   let errorText: string | null = null;
@@ -2466,7 +2467,7 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
       }
       profileReady = true;
       profileWaitStartedAt = null;
-      const editing = startedDuringStartup || isScanStarting(tabId, generation);
+      const editing = startedDuringStartup || isScanStarting(tabId);
       const keepControls = editing
         || activityAtStart !== viewActivityOf(tabId, generation) || hasViewWrites(tabId, generation);
       renderState(rawState, !keepControls);
@@ -2621,9 +2622,10 @@ function openReelsTab(): void {
 function updateRunAvailability(): void {
   const info = latestProfileInfo;
   const scanning = currentRenderedState?.status === "scanning";
+  const starting = cachedTabId != null && isScanStarting(cachedTabId);
   const ready = !!info && info.headerMatches && info.onScanTab
     && (selectedFilterMode !== "ratio5x" || (latestFollowers !== null && latestFollowers > 0));
-  runBtn.disabled = scanning || !ready;
+  runBtn.disabled = scanning || starting || !ready;
 }
 
 // ── Message listener ──────────────────────────────────────────────────────
@@ -2737,6 +2739,14 @@ function scanIsForAnotherProfile(state: OutliersState, url: string | null): bool
   if (!shown || !state.profileHandle) return false;
   if (state.platform && state.platform !== shown.platform) return true;
   return state.profileHandle.toLowerCase() !== shown.handle;
+}
+
+function syncControlsToView(view: ViewSettings): void {
+  syncFilterModeUI(view.filterMode);
+  if (view.filterMode === "minViews") syncMinViewsUI(view.minViews);
+  selectedSortKey = view.sortKey;
+  selectedSortDir = view.sortDir;
+  syncSortUI();
 }
 
 function viewMatchesState(view: ViewSettings, state: OutliersState): boolean {
@@ -2998,8 +3008,13 @@ savedClearBtn.addEventListener("click", function () {
 
 runBtn.addEventListener("click", async function () {
   const generation = bindGeneration;
-  const startup = { tabId: cachedTabId ?? -1, generation, view: currentView() };
+  const startup = { tabId: cachedTabId ?? -1, view: currentView() };
   scanStarting = startup;
+  // The panel may follow other tabs and come back while this runs; it speaks for the startup
+  // whenever it shows this tab again.
+  const showsTab = function (): boolean {
+    return cachedTabId === startup.tabId;
+  };
   setButtonsDisabled();
   reviewPromptShownThisSession = false;
   reviewPromptClosedThisSession = false;
@@ -3052,7 +3067,7 @@ runBtn.addEventListener("click", async function () {
     const info = (fresh?.[0]?.result as ProfileInfo | null | undefined) ?? null;
     if (!info || !info.headerMatches || !info.onScanTab || !expected
       || info.platform !== expected.platform || info.handle !== expected.handle) {
-      if (bound()) {
+      if (showsTab()) {
         profileReady = false;
         statusEl.textContent = "The page changed. Wait for the profile to load, then run the scan again.";
         statusEl.className = "status-msg error";
@@ -3062,7 +3077,7 @@ runBtn.addEventListener("click", async function () {
     }
     // 5× compares views with followers; without a count every video would be filtered out.
     if (startup.view.filterMode === "ratio5x" && !(typeof info.followers === "number" && info.followers > 0)) {
-      if (bound()) {
+      if (showsTab()) {
         profileReady = false;
         statusEl.textContent = "Couldn't read the follower count yet. Wait for the profile to load, or choose Min Views or All.";
         statusEl.className = "status-msg error";
@@ -3101,12 +3116,12 @@ runBtn.addEventListener("click", async function () {
       target,
       files: ["injected.js"],
     });
-    if (!bound() || pageChanged()) return;
+    if (pageChanged() || !showsTab()) return;
 
     setButtonsForScanning();
     statusEl.textContent = "";
   } catch (err: unknown) {
-    if (generation !== bindGeneration) return;
+    if (!showsTab()) return;
     const message = err instanceof Error ? err.message : "Something went wrong.";
     statusEl.textContent = message;
     statusEl.className = "status-msg error";
@@ -3205,7 +3220,7 @@ function onViewChanged(): void {
     return;
   }
   // While Run is starting a scan the page takes the change too: the scanner reads it as it begins.
-  if (scanStarting && cachedTabId != null && isScanStarting(cachedTabId, bindGeneration)) {
+  if (scanStarting && cachedTabId != null && isScanStarting(cachedTabId)) {
     scanStarting.view = currentView();
     schedulePushView();
   }
@@ -3234,8 +3249,8 @@ function flushViewPush(): void {
   });
 }
 
-function isScanStarting(tabId: number, generation: number): boolean {
-  return scanStarting != null && scanStarting.tabId === tabId && scanStarting.generation === generation;
+function isScanStarting(tabId: number): boolean {
+  return scanStarting != null && scanStarting.tabId === tabId;
 }
 
 function viewWriteKey(tabId: number, generation: number): string {
@@ -3470,6 +3485,12 @@ async function bindToTab(tabId: number): Promise<void> {
   statusEl.textContent = "";
   statusEl.className = "status-msg";
   showLoading();
+  // Back on a tab whose scan is still starting: show the Show/Sort it starts with and keep Run
+  // off until it's running (its first state message takes over).
+  if (scanStarting && scanStarting.tabId === tabId) {
+    syncControlsToView(scanStarting.view);
+    setButtonsDisabled();
+  }
 
   const url = await readTabUrl(tabId);
   if (generation !== bindGeneration) return;
