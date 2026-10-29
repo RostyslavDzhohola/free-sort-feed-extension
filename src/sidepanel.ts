@@ -152,7 +152,8 @@ let awaitingResetReload = false;
 // Set while Run is injecting the scanner into a tab. The controls hold the user's latest
 // Show/Sort then, so a rehydrate of that tab that reads the scanner's first state must not pull
 // them back. Keyed to the tab and bind, so another tab's rehydrate still syncs its own controls.
-let scanStarting: { tabId: number; generation: number } | null = null;
+// `view` is the Show/Sort the scanner will start with: the latest edit made on that tab.
+let scanStarting: { tabId: number; generation: number; view: ViewSettings } | null = null;
 let activePanelView: "outliers" | "saved" = "outliers";
 let helpTooltipOpen = false;
 let reviewPromptState: ReviewPromptState = createDefaultReviewPromptState();
@@ -2997,7 +2998,7 @@ savedClearBtn.addEventListener("click", function () {
 
 runBtn.addEventListener("click", async function () {
   const generation = bindGeneration;
-  const startup = { tabId: cachedTabId ?? -1, generation };
+  const startup = { tabId: cachedTabId ?? -1, generation, view: currentView() };
   scanStarting = startup;
   setButtonsDisabled();
   reviewPromptShownThisSession = false;
@@ -3017,12 +3018,17 @@ runBtn.addEventListener("click", async function () {
     startup.tabId = tabId;
 
     const limit = getScanLimitFromUI();
-    const view = currentView();
-    // The scan belongs to this document and profile; a navigation mid-startup abandons it.
+    const view = startup.view;
+    // The scan belongs to this document and profile; a reload or navigation mid-startup
+    // abandons it. Switching to another tab doesn't: the startup finishes on its own tab
+    // and the panel shows it on return. Only a panel still on that tab updates the UI.
     const epoch = documentEpoch;
     const expected = lastKnownProfileRef;
-    const stillHere = function (): boolean {
-      return isStillBound(tabId, generation) && epoch === documentEpoch;
+    const bound = function (): boolean {
+      return isStillBound(tabId, generation);
+    };
+    const pageChanged = function (): boolean {
+      return bound() && epoch !== documentEpoch;
     };
 
     saveFilterMode(view.filterMode);
@@ -3038,35 +3044,43 @@ runBtn.addEventListener("click", async function () {
       world: "MAIN",
       func: readProfileInfo,
     });
-    if (!stillHere()) return;
+    if (pageChanged()) return;
+    // Later injections go to the document read here; if the tab loads another one meanwhile,
+    // Chrome rejects them. The scanner itself stops if the page moved to another profile.
+    const documentId = fresh?.[0]?.documentId;
+    const target = documentId ? { tabId, documentIds: [documentId] } : { tabId };
     const info = (fresh?.[0]?.result as ProfileInfo | null | undefined) ?? null;
     if (!info || !info.headerMatches || !info.onScanTab || !expected
       || info.platform !== expected.platform || info.handle !== expected.handle) {
-      profileReady = false;
-      statusEl.textContent = "The page changed. Wait for the profile to load, then run the scan again.";
-      statusEl.className = "status-msg error";
-      setButtonsForIdle();
+      if (bound()) {
+        profileReady = false;
+        statusEl.textContent = "The page changed. Wait for the profile to load, then run the scan again.";
+        statusEl.className = "status-msg error";
+        setButtonsForIdle();
+      }
       return;
     }
     // 5× compares views with followers; without a count every video would be filtered out.
-    if (view.filterMode === "ratio5x" && !(typeof info.followers === "number" && info.followers > 0)) {
-      profileReady = false;
-      statusEl.textContent = "Couldn't read the follower count yet. Wait for the profile to load, or choose Min Views or All.";
-      statusEl.className = "status-msg error";
-      setButtonsForIdle();
+    if (startup.view.filterMode === "ratio5x" && !(typeof info.followers === "number" && info.followers > 0)) {
+      if (bound()) {
+        profileReady = false;
+        statusEl.textContent = "Couldn't read the follower count yet. Wait for the profile to load, or choose Min Views or All.";
+        statusEl.className = "status-msg error";
+        setButtonsForIdle();
+      }
       return;
     }
 
     // The bridge runs in the page's own world to read exact counts; it only answers the scanner.
     await chrome.scripting.executeScript({
-      target: { tabId },
+      target,
       world: "MAIN",
       files: ["page-bridge.js"],
     });
-    if (!stillHere()) return;
+    if (pageChanged()) return;
 
     await chrome.scripting.executeScript({
-      target: { tabId },
+      target,
       func: (function (l: number | null, v: ViewSettings, p: { handle: string; followers: number | null }) {
         const w = window as unknown as {
           __outliers_scan_limit: number | null | undefined;
@@ -3077,17 +3091,17 @@ runBtn.addEventListener("click", async function () {
         w.__outliers_view = v;
         w.__outliers_profile = p;
       }) as unknown as () => void,
-      // The latest Show/Sort: it may have changed since the click. Later edits reach the page
-      // through schedulePushView, before or after the scanner starts.
-      args: [limit, currentView(), { handle: info.handle, followers: info.followers }],
+      // The latest Show/Sort made on this tab: it may have changed since the click. Later edits
+      // reach the page through schedulePushView, before or after the scanner starts.
+      args: [limit, startup.view, { handle: info.handle, followers: info.followers }],
     });
-    if (!stillHere()) return;
+    if (pageChanged()) return;
 
     await chrome.scripting.executeScript({
-      target: { tabId },
+      target,
       files: ["injected.js"],
     });
-    if (!stillHere()) return;
+    if (!bound() || pageChanged()) return;
 
     setButtonsForScanning();
     statusEl.textContent = "";
@@ -3191,7 +3205,10 @@ function onViewChanged(): void {
     return;
   }
   // While Run is starting a scan the page takes the change too: the scanner reads it as it begins.
-  if (cachedTabId != null && isScanStarting(cachedTabId, bindGeneration)) schedulePushView();
+  if (scanStarting && cachedTabId != null && isScanStarting(cachedTabId, bindGeneration)) {
+    scanStarting.view = currentView();
+    schedulePushView();
+  }
   updateRunAvailability();
   if (latestProfileInfo) {
     const waitedLong = profileWaitStartedAt != null && Date.now() - profileWaitStartedAt >= PROFILE_WAIT_HINT_MS;
