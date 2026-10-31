@@ -23,7 +23,7 @@ const sortByLikes: QA = site.release11
   ? {
       question: "Does it sort by likes or comments?",
       answer:
-        "<p>Yes. Sort by views, likes, comments, engagement rate or views ÷ followers, highest or lowest first. On TikTok you can also sort by shares, saves, post date and length. Choose <b>All</b> under Show to list every scanned video without the outlier filter.</p>",
+        "<p>Yes. Sort by views, likes, comments, engagement rate or views ÷ followers, highest or lowest first. On TikTok you can also sort by shares, saves, post date and length. When a creator hides likes, they show as — and sort last. Choose <b>All</b> under Show to list every scanned video without the outlier filter.</p>",
     }
   : {
       question: "Does it sort by likes or comments?",
@@ -46,7 +46,7 @@ const changeAfterScan: QA = site.release11
   ? {
       question: "Can I change the filter after a scan?",
       answer:
-        "<p>Yes. Show (5× Outliers, Min Views or All) and Sort apply at once to the videos you already scanned, in the panel and on the page. To scan further, raise the scan limit, press Reset, then Run.</p>",
+        "<p>Yes. Show (5× Outliers, Min Views or All) and Sort by apply at once to the videos you already scanned, in the panel and on the page. To scan further, raise the scan limit, press Reset, then Run.</p>",
     }
   : {
       question: "Can I change the filter after a scan?",
@@ -115,7 +115,7 @@ export const diagnostics: QA[] = [
   site.release11
     ? {
         question: "I raised the scan limit after a scan, and nothing changed",
-        answer: "<p>Show and Sort apply at once to the videos you already scanned. A new scan limit applies to your next scan: press Reset, then Run.</p>",
+        answer: "<p>Show and Sort by apply at once to the videos you already scanned. A new scan limit applies to your next scan: press Reset, then Run.</p>",
       }
     : {
         question: "I changed the filter after a scan, and the results didn't change",
