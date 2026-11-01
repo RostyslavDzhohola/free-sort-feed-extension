@@ -106,7 +106,6 @@ let lastKnownProfile: string | null = null;
 let lastKnownProfileRef: ProfileRef | null = null;
 let navPollTimer: number | null = null;
 let navPollInFlight = false;
-let panelWindowId: number | null = null;
 // False until the panel has read a follower count or an active scan from the bound tab.
 // While false, the navigation poll keeps retrying, so a cold or still-loading page
 // becomes ready on its own instead of needing a refresh or a panel reopen.
@@ -864,9 +863,11 @@ function setFilterControlsDisabled(disabled: boolean): void {
 }
 
 // ── Saved reels helpers ───────────────────────────────────────────────────
-async function loadSavedReels(): Promise<void> {
-  const result = await chrome.storage.local.get(SAVED_REELS_KEY);
-  const saved = result[SAVED_REELS_KEY] as SavedReel[] | undefined;
+// Each tab has its own panel, and they all share one Library in storage.
+
+/** Fills savedByUrl from the stored list. True when a row's profile link needs rewriting. */
+function readSavedReels(stored: unknown): boolean {
+  const saved = stored as SavedReel[] | undefined;
   savedByUrl.clear();
   let needsMigration = false;
 
@@ -884,9 +885,22 @@ async function loadSavedReels(): Promise<void> {
       });
     }
   }
-  if (needsMigration) {
-    await persistSavedReels();
-  }
+  return needsMigration;
+}
+
+// Rereads the Library before changing it, under a lock every panel shares, so a panel never
+// writes back a stale copy over a video another tab's panel saved.
+async function updateSavedReels(change?: () => void): Promise<void> {
+  await navigator.locks.request(SAVED_REELS_KEY, async function () {
+    const result = await chrome.storage.local.get(SAVED_REELS_KEY);
+    const needsMigration = readSavedReels(result[SAVED_REELS_KEY]);
+    if (change) change();
+    if (change || needsMigration) await persistSavedReels();
+  });
+}
+
+async function loadSavedReels(): Promise<void> {
+  await updateSavedReels();
   renderSavedReels();
 }
 
@@ -905,36 +919,38 @@ function isSaved(url: string): boolean {
   return savedByUrl.has(url);
 }
 
+function renderSavedChange(): void {
+  if (activePanelView === "saved") {
+    renderSavedReels();
+  }
+  if (currentRenderedState?.status === "done") {
+    renderResults(currentRenderedState.outliers, currentRenderedState.scannedCount, currentRenderedState);
+  }
+}
+
 async function saveReelFromResult(reel: OutliersEntry): Promise<void> {
   const saved: SavedReel = {
     ...reel,
     savedAt: nowIso(),
     profilePath: normalizeProfileUrl(currentProfileUrl(), reel.url),
   };
-  savedByUrl.set(reel.url, saved);
-  await persistSavedReels();
-  if (activePanelView === "saved") {
-    renderSavedReels();
-  }
-  if (currentRenderedState?.status === "done") {
-    renderResults(currentRenderedState.outliers, currentRenderedState.scannedCount, currentRenderedState);
-  }
+  await updateSavedReels(function () {
+    savedByUrl.set(reel.url, saved);
+  });
+  renderSavedChange();
 }
 
 async function unsaveReel(url: string): Promise<void> {
-  savedByUrl.delete(url);
-  await persistSavedReels();
-  if (activePanelView === "saved") {
-    renderSavedReels();
-  }
-  if (currentRenderedState?.status === "done") {
-    renderResults(currentRenderedState.outliers, currentRenderedState.scannedCount, currentRenderedState);
-  }
+  await updateSavedReels(function () {
+    savedByUrl.delete(url);
+  });
+  renderSavedChange();
 }
 
 async function clearSavedReels(): Promise<void> {
-  savedByUrl.clear();
-  await persistSavedReels();
+  await updateSavedReels(function () {
+    savedByUrl.clear();
+  });
   renderSavedReels();
   if (currentRenderedState?.status === "done") {
     renderResults(currentRenderedState.outliers, currentRenderedState.scannedCount, currentRenderedState);
@@ -3442,6 +3458,15 @@ async function init(): Promise<void> {
   hideReviewPrompt();
   await loadSavedReels();
 
+  // Another tab's panel saved or removed a video. This panel's own writes already match.
+  chrome.storage.onChanged.addListener(function (changes, area) {
+    const change = changes[SAVED_REELS_KEY];
+    if (area !== "local" || !change) return;
+    if (JSON.stringify(change.newValue ?? []) === JSON.stringify(getSortedSavedReels())) return;
+    readSavedReels(change.newValue);
+    renderSavedChange();
+  });
+
   // A success from an earlier session earns the ask on this open, once the panel has settled.
   if (reviewPromptState.firstSuccessfulScanAt) {
     reviewPromptDelayTimer = window.setTimeout(function () {
@@ -3465,18 +3490,6 @@ async function init(): Promise<void> {
   chrome.permissions.onAdded.addListener(onAccessChanged);
   chrome.permissions.onRemoved.addListener(onAccessChanged);
 
-  try {
-    panelWindowId = (await chrome.windows.getCurrent()).id ?? null;
-  } catch {
-    panelWindowId = null;
-  }
-  chrome.tabs.onActivated.addListener(function (info) {
-    if (panelWindowId != null && info.windowId !== panelWindowId) return;
-    if (info.tabId === cachedTabId) return;
-    bindToTab(info.tabId).catch(function () {
-      // Non-fatal
-    });
-  });
   chrome.tabs.onUpdated.addListener(function (tabId, changeInfo) {
     if (tabId !== cachedTabId) return;
     if (changeInfo.status !== "loading" && changeInfo.status !== "complete") return;
@@ -3488,7 +3501,7 @@ async function init(): Promise<void> {
   });
   window.addEventListener("beforeunload", stopNavigationPolling);
 
-  const tabId = await getActiveTabId();
+  const tabId = panelTabId() ?? (await getActiveTabId());
   if (!tabId) {
     showNotice("Open an Instagram or TikTok profile to scan its videos.");
     return;
@@ -3496,7 +3509,14 @@ async function init(): Promise<void> {
   await bindToTab(tabId);
 }
 
-// The side panel belongs to the window, so it follows whichever tab is active.
+// Each tab gets its own panel (background.ts opens it with the tab's id in the URL). Chrome hides
+// it on other tabs, so it stays bound to that one tab and follows only that tab's navigation.
+function panelTabId(): number | null {
+  const raw = new URLSearchParams(window.location.search).get("tab");
+  const id = raw ? Number(raw) : NaN;
+  return Number.isInteger(id) && id >= 0 ? id : null;
+}
+
 async function bindToTab(tabId: number): Promise<void> {
   flushViewPush();
   const generation = ++bindGeneration;

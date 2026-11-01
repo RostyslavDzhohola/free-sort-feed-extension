@@ -1,10 +1,13 @@
 // Runs in the page's MAIN world, where Instagram's Relay store and TikTok's React props are
-// visible. It answers the scanner's requests with the exact counts the page already holds,
-// and never changes the page or makes a request of its own.
+// visible. It answers the scanner's requests with the exact counts the page already holds and,
+// when the user clicks a result, opens that Reel through the grid's own click handler. It never
+// makes a request of its own.
 import {
   BRIDGE_VERSION,
   METRICS_REQUEST_EVENT,
   METRICS_RESPONSE_EVENT,
+  OPEN_REQUEST_EVENT,
+  OPEN_RESPONSE_EVENT,
   type PageMetrics,
   type PageMetricsMap,
 } from "./shared/bridge";
@@ -94,6 +97,45 @@ function readInstagramMetrics(): PageMetricsMap {
   return out;
 }
 
+// The Reels grid hands every tile one shared click handler that opens the viewer for a media pk.
+// Called with any loaded Reel's pk, it opens that Reel, even after the grid unmounted its tile.
+type GridOpener = (ev: { preventDefault: () => void }, pk: string) => void;
+
+function findGridOpener(): GridOpener | null {
+  const links = document.querySelectorAll('main a[href*="/reel/"]');
+  for (let i = 0; i < links.length; i++) {
+    let fiber = fiberOf(links[i]!);
+    for (let depth = 0; fiber && depth < 12; depth++) {
+      const props = fiber.memoizedProps as { clipFragmentKey?: unknown; onClick?: unknown } | null;
+      if (props && typeof props === "object" && "clipFragmentKey" in props && typeof props.onClick === "function") {
+        return props.onClick as GridOpener;
+      }
+      fiber = fiber.return;
+    }
+  }
+  return null;
+}
+
+function findMediaPk(code: string): string | null {
+  if (!relayStore) relayStore = findRelayStore();
+  if (!relayStore) return null;
+  const source = relayStore.getSource();
+  const ids = source.getRecordIDs();
+  for (let i = 0; i < ids.length; i++) {
+    const record = source.get(ids[i]!);
+    if (record && record.__typename === "XDTMediaDict" && record.code === code && record.pk != null) return String(record.pk);
+  }
+  return null;
+}
+
+function openInstagramVideo(code: string): boolean {
+  const pk = findMediaPk(code);
+  const open = pk ? findGridOpener() : null;
+  if (!pk || !open) return false;
+  open({ preventDefault: function () {} }, pk);
+  return true;
+}
+
 // ── TikTok ────────────────────────────────────────────────────────────────
 interface TikTokItem {
   id?: string;
@@ -171,5 +213,19 @@ if (window.__outliers_bridge !== BRIDGE_VERSION) {
   window.__outliers_bridge = BRIDGE_VERSION;
   document.addEventListener(METRICS_REQUEST_EVENT, function () {
     document.dispatchEvent(new CustomEvent(METRICS_RESPONSE_EVENT, { detail: JSON.stringify(readMetrics()) }));
+  });
+  document.addEventListener(OPEN_REQUEST_EVENT, function (ev) {
+    // Only the newest bridge opens, so a tab holding older ones opens the video once.
+    if (window.__outliers_bridge !== BRIDGE_VERSION) return;
+    const code = (ev as CustomEvent<unknown>).detail;
+    if (typeof code !== "string" || !/(^|\.)instagram\.com$/i.test(window.location.hostname)) return;
+    let opened = false;
+    try {
+      opened = openInstagramVideo(code);
+    } catch (err) {
+      relayStore = null;
+      console.warn("[outliers] page bridge could not open the video:", err);
+    }
+    if (opened) document.dispatchEvent(new CustomEvent(OPEN_RESPONSE_EVENT, { detail: "opened" }));
   });
 }

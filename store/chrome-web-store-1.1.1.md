@@ -1,6 +1,6 @@
-# Chrome Web Store: Outliers 1.1.0 listing texts
+# Chrome Web Store: Outliers 1.1.1 listing texts
 
-Paste these into the Developer Dashboard for item `heogkfpbeagpoodininnfhdgjmpdalgj` when you submit 1.1.0. Sections follow the dashboard's tabs.
+Paste these into the Developer Dashboard for item `heogkfpbeagpoodininnfhdgjmpdalgj` when you submit 1.1.1. The store still has 1.0.8, so 1.1.1 is the first 1.1 release users get: if 1.1.0 is still in review, cancel that submission and upload 1.1.1 instead. Sections follow the dashboard's tabs.
 
 ## Store listing
 
@@ -38,6 +38,9 @@ Paste these into the Developer Dashboard for item `heogkfpbeagpoodininnfhdgjmpda
 > • TikTok support
 > • "All" view: every scanned video, sorted
 > • Exact counts where the page provides them; Min Views no longer needs a follower count
+> • Step through your sorted videos in Instagram's own Reel viewer, with arrows or the ← → keys
+> • The panel stays on the tab you opened it on and hides on your other tabs
+> • "Suggested for you" no longer pushes the results down
 
 **Video:** the store takes a YouTube URL. The 1.1 promo MP4 is ready locally; upload it to YouTube once approved and paste the link here.
 
@@ -86,5 +89,5 @@ Certify all three statements:
 
 ## Notes for submission
 
-- 1.1.0 adds no required permissions, only `optional_host_permissions` for TikTok, so the update installs silently for existing users.
-- If a reviewer asks about the page-world script: `page-bridge.js` is injected only into the tab the user is scanning, after they click Run. It reads the counts the page already loaded and returns them to the extension's scanner; it doesn't modify the page or make network requests.
+- 1.1.1 adds no required permissions, only `optional_host_permissions` for TikTok, so the update installs silently for existing users.
+- If a reviewer asks about the page-world script: `page-bridge.js` is injected only into the tab the user is scanning, after they click Run. It reads the counts the page already loaded and returns them to the extension's scanner. When the user clicks a result, it also opens that Reel in Instagram's own viewer by calling the grid's own click handler, the same as clicking the tile. It makes no network requests of its own.
