@@ -9,6 +9,7 @@ async function getFileTimestamps(): Promise<string> {
   const files = [
     "sidepanel.js",
     "injected.js",
+    "page-bridge.js",
     "background.js",
     "sidepanel.html",
     "manifest.json",

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Outliers",
-  "version": "1.0.8",
-  "description": "Filter Instagram Reels to show only outliers with 5× or more views relative to followers.",
+  "version": "1.1.0",
+  "description": "Find outlier videos on Instagram and TikTok. Sort any profile by views, likes, comments and more. Free, with the code on GitHub.",
   "permissions": [
     "scripting",
     "sidePanel",
@@ -11,6 +11,9 @@
   "host_permissions": [
     "*://*.instagram.com/*",
     "*://*.cdninstagram.com/*"
+  ],
+  "optional_host_permissions": [
+    "*://*.tiktok.com/*"
   ],
   "background": {
     "service_worker": "background.js"

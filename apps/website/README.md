@@ -4,7 +4,7 @@ The marketing site for the Outliers Chrome extension, direction C ("Field Notes"
 
 Live at **https://outliers-extension.vercel.app** (Vercel project `outliers-extension`).
 
-The source of truth for design is `DESIGN-SPEC.md` in the design worktree (direction C). Its §0 (Revision 2) and §6.4 (the demo) override older sections. Copy must match how the extension really behaves (§2 guardrails), so check `apps/extension/src` before changing any claim.
+The source of truth for design is `DESIGN-SPEC.md` in the design worktree (direction C). Its §0 (Revision 2) and §6.4 (the demo) override older sections. Copy must match how the extension really behaves (§2 guardrails). `apps/extension/src` is 1.1 now, but the store still runs 1.0.8, so check the default copy against the `v1.0.8` tag (`git show v1.0.8:src/sidepanel.ts`) and the 1.1 copy against `apps/extension/src`.
 
 ## Develop
 
@@ -53,7 +53,7 @@ SITE_INDEXABLE=false DATAFAST=false pnpm build:web
 The 1.1 copy follows the features the 1.1 thread verified in PR #10. Once 1.1 is approved and live in the store:
 1. Change the `RELEASE_1_1` default to `process.env.RELEASE_1_1 !== "false"` in `site.config.mjs`.
 2. Check the 1.1 wording in `components/home/Features.astro`, `data/faq.ts` and `pages/privacy.astro` (the `v11` branches) against the released extension. Bump `privacyEffectiveDate`.
-3. Replace the demo's v1.0.x panel replica with the 1.1 panel (see "Swapping the side panel"); the replay still shows the old panel.
+3. Replace the demo's v1.0.x panel replica with the 1.1 panel (see "Swapping the side panel"); the replay still shows the old panel. Port 1.1's logic into `packages/core` and bump its `STORE_RELEASE` to `v1.1.0` in the same change.
 4. Run `pnpm test`, then `vercel deploy --prod`.
 
 `RELEASE_1_1=true pnpm --filter @outliers/website test` builds and checks the 1.1 site without changing the default.

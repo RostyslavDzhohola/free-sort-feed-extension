@@ -1,13 +1,18 @@
-// Guards against drift between @outliers/core and the copies still inside the extension.
-// TODO: once in-flight extension branches land, make the extension import @outliers/core and drop this.
+// Guards against drift between @outliers/core and the extension release live in the store.
+// TODO: once the store version and main agree, make the extension import @outliers/core and drop this.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { loadTs } from "./load-ts.mjs";
+import { extractStoreRelease } from "./store-release.mjs";
 
 const core = await loadTs("../src/index.ts");
-const extCount = await loadTs("../../../apps/extension/src/shared/parse-count.ts");
-const extCsv = await loadTs("../../../apps/extension/src/shared/export-csv.ts");
-const extEmpty = await loadTs("../../../apps/extension/src/shared/empty-state-copy.ts");
+const release = extractStoreRelease();
+const loadRelease = (file) => loadTs(pathToFileURL(join(release, file)).href);
+const extCount = await loadRelease("shared/parse-count.ts");
+const extCsv = await loadRelease("shared/export-csv.ts");
+const extEmpty = await loadRelease("shared/empty-state-copy.ts");
 
 test("parseCount matches the extension", () => {
   const inputs = ["0", "999", "1,234", "12.3K", "12.3k", "1.2M", "1M", "2.5B", " 96.3K ", "1 234", "1,2M", "1.234", "12..3K", "abc", "", null, undefined, 4200];

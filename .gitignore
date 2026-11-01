@@ -6,3 +6,4 @@ node_modules/
 .astro/
 .vercel
 .env*
+apps/extension/test/.tmp/
