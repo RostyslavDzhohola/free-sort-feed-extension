@@ -1,0 +1,22 @@
+---
+// Accordion of questions on native <details>/<summary>. Used on the home page and /support.
+import type { QA } from "../data/faq";
+import "./faq.css";
+
+interface Props {
+  items: QA[];
+}
+
+const { items } = Astro.props;
+---
+
+<div class="faq">
+  {
+    items.map((item) => (
+      <details>
+        <summary>{item.question}</summary>
+        <div class="faq-answer" set:html={item.answer} />
+      </details>
+    ))
+  }
+</div>

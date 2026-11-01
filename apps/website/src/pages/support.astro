@@ -1,0 +1,49 @@
+---
+import Doc from "../layouts/Doc.astro";
+import DocSection from "../components/DocSection.astro";
+import Faq from "../components/Faq.astro";
+import { diagnostics, knownLimits, otherQuestions } from "../data/faq";
+import { site } from "../config/site";
+
+const bugReportHref = `mailto:${site.contactEmail}?subject=${encodeURIComponent("Outliers bug report")}`;
+---
+
+<Doc
+  title="Support — Outliers"
+  description="Fixes for the common Outliers problems: a greyed-out Run button, no Reels qualifying, filter changes and scan limits. Plus how to report a bug."
+  kicker="Support"
+>
+  <Fragment slot="heading">If something looks <em>off.</em></Fragment>
+  <Fragment slot="lede">
+    <p>Most problems have a quick fix. Start with the checks below. Still stuck? Send a short report using the checklist at the end.</p>
+  </Fragment>
+
+  <DocSection numeral="I." title="Troubleshooting" id="troubleshooting">
+    <Faq items={diagnostics} />
+  </DocSection>
+
+  <DocSection numeral="II." title="Other questions" id="questions">
+    <Faq items={otherQuestions} />
+  </DocSection>
+
+  <DocSection numeral="III." title="Known limits" id="limits">
+    <ul class="doc-list">
+      {knownLimits.map((limit) => <li>{limit}</li>)}
+    </ul>
+  </DocSection>
+
+  <DocSection numeral="IV." title="Report a bug" id="report">
+    <p>A good report gets a faster fix. Please include:</p>
+    <ol class="doc-steps">
+      <li>Your Chrome version (Settings → About Chrome).</li>
+      <li>Your Outliers version, shown at <code>chrome://extensions</code>.</li>
+      <li>The kind of page you were on: a profile's Reels tab (<code>instagram.com/username/reels/</code>), its Posts tab, or a single Reel. You don't need to name the profile.</li>
+      <li>What you did, step by step, and what you expected to happen.</li>
+      <li>What the side panel said, ideally with a screenshot.</li>
+    </ol>
+    <div class="doc-actions">
+      <a class="btn btn-ink" href={bugReportHref}>Email a bug report</a>
+      <span>or write to <a href={`mailto:${site.contactEmail}`}>{site.contactEmail}</a></span>
+    </div>
+  </DocSection>
+</Doc>

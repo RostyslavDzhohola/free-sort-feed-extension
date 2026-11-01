@@ -1,0 +1,32 @@
+---
+import StoreButton from "../StoreButton.astro";
+import BeforeAfter from "./BeforeAfter.astro";
+import { site } from "../../config/site";
+import "./hero.css";
+---
+
+<section class="hero" id="top" aria-labelledby="hero-title">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <p class="smallcaps">A free Chrome extension for {site.release11 ? "Instagram and TikTok" : "Instagram"} research</p>
+      <h1 id="hero-title">Find the Reels that <em>broke&nbsp;out.</em></h1>
+      <p class="lede">
+        Some Reels travel far past a creator's own audience. Outliers helps you spot them. Open any profile's Reels, press Run, and see only the scanned videos with <span class="mark">at least 5× more views than followers</span>, sorted and ready for your swipe file.
+      </p>
+      <p class="free-badge">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        100% free · no account · no paywall
+      </p>
+      <div class="ctas">
+        <StoreButton location="hero" />
+        <a class="link-arrow" href="#setup">See the three steps <span aria-hidden="true">→</span></a>
+      </div>
+      <dl class="facts">
+        <div><dt>Price</dt><dd>Completely free</dd></div>
+        <div><dt>Runs</dt><dd>In your browser</dd></div>
+        <div><dt>Works on</dt><dd>Instagram Reels tabs</dd></div>
+      </dl>
+    </div>
+    <BeforeAfter />
+  </div>
+</section>

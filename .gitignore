@@ -3,4 +3,7 @@ node_modules/
 *.js.map
 .DS_Store
 .gstack/
-test/.tmp/
+.astro/
+.vercel
+.env*
+apps/extension/test/.tmp/

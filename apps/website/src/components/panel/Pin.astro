@@ -1,0 +1,15 @@
+---
+// A numbered hint pin inside the demo panel: a focusable button that shows hint `n`.
+import "./pin.css";
+
+interface Props {
+  n: number;
+  label?: string;
+}
+
+const { n, label } = Astro.props;
+---
+
+<button class="pin" type="button" data-hint={n} aria-label={`Hint ${n}: ${label ?? ""}`} aria-describedby={`demo-hint-${n}`}>
+  {n}
+</button>

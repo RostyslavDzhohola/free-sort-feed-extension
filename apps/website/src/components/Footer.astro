@@ -1,0 +1,38 @@
+---
+import { pageLinks, socialLinks } from "../config/site";
+import { icons } from "./icons";
+
+const visibleLinks = socialLinks.filter((link) => link.href !== null);
+const portfolio = socialLinks.find((link) => link.icon === "portfolio")?.href;
+const newTab = { target: "_blank", rel: "noopener noreferrer" };
+---
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <p><span class="wordmark-sm">Outliers</span> is made by {portfolio ? <a href={portfolio} {...newTab}>Rosty</a> : "Rosty"}. Not affiliated with, endorsed by, or sponsored by Instagram or Meta.</p>
+    <div class="footer-links">
+      <nav class="footer-pages" aria-label="Site">
+        {pageLinks.map((link) => <a href={link.href} {...(link.href.startsWith("http") ? newTab : {})}>{link.label}</a>)}
+      </nav>
+      <ul class="footer-icons" aria-label="Rosty elsewhere">
+        {
+          visibleLinks.map((link) => {
+            const external = !link.href!.startsWith("mailto:");
+            return (
+              <li>
+                <a
+                  href={link.href}
+                  aria-label={link.label}
+                  title={link.label}
+                  {...(external ? newTab : {})}
+                >
+                  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" set:html={icons[link.icon]} />
+                </a>
+              </li>
+            );
+          })
+        }
+      </ul>
+    </div>
+  </div>
+</footer>

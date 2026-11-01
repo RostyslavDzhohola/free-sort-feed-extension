@@ -1,0 +1,116 @@
+---
+// Privacy policy. Every statement must match extension v1.0.8 (DESIGN-SPEC §2):
+// storage keys live in apps/extension/src/sidepanel.ts, permissions in apps/extension/src/manifest.json.
+import Doc from "../layouts/Doc.astro";
+import DocSection from "../components/DocSection.astro";
+import { site } from "../config/site";
+
+// 1.1 adds TikTok (optional site access) and more counts per video. Shown only when site.release11 is on.
+const v11 = site.release11;
+---
+
+<Doc
+  title="Privacy policy — Outliers"
+  description="What the Outliers Chrome extension reads, what it keeps on your device, and what it never does. No uploads, no tracking, no account. Plus what this website measures."
+  kicker="Privacy policy"
+>
+  <Fragment slot="heading">Privacy, in <em>plain words.</em></Fragment>
+  <Fragment slot="lede">
+    <p>Outliers is a Chrome extension that runs inside your {v11 ? "Instagram or TikTok" : "Instagram"} tab. There's no Outliers server and no account. This page explains what it reads, what it keeps, and what it never does.</p>
+    <p class="doc-meta">Effective {site.privacyEffectiveDate}. Covers the Outliers Chrome extension (version {v11 ? "1.1" : "1.0.8"}) and this website.</p>
+  </Fragment>
+
+  <DocSection numeral="I." title="What Outliers reads" id="reads">
+    <p>Only the {v11 ? "Instagram or TikTok" : "Instagram"} tab in front of you, and only while you're using the Outliers side panel.</p>
+    <ul class="doc-list">
+      {
+        v11 ? (
+          <li>From that tab it reads what the profile page already shows you: the follower count, and each video's link, cover image and public counts (views, likes and comments, and on TikTok also shares, saves, post date and length).</li>
+        ) : (
+          <li>From that tab it reads what Instagram already shows you: the profile's follower count, and each Reel's link, view count and cover image.</li>
+        )
+      }
+      <li>When you press <b>Run</b>, it scrolls the {v11 ? "profile's grid so the site" : "Reels grid so Instagram"} loads more, then ranks the {v11 ? "videos" : "Reels"} in the side panel and on the page.</li>
+      <li>It doesn't read your messages, your feed, your other tabs or your browsing history, and it never sees your password.</li>
+    </ul>
+  </DocSection>
+
+  <DocSection numeral="II." title="What it keeps, and where" id="keeps">
+    <p>Everything Outliers keeps stays in this Chrome profile, on this device.</p>
+    <ul class="doc-list">
+      <li><b>Your Library.</b> For each {v11 ? "video" : "Reel"} you save: its link, cover image link, {v11 ? "its counts" : "view count and multiple"}, the profile it came from, and when you saved it. Kept in Chrome's local extension storage. It isn't synced to other devices.</li>
+      <li><b>Your settings.</b> {v11 ? "Scan limit, Show, Sort and Min Views" : "Scan limit, filter mode and Min Views"}, kept in the extension's local storage.</li>
+      <li><b>Review reminders.</b> A few dates and counts, so Outliers doesn't ask you to rate it too often. Kept in Chrome's local extension storage.</li>
+      <li><b>The current scan.</b> Results stay in the {v11 ? "profile" : "Instagram"} tab's memory until you press Reset or reload the tab.</li>
+      <li><b>Exports</b> happen only when you ask. A CSV goes to your downloads, and Copy puts text on your clipboard.</li>
+    </ul>
+  </DocSection>
+
+  <DocSection numeral="III." title="What it never does" id="never">
+    <ul class="doc-list">
+      <li>It never uploads your research. There's no Outliers server, and nothing is sent to the developer or anyone else.</li>
+      <li>No analytics, tracking, ads or cookies.</li>
+      <li>No account or sign-up.</li>
+      <li>It doesn't sell or share data, because it doesn't collect any.</li>
+      <li>On {v11 ? "Instagram and TikTok" : "Instagram"} it reads and scrolls. It never posts, likes, follows, comments or messages.</li>
+    </ul>
+  </DocSection>
+
+  <DocSection numeral="IV." title="Permissions, one by one" id="permissions">
+    <p>Chrome shows these when you install Outliers. Here's what each one is for.</p>
+    <dl class="doc-ledger">
+      <div>
+        <dt><code>sidePanel</code><small>Permission</small></dt>
+        <dd>Opens Outliers in Chrome's side panel when you click its toolbar icon.</dd>
+      </div>
+      <div>
+        <dt><code>scripting</code><small>Permission</small></dt>
+        <dd>Lets the panel run its reader in your {v11 ? "Instagram or TikTok" : "Instagram"} tab: reading follower and {v11 ? "video" : "view"} counts, scrolling the {v11 ? "profile's" : "Reels"} grid, and showing the ranked grid on the page.</dd>
+      </div>
+      <div>
+        <dt><code>storage</code><small>Permission</small></dt>
+        <dd>Keeps your {v11 ? "settings, " : ""}Library and review reminders on this device.</dd>
+      </div>
+      <div>
+        <dt><code>instagram.com</code><small>Site access</small></dt>
+        <dd>{v11 ? "Lets Outliers read the Instagram profile you're viewing." : "The only site Outliers works on."}</dd>
+      </div>
+      <div>
+        <dt><code>cdninstagram.com</code><small>Site access</small></dt>
+        <dd>Instagram's image server. Lets the panel load Reel cover images that Instagram already shows you.</dd>
+      </div>
+      {
+        v11 && (
+          <div>
+            <dt><code>tiktok.com</code><small>Optional site access</small></dt>
+            <dd>Asked for only when you press <b>Turn on TikTok</b>. Lets Outliers read the TikTok profile you're viewing. Without it, Outliers never touches TikTok.</dd>
+          </div>
+        )
+      }
+    </dl>
+  </DocSection>
+
+  <DocSection numeral="V." title="Deleting your data" id="deleting">
+    <ul class="doc-list">
+      <li><b>Saved Reels:</b> open the Library and press <b>Clear</b>. This removes saved Reels only.</li>
+      <li><b>Scan results:</b> press <b>Reset</b> in the side panel, or reload the Instagram tab.</li>
+      <li><b>Everything:</b> remove Outliers from Chrome at <code>chrome://extensions</code>. Chrome deletes the extension's stored data with it.</li>
+    </ul>
+  </DocSection>
+
+  <DocSection numeral="VI." title="This website" id="website">
+    <p>This website, unlike the extension, counts its visitors. It uses <a href="https://datafa.st" target="_blank" rel="noopener noreferrer">DataFast</a> in cookieless mode, so it sets no cookies and there's no consent banner.</p>
+    <ul class="doc-list">
+      <li><b>What it records:</b> the pages you view, the site that sent you, your approximate location (country and city, from your IP address), your device type, browser and operating system, clicks on links that leave the site (such as <b>Add to Chrome</b>), and presses of the demo's <b>Run</b> button.</li>
+      <li><b>How it tells visits apart:</b> by a hashed identifier made from your IP address, browser and this site's domain, with a salt that changes about every 24 hours. It can't recognise you from one day to the next. It may also keep a session value in your browser for the current tab.</li>
+      <li><b>What it never gets:</b> anything from the extension. The extension sends nothing to DataFast or anywhere else.</li>
+    </ul>
+    <p>No ads, and no other third-party scripts. Fonts are served from the site itself. The site is hosted on Vercel, which keeps standard request logs, such as IP address and browser type, to run and protect the service.</p>
+    <p>To opt out, block <code>datafa.st</code> with any content blocker; the site works the same without it.</p>
+  </DocSection>
+
+  <DocSection numeral="VII." title="Changes and contact" id="contact">
+    <p>If Outliers changes what it reads or keeps, this page will be updated with a new effective date.</p>
+    <p>Questions about privacy? Email <a href={`mailto:${site.contactEmail}`}>{site.contactEmail}</a>.</p>
+  </DocSection>
+</Doc>

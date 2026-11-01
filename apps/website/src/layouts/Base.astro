@@ -1,0 +1,94 @@
+---
+import "@fontsource-variable/fraunces/full.css";
+import "@fontsource-variable/fraunces/full-italic.css";
+import "@fontsource-variable/instrument-sans/wght.css";
+import frauncesLatin from "@fontsource-variable/fraunces/files/fraunces-latin-full-normal.woff2?url";
+import frauncesLatinItalic from "@fontsource-variable/fraunces/files/fraunces-latin-full-italic.woff2?url";
+import instrumentLatin from "@fontsource-variable/instrument-sans/files/instrument-sans-latin-wght-normal.woff2?url";
+import "../styles/global.css";
+import Masthead from "../components/Masthead.astro";
+import Footer from "../components/Footer.astro";
+import { site } from "../config/site";
+
+interface Props {
+  /** Full <title>. Defaults to the home title. */
+  title?: string;
+  description?: string;
+  /** Home page: masthead links scroll within the page. */
+  home?: boolean;
+  /** Force noindex regardless of the launch flag (e.g. the 404 page). */
+  noindex?: boolean;
+  /** Omit the canonical link (e.g. the 404 page). */
+  canonical?: boolean;
+}
+
+const { title = site.title, description = site.description, home = false, noindex = false, canonical = true } = Astro.props;
+const canonicalUrl = new URL(Astro.url.pathname, Astro.site).href;
+const ogImage = new URL("/og-image.png", Astro.site).href;
+const robots = site.indexable && !noindex ? "index, follow" : "noindex, nofollow";
+// Production builds only, so `astro dev` never loads the tracker.
+const analytics = import.meta.env.PROD && site.analytics;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="robots" content={robots} />
+    {canonical && <link rel="canonical" href={canonicalUrl} />}
+    <meta name="theme-color" content="#f3eee4" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="sitemap" href="/sitemap-index.xml" />
+    <!-- All three faces are above the fold (the hero's italic "broke out." and fact values use Fraunces italic). -->
+    <link rel="preload" href={frauncesLatin} as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href={frauncesLatinItalic} as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href={instrumentLatin} as="font" type="font/woff2" crossorigin />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={site.name} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Outliers — Find the Reels that broke out. A free Chrome extension for Instagram research." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+    {
+      analytics && (
+        <Fragment>
+          <!--
+            DataFast, cookieless. The queue keeps goals sent before the tracker loads (lib/analytics.ts). The tracker
+            loads only on the production domain: preview deployments and local builds would otherwise send events.
+          -->
+          <script is:inline id="datafast-queue" data-website-id={analytics.websiteId} data-domain={analytics.domain}>
+            window.datafast = window.datafast || function () { (window.datafast.q = window.datafast.q || []).push(arguments); };
+            (function (config) {
+              if (location.hostname !== config.domain) return;
+              var tracker = document.createElement("script");
+              tracker.src = "https://datafa.st/js/script.cookieless.js";
+              tracker.dataset.websiteId = config.websiteId;
+              tracker.dataset.domain = config.domain;
+              document.head.appendChild(tracker);
+            })(document.currentScript.dataset);
+          </script>
+        </Fragment>
+      )
+    }
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <Masthead home={home} />
+    <main id="main">
+      <slot />
+    </main>
+    <Footer />
+  </body>
+</html>

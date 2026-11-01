@@ -1,0 +1,39 @@
+/* Editorial document pages: /privacy, /support, 404 */
+.doc-head { padding: 72px 0 60px; border-bottom: 1px solid var(--rule); }
+.doc-head h1 { margin-top: 18px; max-width: 15ch; font-size: clamp(46px, 6.6vw, 96px); font-weight: 380; line-height: 0.98; letter-spacing: -0.032em; font-variation-settings: "SOFT" 30, "WONK" 0, "opsz" 144; text-wrap: balance; }
+.doc-head h1 em { font-weight: 360; }
+.doc-lede { margin-top: 26px; max-width: 640px; font-size: clamp(18px, 1.5vw, 20px); text-wrap: pretty; }
+.doc-lede > * + * { margin-top: 14px; }
+.doc-meta { font-size: 14.5px; color: var(--muted); }
+
+.doc-body { padding-bottom: 112px; }
+.doc-section { display: grid; grid-template-columns: 120px minmax(0, 720px); gap: 32px; padding: 56px 0; border-bottom: 1px solid var(--rule); }
+.doc-section:last-child { border-bottom: 0; }
+.doc-num { font: italic 300 64px/0.9 var(--serif); color: var(--orange); font-variation-settings: "SOFT" 100, "WONK" 1, "opsz" 144; }
+.doc-text h2 { margin-bottom: 22px; font-size: clamp(30px, 3.4vw, 44px); font-weight: 400; text-wrap: balance; }
+.doc-text > p + p, .doc-text > p + ul, .doc-text > ul + p, .doc-text > p + ol, .doc-text > ol + p, .doc-text > * + .faq, .doc-text > p + .doc-actions { margin-top: 16px; }
+.doc-text p, .doc-text li { max-width: 680px; }
+
+.doc-list { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--rule); }
+.doc-list > li { padding: 16px 0 16px 28px; border-bottom: 1px solid var(--rule); position: relative; }
+.doc-list > li::before { content: ""; position: absolute; left: 4px; top: 27px; width: 8px; height: 8px; border-radius: 50%; background: var(--orange); }
+.doc-steps { margin: 0; padding-left: 1.4em; }
+.doc-steps li + li { margin-top: 8px; }
+.doc-steps li::marker { color: var(--orange-ink); font-family: var(--serif); font-style: italic; font-weight: 500; }
+
+/* Permissions ledger on paper */
+.doc-ledger { margin: 0; border-top: 1px solid var(--rule); }
+.doc-ledger > div { display: grid; grid-template-columns: minmax(0, 200px) minmax(0, 1fr); gap: 8px 24px; padding: 18px 0; border-bottom: 1px solid var(--rule); }
+.doc-ledger dt { color: var(--ink); font-weight: 600; }
+.doc-ledger dt small { display: block; margin-top: 4px; font: 600 11px/1.2 var(--sans); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.doc-ledger dd { margin: 0; }
+
+.doc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 18px 28px; margin-top: 28px; }
+.doc-links { display: flex; flex-wrap: wrap; gap: 16px 28px; margin-top: 32px; }
+
+@media (max-width: 820px) {
+  .doc-head { padding: 56px 0 44px; }
+  .doc-section { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 44px 0; }
+  .doc-num { font-size: 48px; }
+  .doc-ledger > div { grid-template-columns: minmax(0, 1fr); }
+}

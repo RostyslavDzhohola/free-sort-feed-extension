@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  /* Placeholder Open Graph card (1200×630) in the Field Notes style. Fonts are injected by render.mjs. */
+  {{FONTS}}
+  :root { --paper:#f3eee4; --paper-3:#e2d9c7; --ink:#1c1915; --ink-2:#45403a; --muted:#6f675b; --rule:#d6ccba; --orange:#c9580a; --orange-ink:#a64806; --orange-bright:#e56f12; --marker:rgba(255,207,92,.6); }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1200px; height: 630px; }
+  body { position: relative; overflow: hidden; background: var(--paper); color: var(--ink-2); font-family: "Instrument Sans Variable", sans-serif; -webkit-font-smoothing: antialiased; }
+  body::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .16; mix-blend-mode: multiply;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.11 0 0 0 0 0.1 0 0 0 0 0.08 0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+  .page { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 64px; height: 100%; padding: 60px 72px 56px; }
+  .copy { display: flex; flex-direction: column; }
+  .wordmark { display: flex; align-items: center; gap: 12px; font: italic 500 34px/1 "Fraunces Variable", serif; font-variation-settings: "SOFT" 100, "WONK" 1; color: var(--ink); letter-spacing: -.02em; }
+  .wordmark img { width: 44px; height: 44px; border-radius: 10px; }
+  .smallcaps { margin-top: auto; font: 600 15px/1.2 "Instrument Sans Variable", sans-serif; letter-spacing: .16em; text-transform: uppercase; color: var(--orange-ink); }
+  h1 { margin-top: 18px; font: 380 104px/.94 "Fraunces Variable", serif; letter-spacing: -.035em; color: var(--ink); font-variation-settings: "SOFT" 30, "WONK" 0, "opsz" 144; }
+  h1 em { font-style: italic; font-weight: 360; color: var(--orange); font-variation-settings: "SOFT" 100, "WONK" 1, "opsz" 144; }
+  .facts { display: flex; gap: 28px; margin-top: 34px; padding-top: 16px; border-top: 1px solid var(--rule); font: italic 400 24px/1.2 "Fraunces Variable", serif; color: var(--ink); font-variation-settings: "SOFT" 100, "WONK" 1; }
+  .facts span + span { padding-left: 28px; border-left: 1px solid var(--rule); }
+  .figure { align-self: center; }
+  .card { position: relative; padding: 14px; border-radius: 18px; background: #fdfbff; border: 1.5px solid var(--ink); box-shadow: 10px 10px 0 var(--paper-3), 10px 10px 0 1.5px var(--ink); }
+  .head { display: flex; justify-content: space-between; align-items: baseline; padding: 2px 4px 12px; font-family: "Comic Sans MS", "Chalkboard SE", sans-serif; }
+  .head b { font-size: 17px; color: var(--ink); }
+  .head small { font-size: 12px; color: #737373; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 176px); gap: 7px; }
+  .tile { position: relative; border-radius: 9px; color: #fff; background: radial-gradient(70% 55% at var(--x) var(--y), rgba(255,244,220,.42), transparent 70%), linear-gradient(var(--a), var(--c1), var(--c2)); }
+  .tile::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(180deg, transparent 55%, rgba(0,0,0,.42)); }
+  .rk { position: absolute; top: 8px; left: 9px; z-index: 1; font: italic 500 20px/1 "Fraunces Variable", serif; font-variation-settings: "SOFT" 100, "WONK" 1; text-shadow: 0 1px 3px rgba(0,0,0,.4); }
+  .rt { position: absolute; top: 8px; right: 8px; z-index: 2; padding: 4px 7px; border-radius: 999px; background: var(--paper); color: var(--orange-ink); font: 700 12px/1 "Instrument Sans Variable", sans-serif; }
+  .tv { position: absolute; left: 8px; bottom: 8px; z-index: 1; font: 600 13px/1 "Instrument Sans Variable", sans-serif; text-shadow: 0 1px 2px rgba(0,0,0,.4); }
+  .scribble { position: absolute; top: -9px; right: -11px; width: 70px; height: 36px; overflow: visible; }
+  .scribble path { fill: none; stroke: var(--orange-bright); stroke-width: 3; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+  .note { margin-top: 22px; text-align: center; font-size: 13px; color: var(--muted); letter-spacing: .02em; }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="copy">
+      <div class="wordmark"><img src="{{ICON}}" alt=""><span>Outliers</span></div>
+      <p class="smallcaps">A free Chrome extension for Instagram research</p>
+      <h1>Find the Reels that <em>broke out.</em></h1>
+      <p class="facts"><span>At least 5× more views than followers</span><span>Free</span></p>
+    </div>
+    <div class="figure">
+      <div class="card">
+        <div class="head"><b>Outliers</b><small>6 of 36 reels • 92,000 views</small></div>
+        <div class="grid">{{TILES}}</div>
+      </div>
+      <p class="note">Sample data from a fictional profile</p>
+    </div>
+  </div>
+</body>
+</html>

@@ -44,8 +44,8 @@ Paste these into the Developer Dashboard for item `heogkfpbeagpoodininnfhdgjmpda
 
 **Video:** the store takes a YouTube URL. The 1.1 promo MP4 is ready locally; upload it to YouTube once approved and paste the link here.
 
-**Screenshots** (1280×800), uploaded in this order: `store/assets/shot-2-outlier.png`, `shot-1-sort.png`, `shot-3-instagram.png`, `shot-4-metrics.png`, `shot-5-free.png`.
-**Small promo tile** (440×280): `store/assets/tile-small.png`. **Marquee** (1400×560): `store/assets/marquee.png`.
+**Screenshots** (1280×800), uploaded in this order: `apps/extension/store/assets/shot-2-outlier.png`, `shot-1-sort.png`, `shot-3-instagram.png`, `shot-4-metrics.png`, `shot-5-free.png`.
+**Small promo tile** (440×280): `apps/extension/store/assets/tile-small.png`. **Marquee** (1400×560): `apps/extension/store/assets/marquee.png`.
 **Promo video:** none until the promo is on YouTube.
 
 ## Privacy practices
