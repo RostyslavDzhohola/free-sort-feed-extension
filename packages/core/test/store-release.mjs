@@ -13,12 +13,18 @@ const repoRoot = new URL("../../../", import.meta.url);
 
 /** Extract the release's extension source to a temp dir; returns the path of its `src/`. */
 export function extractStoreRelease(tag = STORE_RELEASE) {
-  const git = (...args) => execFileSync("git", args, { cwd: repoRoot, encoding: "utf8" });
+  const git = (...args) => execFileSync("git", args, { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  try {
+    git("rev-parse", "--verify", "--quiet", tag + "^{commit}");
+  } catch {
+    // Shallow and single-branch clones skip older tags.
+    throw new Error(`Tag ${tag} isn't in this clone. Fetch it with: git fetch --depth=1 origin tag ${tag}`);
+  }
   // Releases up to 1.1.0 kept the extension at the repo root; later ones live in apps/extension/.
   const src = git("ls-tree", "--name-only", tag, "apps/extension/src").trim() ? "apps/extension/src" : "src";
   const dir = mkdtempSync(join(tmpdir(), "outliers-" + tag + "-"));
+  process.on("exit", () => rmSync(dir, { recursive: true, force: true }));
   const archive = execFileSync("git", ["archive", "--format=tar", tag, src], { cwd: repoRoot });
   execFileSync("tar", ["-x", "-C", dir], { input: archive });
-  process.on("exit", () => rmSync(dir, { recursive: true, force: true }));
   return join(dir, src);
 }
