@@ -5,9 +5,11 @@
 
 // Bump with any bridge change: an open tab keeps the first bridge it was given, and a newer
 // one registers beside it so the scanner hears the newest answer last.
-export const BRIDGE_VERSION = "1.1.0.2";
+export const BRIDGE_VERSION = "1.1.1";
 export const METRICS_REQUEST_EVENT = "outliers:metrics-request";
 export const METRICS_RESPONSE_EVENT = "outliers:metrics-response";
+export const OPEN_REQUEST_EVENT = "outliers:open-request";
+export const OPEN_RESPONSE_EVENT = "outliers:open-response";
 
 /** Exact numbers the page holds for one video. Null when the page doesn't have them. */
 export interface PageMetrics {
@@ -47,4 +49,22 @@ export function requestPageMetrics(): PageMetricsMap {
     document.removeEventListener(METRICS_RESPONSE_EVENT, onResponse);
   }
   return result;
+}
+
+/**
+ * Ask the bridge to open a video in the platform's own viewer, by Instagram shortcode.
+ * Returns false when the bridge isn't installed or the page can't open that video.
+ */
+export function requestOpenVideo(id: string): boolean {
+  let opened = false;
+  const onResponse = function (ev: Event): void {
+    if ((ev as CustomEvent<unknown>).detail === "opened") opened = true;
+  };
+  document.addEventListener(OPEN_RESPONSE_EVENT, onResponse);
+  try {
+    document.dispatchEvent(new CustomEvent(OPEN_REQUEST_EVENT, { detail: id }));
+  } finally {
+    document.removeEventListener(OPEN_RESPONSE_EVENT, onResponse);
+  }
+  return opened;
 }

@@ -12,7 +12,7 @@ On an Instagram profile's **Reels** tab, or a TikTok profile's **Videos** tab, t
 4. Shows the videos you picked, in the order you picked, in Chrome's side panel and as a grid of cards on the page
 5. Lets you change **Show** and **Sort by** afterwards without scanning again
 
-Closing and reopening the side panel keeps your results until you reset.
+The side panel belongs to the tab you opened it on: it hides when you switch to another tab and comes back when you return. Closing and reopening it keeps your results until you reset.
 
 ## What Outliers can read
 
@@ -66,7 +66,7 @@ pnpm build
 5. Pick **Sort by** and its direction: Views, Likes, Comments, Engagement rate, Views ÷ followers; on TikTok also Shares, Saves, Post date and Length
 6. Click **Run Outliers Scan**. Progress and partial results stream in while it scrolls; **Stop** finalizes from what was collected so far
 7. Change **Show** or **Sort by** at any time. The panel list and the page grid update at once, without a rescan
-8. Each result has **Open**, **Copy link** and **Save**. Clicking a card on the page opens Instagram's own Reel viewer over the grid; TikTok videos open in a new tab
+8. Each result has **Open**, **Copy link** and **Save**. Clicking a card on the page opens Instagram's own Reel viewer over the grid, with Outliers' purple arrows (and the ← → keys) stepping through your list in its order; TikTok videos open in a new tab. Instagram's "Suggested for you" row stays hidden while the results are up
 9. **CSV** downloads the list with every metric (Google Sheets and Excel friendly). The first eight columns match 1.0.x exports, so existing sheets keep working
 10. **Copy** and **Share** (Story card, caption, top 5 links) lead with the metric you sorted by
 11. **Library** keeps saved videos across sessions, with their metrics, and exports them as CSV
@@ -128,9 +128,9 @@ This project includes a `conductor.json` for use with [Conductor](https://conduc
 src/
 ├── sidepanel.html      — Side panel UI
 ├── sidepanel.ts        — Side panel logic (tab binding, readiness, Show/Sort, results, Library, CSV, share)
-├── background.ts       — Background service worker (opens side panel on icon click)
+├── background.ts       — Background service worker (opens the tab's side panel on icon click)
 ├── injected.ts         — Scanner, isolated world (scrolling, per-platform tile readers, in-page grid)
-├── page-bridge.ts      — Page-world reader for exact counts (Instagram Relay store, TikTok React props)
+├── page-bridge.ts      — Page-world reader for exact counts (Instagram Relay store, TikTok React props); opens Reels in Instagram's viewer
 ├── hot-reload.ts       — Dev-only: auto-reload service worker
 ├── manifest.json       — Chrome Extension config (Manifest V3)
 ├── types/
@@ -163,7 +163,7 @@ esbuild.mjs             — Build script
 
 ### Where the numbers come from
 
-The scanner runs in the extension's isolated world, where it can talk to the side panel but can't see the page's JavaScript. A small page-world bridge can; the scanner asks it for exact counts over a DOM event and gets JSON back. The bridge only reads.
+The scanner runs in the extension's isolated world, where it can talk to the side panel but can't see the page's JavaScript. A small page-world bridge can; the scanner asks it for exact counts over a DOM event and gets JSON back. The bridge reads, with one exception: when you click a result, it opens that Reel through the Instagram grid's own click handler, which works even for tiles the grid has unmounted. It makes no requests of its own.
 
 - **Instagram**: media records in the page's Relay store (`play_count`, `like_count`, `comment_count`, `like_and_view_counts_disabled`), keyed by shortcode. Fallback: the tile's view label and its hidden likes/comments overlay.
 - **TikTok**: each grid tile's React props carry the video's `stats` (plays, likes, comments, shares, saves), `createTime` and `video.duration`. Fallback: the tile's view count.

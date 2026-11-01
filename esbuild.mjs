@@ -10,7 +10,8 @@ mkdirSync("dist/icons", { recursive: true });
 // Copy static assets to dist/
 function copyStaticAssets() {
   cpSync("src/sidepanel.html", "dist/sidepanel.html");
-  cpSync("icons", "dist/icons", { recursive: true });
+  // icons/generated holds the source art, which the extension never loads.
+  cpSync("icons", "dist/icons", { recursive: true, filter: (src) => src !== "icons/generated" });
   const manifest = JSON.parse(readFileSync("src/manifest.json", "utf-8"));
   writeFileSync("dist/manifest.json", JSON.stringify(manifest, null, 2));
 }

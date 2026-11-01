@@ -1,7 +1,7 @@
 import { parseCount } from "./shared/parse-count";
 import { readProfileInfo } from "./shared/read-profile";
 import { buildEmptyStateCopy } from "./shared/empty-state-copy";
-import { requestPageMetrics } from "./shared/bridge";
+import { requestOpenVideo, requestPageMetrics } from "./shared/bridge";
 import { videoNoun } from "./shared/platform";
 import {
   DEFAULT_VIEW,
@@ -41,8 +41,12 @@ interface PlatformAdapter {
   wrongPageMessage(): string;
   readTiles(): TileRead[];
   findGridHost(): HTMLElement | null;
-  /** The platform's own link for a video, used to open its native viewer. */
-  nativeAnchorFor(href: string): HTMLAnchorElement | null;
+  /** The video id in a tile link or a viewer URL path. */
+  videoId(path: string): string | null;
+  /** Open a video in the platform's own viewer over the grid. False when it can't. */
+  openNative(href: string): boolean;
+  /** Rules that hide the platform's page clutter while Outliers shows its grid. */
+  pageCss: string[];
 }
 
 function init(): void {
@@ -58,6 +62,12 @@ function init(): void {
   let _gridHost: HTMLElement | null = null;
   let _gridHostDisplayBefore = "";
   const _hiddenBelowTabs: Array<{ el: HTMLElement; display: string }> = [];
+  // The videos the grid shows, in its order; the viewer arrows step through them.
+  let _viewerList: OutliersEntry[] = [];
+  let _viewerIndex = 0;
+  let _viewerTimer: number | null = null;
+  // The one video the viewer was last asked to show, until it shows it.
+  let _viewerPending: { id: string; timer: number; onPopState: () => void } | null = null;
 
   const runCtx = {
     videoMap: new Map<string, CollectedVideo>(),
@@ -79,6 +89,7 @@ function init(): void {
   const APP_ROOT_ID = "outliers-grid-root";
   const APP_STYLE_ID = "outliers-app-style";
   const LOCK_ID = "outliers-interaction-lock";
+  const VIEWER_NAV_ID = "outliers-viewer-nav";
 
   const adapter: PlatformAdapter = /(^|\.)tiktok\.com$/i.test(window.location.hostname)
     ? createTikTokAdapter()
@@ -270,6 +281,11 @@ function init(): void {
       return best;
     }
 
+    function reelId(path: string): string | null {
+      const m = path.match(REEL_HREF_RE);
+      return m ? m[1]! : null;
+    }
+
     // Likes and comments sit in the tile's hover overlay, in that order, before any hover.
     function readOverlayCounts(link: HTMLAnchorElement): { likes: number | null; comments: number | null } {
       const items = link.querySelectorAll("ul li");
@@ -346,15 +362,24 @@ function init(): void {
         }
         return candidate;
       },
-      nativeAnchorFor: function (href: string) {
+      videoId: reelId,
+      openNative: function (href: string) {
+        const id = reelId(href);
+        if (id && requestOpenVideo(id)) return true;
+        // Without the bridge, the grid's own link opens the Reel while the grid still holds its tile.
         const root = document.getElementById(APP_ROOT_ID);
         const links = document.querySelectorAll(REEL_LINK_SELECTOR);
         for (let i = 0; i < links.length; i++) {
           const link = links[i] as HTMLAnchorElement;
-          if (link.getAttribute("href") === href && !(root && root.contains(link))) return link;
+          if (link.getAttribute("href") === href && !(root && root.contains(link))) {
+            link.click();
+            return true;
+          }
         }
-        return null;
+        return false;
       },
+      // "Suggested for you" opens inside the profile header and pushes the results down.
+      pageCss: ["main header > section:has(h4) { display: none !important; }"],
     };
   }
 
@@ -406,10 +431,15 @@ function init(): void {
       findGridHost: function () {
         return document.querySelector('[data-e2e="user-post-item-list"]') as HTMLElement | null;
       },
-      nativeAnchorFor: function () {
-        // TikTok's player takes over the page; a new tab keeps the sorted grid in place.
-        return null;
+      videoId: function (path: string) {
+        const m = path.match(VIDEO_HREF_RE);
+        return m ? m[2]! : null;
       },
+      openNative: function () {
+        // TikTok's player takes over the page; a new tab keeps the sorted grid in place.
+        return false;
+      },
+      pageCss: [],
     };
   }
 
@@ -527,6 +557,7 @@ function init(): void {
     const style = document.createElement("style");
     style.id = APP_STYLE_ID;
     const R = "#" + APP_ROOT_ID;
+    const NAV = "#" + VIEWER_NAV_ID;
     const FONT = "'Comic Sans MS', 'Comic Sans', 'Chalkboard SE', 'Chalkboard', 'Arial Rounded MT Bold', 'Trebuchet MS', sans-serif";
     style.textContent = [
       R + " { width: 100%; box-sizing: border-box; padding: 20px 16px 40px; display: block; color: inherit; }",
@@ -555,6 +586,17 @@ function init(): void {
       R + " .outliers-empty-title { font-size: 22px; font-weight: 700; line-height: 1.25; }",
       R + " .outliers-empty-detail { margin-top: 10px; font-size: 17px; line-height: 1.5; opacity: 0.75; }",
       "#" + LOCK_ID + " { position: fixed !important; inset: 0 !important; z-index: 2147483647 !important; background: rgba(34, 197, 94, 0.18) !important; backdrop-filter: saturate(120%); pointer-events: auto !important; cursor: progress; }",
+      NAV + ", " + NAV + " * { font-family: " + FONT + " !important; box-sizing: border-box; }",
+      NAV + " .outliers-nav-arrow { position: fixed; top: 50%; z-index: 2147483646; width: 48px; height: 48px; margin: 0; padding: 0; display: flex; align-items: center; justify-content: center; border: 3px solid #fff; border-radius: 999px; background: #950acc; color: #fff; cursor: pointer; transform: translate(-50%, -50%); box-shadow: 0 6px 18px rgba(0,0,0,0.35); transition: background 120ms ease; }",
+      NAV + " .outliers-nav-arrow.prev { left: 28px; }",
+      NAV + " .outliers-nav-arrow.next { left: calc(100% - 28px); }",
+      NAV + " .outliers-nav-arrow:hover { background: #7008a0; }",
+      NAV + " .outliers-nav-arrow:focus-visible { outline: 3px solid #f99b21; outline-offset: 2px; }",
+      // Opaque when off too, so Instagram's own arrow never shows through.
+      NAV + " .outliers-nav-arrow.is-off { background: #d9c7e6; color: #9a86ad; cursor: default; box-shadow: none; }",
+      NAV + " .outliers-nav-arrow svg { width: 24px; height: 24px; }",
+      NAV + " .outliers-nav-count { position: fixed; top: 16px; left: 16px; z-index: 2147483646; padding: 6px 12px; border-radius: 999px; background: #f99b21; color: #2b1943; font-size: 14px; font-weight: 800; pointer-events: none; }",
+      ...adapter.pageCss,
     ].join("\n");
     document.head.appendChild(style);
   }
@@ -682,12 +724,6 @@ function init(): void {
     return span;
   }
 
-  function didNativeModalOpen(dialogsBefore: number, pathBefore: string): boolean {
-    if (document.querySelectorAll('div[role="dialog"]').length > dialogsBefore) return true;
-    const pathAfter = window.location.pathname;
-    return pathAfter !== pathBefore && /\/(reel|reels|p|video|photo)\//i.test(pathAfter);
-  }
-
   function buildCard(entry: OutliersEntry, rank: number, f: number | null, sortKey: ViewSettings["sortKey"]): HTMLElement {
     const card = document.createElement("a");
     card.className = "outliers-card";
@@ -749,20 +785,192 @@ function init(): void {
       const mouse = ev as MouseEvent;
       // Modified clicks keep the browser's own new-tab behavior.
       if (mouse.button !== 0 || mouse.metaKey || mouse.ctrlKey || mouse.shiftKey || mouse.altKey) return;
-      const native = adapter.nativeAnchorFor(entry.href);
-      if (!native) return;
       // Prefer the platform's own viewer; it keeps this grid in place underneath.
-      ev.preventDefault();
-      const dialogsBefore = document.querySelectorAll('div[role="dialog"]').length;
-      const pathBefore = window.location.pathname;
-      native.click();
-      window.setTimeout(function () {
-        if (didNativeModalOpen(dialogsBefore, pathBefore)) return;
-        window.open(entry.url, "_blank", "noopener,noreferrer");
-      }, 500);
+      if (openInViewer(rank - 1)) ev.preventDefault();
     });
 
     return card;
+  }
+
+  // ── Viewer arrows ───────────────────────────────────────────────────────
+  // The platform's viewer steps through its own grid order. Over it, Outliers puts its own
+  // arrows (and the arrow keys) that step through the videos this grid lists, in its order.
+  function isViewerOpen(): boolean {
+    return !!document.querySelector('div[role="dialog"]') && adapter.videoId(window.location.pathname) !== null;
+  }
+
+  function shownVideoId(): string | null {
+    return isViewerOpen() ? adapter.videoId(window.location.pathname) : null;
+  }
+
+  function cancelViewerPending(): void {
+    if (_viewerPending === null) return;
+    window.clearInterval(_viewerPending.timer);
+    window.removeEventListener("popstate", _viewerPending.onPopState);
+    _viewerPending = null;
+  }
+
+  // Opens a listed video in the platform's viewer. False when the platform can't, so the caller
+  // falls back to a new tab. A newer request replaces this one; if the viewer never shows the
+  // video, it opens in a new tab instead.
+  function openInViewer(index: number): boolean {
+    const entry = _viewerList[index];
+    const id = entry ? adapter.videoId(entry.href) : null;
+    if (!entry || !id) return false;
+    cancelViewerPending();
+    // Opening the viewer pushes a history entry and closing it goes back, so either shows it
+    // opened, even when it closed again before a check saw it. Both are watched from before
+    // the open, which may push the entry at once.
+    const historyBefore = window.history.length;
+    let wentBack = false;
+    const onPopState = function (): void {
+      wentBack = true;
+    };
+    window.addEventListener("popstate", onPopState);
+    if (!adapter.openNative(entry.href)) {
+      window.removeEventListener("popstate", onPopState);
+      return false;
+    }
+    const deadline = Date.now() + 800;
+    _viewerPending = {
+      id,
+      onPopState,
+      timer: window.setInterval(function () {
+        if (shownVideoId() === id) {
+          cancelViewerPending();
+          startViewerNav();
+          return;
+        }
+        if (Date.now() < deadline) return;
+        cancelViewerPending();
+        if (!wentBack && window.history.length === historyBefore) window.open(entry.url, "_blank", "noopener,noreferrer");
+      }, 100),
+    };
+    if (_viewerTimer !== null) syncViewerNav();
+    return true;
+  }
+
+  function stepViewer(dir: -1 | 1): void {
+    const entry = _viewerList[_viewerIndex + dir];
+    if (entry && !openInViewer(_viewerIndex + dir)) window.open(entry.url, "_blank", "noopener,noreferrer");
+  }
+
+  function viewerArrow(dir: -1 | 1): HTMLButtonElement {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "outliers-nav-arrow " + (dir < 0 ? "prev" : "next");
+    btn.setAttribute("aria-label", dir < 0 ? "Previous in Outliers" : "Next in Outliers");
+    btn.title = dir < 0 ? "Previous in Outliers (←)" : "Next in Outliers (→)";
+    btn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="'
+      + (dir < 0 ? "M15 5l-7 7 7 7" : "M9 5l7 7-7 7") + '"/></svg>';
+    btn.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      stepViewer(dir);
+    });
+    return btn;
+  }
+
+  // While the arrows are up, the arrow keys follow this grid's order instead of the platform's.
+  function onViewerKey(ev: KeyboardEvent): void {
+    if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
+    if (ev.altKey || ev.ctrlKey || ev.metaKey || ev.shiftKey) return;
+    const target = ev.target as HTMLElement | null;
+    if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+    if (!isViewerOpen()) return;
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    stepViewer(ev.key === "ArrowLeft" ? -1 : 1);
+  }
+
+  function startViewerNav(): void {
+    if (_viewerTimer !== null) {
+      syncViewerNav();
+      return;
+    }
+    ensureAppStyle();
+    const nav = document.createElement("div");
+    nav.id = VIEWER_NAV_ID;
+    const count = document.createElement("div");
+    count.className = "outliers-nav-count";
+    nav.appendChild(viewerArrow(-1));
+    nav.appendChild(viewerArrow(1));
+    nav.appendChild(count);
+    // The viewer may close on clicks outside it: these never reach it, and leave its focus alone.
+    ["pointerdown", "mousedown", "click"].forEach(function (type) {
+      nav.addEventListener(type, function (ev) {
+        ev.stopPropagation();
+        if (type === "mousedown") ev.preventDefault();
+      });
+    });
+    document.body.appendChild(nav);
+    window.addEventListener("keydown", onViewerKey, true);
+    _viewerTimer = window.setInterval(syncViewerNav, 200);
+    syncViewerNav();
+  }
+
+  function stopViewerNav(): void {
+    cancelViewerPending();
+    if (_viewerTimer !== null) {
+      window.clearInterval(_viewerTimer);
+      _viewerTimer = null;
+    }
+    window.removeEventListener("keydown", onViewerKey, true);
+    const nav = document.getElementById(VIEWER_NAV_ID);
+    if (nav) nav.remove();
+  }
+
+  // The arrows count from the video the viewer shows, or from the one a step is on its way to.
+  // They step aside when that video isn't in the list, e.g. after a filter change dropped it.
+  function listIndexOf(id: string): number {
+    return _viewerList.findIndex(function (entry) {
+      return adapter.videoId(entry.href) === id;
+    });
+  }
+
+  function syncViewerNav(): void {
+    const id = isViewerOpen() ? (_viewerPending?.id ?? shownVideoId()) : null;
+    const at = id === null ? -1 : listIndexOf(id);
+    if (at < 0) {
+      stopViewerNav();
+      return;
+    }
+    _viewerIndex = at;
+    renderViewerNav();
+  }
+
+  function renderViewerNav(): void {
+    const nav = document.getElementById(VIEWER_NAV_ID);
+    if (!nav) return;
+    const total = _viewerList.length;
+    const prev = nav.querySelector(".prev") as HTMLElement;
+    const next = nav.querySelector(".next") as HTMLElement;
+    const atStart = _viewerIndex <= 0;
+    const atEnd = _viewerIndex >= total - 1;
+    prev.classList.toggle("is-off", atStart);
+    prev.setAttribute("aria-disabled", String(atStart));
+    next.classList.toggle("is-off", atEnd);
+    next.setAttribute("aria-disabled", String(atEnd));
+    (nav.querySelector(".outliers-nav-count") as HTMLElement).textContent = "Outliers · #" + (_viewerIndex + 1) + " of " + total;
+    coverNativeArrows(prev, next);
+  }
+
+  // The platform's own arrows sit at the viewer's left and right edges; ours go on top of them.
+  function coverNativeArrows(prev: HTMLElement, next: HTMLElement): void {
+    const dialog = document.querySelector('div[role="dialog"]');
+    if (!dialog) return;
+    const width = document.documentElement.clientWidth;
+    const height = window.innerHeight;
+    const buttons = dialog.querySelectorAll("button");
+    for (let i = 0; i < buttons.length; i++) {
+      const r = buttons[i]!.getBoundingClientRect();
+      if (r.width === 0 || r.width > 64 || r.height > 64) continue;
+      const centerY = r.top + r.height / 2;
+      if (Math.abs(centerY - height / 2) > height / 4) continue;
+      const arrow = r.right < 96 ? prev : r.left > width - 96 ? next : null;
+      if (!arrow) continue;
+      arrow.style.left = Math.round(r.left + r.width / 2) + "px";
+      arrow.style.top = Math.round(centerY) + "px";
+    }
   }
 
   function renderCustomGrid(state: OutliersState): void {
@@ -771,6 +979,10 @@ function init(): void {
 
     const root = getOrCreateAppRoot();
     root.replaceChildren();
+    _viewerList = state.outliers;
+    // A new sort or filter can drop the video still opening, which then opens nowhere.
+    if (_viewerPending !== null && listIndexOf(_viewerPending.id) < 0) cancelViewerPending();
+    if (_viewerTimer !== null) syncViewerNav();
 
     const shell = document.createElement("div");
     shell.className = "outliers-app-shell";
@@ -830,6 +1042,7 @@ function init(): void {
   // ── Run lifecycle ───────────────────────────────────────────────────────
   function reportError(errorText: string): void {
     cancelPendingScroll();
+    stopViewerNav();
     hideInteractionLock();
     removeAppRoot();
     removeAppStyle();
@@ -916,6 +1129,8 @@ function init(): void {
     const myGen = _runGeneration;
 
     resetRunContext();
+    stopViewerNav();
+    _viewerList = [];
     removeAppRoot();
     showGridHost();
     ensureAppStyle();
@@ -968,6 +1183,7 @@ function init(): void {
     _runGeneration++;
     cancelPendingScroll();
     resetRunContext();
+    stopViewerNav();
     hideInteractionLock();
     removeAppRoot();
     removeAppStyle();
