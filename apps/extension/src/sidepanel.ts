@@ -2490,7 +2490,7 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
     // The TikTok card covers TikTok while it's off; otherwise say how to let Outliers in.
     showNotice(
       "Open an Instagram or TikTok profile to scan its videos.",
-      hasTikTokAccess
+      hasTikTokAccess || lastKnownProfileRef?.platform !== "tiktok"
         ? "On a profile already? Chrome may be blocking Outliers on this site: click the puzzle icon in the toolbar and allow Outliers here."
         : undefined
     );
@@ -2589,6 +2589,9 @@ function readinessHint(info: ProfileInfo, waitedLong: boolean): StatsHint | unde
       actionLabel: "Open Reels tab",
       onAction: openReelsTab,
     };
+  }
+  if (info.followers === 0 && selectedFilterMode === "ratio5x") {
+    return { text: "This profile has no followers, so 5× is off. Min Views and All still work." };
   }
   if (info.followers === null && selectedFilterMode === "ratio5x") {
     return waitedLong
@@ -3137,8 +3140,13 @@ runBtn.addEventListener("click", async function () {
       return;
     }
 
-    setButtonsForScanning();
-    statusEl.textContent = "";
+    // A scanner that starts sets its state before injection returns, so none means it never
+    // ran: injected.ts skipped init because an earlier scanner on this page still holds the
+    // guard. Say so instead of showing a Stop button for a scan that isn't happening.
+    console.warn("[outliers] the scanner did not start on this page");
+    statusEl.textContent = "Outliers couldn't start a scan on this page. Reload the page, then run the scan again.";
+    statusEl.className = "status-msg error";
+    setButtonsForIdle();
   } catch (err: unknown) {
     if (!showsTab()) return;
     const message = err instanceof Error ? err.message : "Something went wrong.";
