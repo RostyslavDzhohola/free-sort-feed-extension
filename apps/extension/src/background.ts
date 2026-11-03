@@ -1,7 +1,7 @@
 // Background service worker — opens the side panel for the tab whose toolbar icon was clicked.
 // The panel belongs to that tab: Chrome hides it on other tabs and shows it again on return.
 import { startHotReload } from "./hot-reload";
-import { SCAN_SNAPSHOT_PREFIX, scanSnapshotKey } from "./shared/storage-keys";
+import { SCAN_SNAPSHOT_PREFIX, keepScan } from "./shared/storage-keys";
 import type { OutliersMessage } from "./types/state";
 
 declare const __OUTLIERS_WATCH__: boolean;
@@ -28,7 +28,7 @@ chrome.runtime.onMessage.addListener(function (msg: OutliersMessage, sender): un
   const tabId = sender.tab?.id;
   const kept = msg.snapshot;
   if (tabId == null || !kept?.handle || !Array.isArray(kept.videos) || kept.videos.length === 0) return undefined;
-  chrome.storage.session.set({ [scanSnapshotKey(tabId, kept.platform, kept.handle)]: kept }).catch(function () {
+  keepScan(tabId, kept).catch(function () {
     // Non-fatal: the scan just isn't kept.
   });
   return undefined;

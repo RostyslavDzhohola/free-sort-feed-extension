@@ -1,5 +1,5 @@
 import { startHotReload } from "./hot-reload";
-import { SAVED_REELS_KEY, scanSnapshotKey } from "./shared/storage-keys";
+import { SAVED_REELS_KEY, keepScan, scanSnapshotKey } from "./shared/storage-keys";
 import { buildOutliersCsv, buildSavedCsv } from "./shared/export-csv";
 import { buildEmptyStateCopy } from "./shared/empty-state-copy";
 import { readProfileInfo, type ProfileInfo } from "./shared/read-profile";
@@ -2550,7 +2550,10 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
     // A scan of this profile from earlier in this tab comes back instead of a fresh Run.
     const kept = isScanStarting(tabId) ? null : await readScanSnapshot(tabId, ref);
     if (isStale()) return;
-    if (kept && info.onScanTab) {
+    // 5× needs a follower count; without one a restore would show nothing, so wait for it.
+    const restoreFollowers = info.followers ?? kept?.followers ?? null;
+    const canRestore = selectedFilterMode !== "ratio5x" || (restoreFollowers !== null && restoreFollowers > 0);
+    if (kept && info.onScanTab && canRestore && !isScanStarting(tabId)) {
       profileReady = true;
       profileWaitStartedAt = null;
       await restoreScan(tabId, kept, info, infoDocumentId);
@@ -2734,7 +2737,7 @@ let keptScanAvailable = false;
 async function keepScanSnapshot(tabId: number, kept: ScanSnapshot | null): Promise<void> {
   if (!kept || !kept.handle || !Array.isArray(kept.videos) || kept.videos.length === 0) return;
   try {
-    await chrome.storage.session.set({ [scanSnapshotKey(tabId, kept.platform, kept.handle)]: kept });
+    await keepScan(tabId, kept);
   } catch {
     // Non-fatal: the scan just isn't kept.
   }

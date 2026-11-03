@@ -1383,7 +1383,8 @@ function init(): void {
     return {
       platform: adapter.platform,
       handle: PROFILE_HANDLE,
-      followers: currentFollowers(),
+      // Only the count this scan already holds: by now the page may show another profile.
+      followers,
       scanLimit: SCAN_LIMIT,
       videos: Array.from(runCtx.videoMap.values()),
       savedAt: _scannedAt,
@@ -1416,7 +1417,22 @@ function init(): void {
     }
     if (followers === null) followers = positiveOrNull(saved.followers);
     ensureAppStyle();
-    analyze(_runGeneration);
+    // The profile header can be up before the platform's own grid; render once the grid is there
+    // so it's hidden under ours instead of showing beside it. Give up waiting after 3 s.
+    const myGen = _runGeneration;
+    const waitUntil = Date.now() + 3000;
+    // Tell the panel right away, so it shows the scan coming back rather than offering Run.
+    updateState(buildState("scanning", "analyzing"));
+    const renderWhenGridIsUp = function (): void {
+      if (myGen !== _runGeneration) return;
+      if (!adapter.findGridHost() && Date.now() < waitUntil) {
+        _scrollTimer = window.setTimeout(renderWhenGridIsUp, 150);
+        return;
+      }
+      _scrollTimer = null;
+      analyze(myGen);
+    };
+    renderWhenGridIsUp();
   }
   watchLibrary();
 
