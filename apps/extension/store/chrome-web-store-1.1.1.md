@@ -77,7 +77,7 @@ Paste these into the Developer Dashboard for item `heogkfpbeagpoodininnfhdgjmpda
 - Location: no
 - Web history: no
 - User activity: no
-- **Website content: yes.** When the user runs a scan, Outliers reads the profile page's public video data (video links, cover images, view, like, comment, share and save counts, post dates, lengths, and the follower count) to list and sort them. It processes this only in the user's browser. Videos the user saves to the Library, and the user's settings, are kept in `chrome.storage.local` on their device. Nothing is sent to the developer or any server.
+- **Website content: yes.** When the user runs a scan, Outliers reads the profile page's public video data (video links, cover images, view, like, comment, share and save counts, post dates, lengths, and the follower count) to list and sort them. It processes this only in the user's browser. Videos the user saves to the Library, and the user's settings, are kept in the extension's local storage on their device (`chrome.storage.local` for the Library, the extension's own `localStorage` for settings). None of this data is sent to the developer or anyone else.
 
 Certify all three statements:
 
@@ -85,7 +85,7 @@ Certify all three statements:
 - I do not use or transfer user data for purposes that are unrelated to my item's single purpose
 - I do not use or transfer user data to determine creditworthiness or for lending purposes
 
-**Privacy policy URL:** keep the current one, and make sure it says the same as the Website content answer above: page data is read and processed locally, saved videos and settings stay on the device, nothing is transmitted. If the listing has none, use the README's Privacy section on GitHub, or the website's privacy page once it exists.
+**Privacy policy URL:** https://outliers-extension.vercel.app/privacy/ (`apps/website/src/pages/privacy.astro`). It replaced the Google Doc on 2026-11-02 and must say the same as the Website content answer above: page data is read and processed locally, saved videos and settings stay on the device, none of it is transmitted.
 
 ## Notes for submission
 
@@ -95,7 +95,7 @@ Certify all three statements:
 ## Dashboard changes needed
 
 - Store listing: summary, description, the five screenshots in the order above, small promo tile, marquee.
-- Privacy practices: single purpose, the permission justifications (new: the TikTok optional host permission), the "Website content" data-usage answer, and the three certifications.
+- Privacy practices: single purpose, the permission justifications (new: the TikTok optional host permission), the "Website content" data-usage answer, the three certifications, and the privacy policy URL (now https://outliers-extension.vercel.app/privacy/). The dashboard locks this tab while a version is in review.
 
 ## Website impact
 
