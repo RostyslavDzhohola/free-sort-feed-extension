@@ -15,7 +15,8 @@
     "preview:web": "pnpm --filter @outliers/website run preview",
     "typecheck": "pnpm -r run typecheck",
     "lint": "pnpm -r run lint",
-    "test": "pnpm -r run test",
-    "clean": "pnpm -r run clean"
+    "test": "pnpm -r run test && node --test scripts/release.test.mjs",
+    "clean": "pnpm -r run clean",
+    "release": "node scripts/release.mjs"
   }
 }

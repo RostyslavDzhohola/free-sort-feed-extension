@@ -1,0 +1,19 @@
+{
+  "itemId": "heogkfpbeagpoodininnfhdgjmpdalgj",
+  "publisherId": "",
+  "keyPath": "~/.config/outliers-release/cws-sa.json",
+  "extensionDirs": ["apps/extension", "."],
+  "storeDocDir": "apps/extension/store",
+  "zipMaxBytes": 500000,
+  "zipAllowlist": [
+    "manifest.json",
+    "sidepanel.html",
+    "background.js",
+    "injected.js",
+    "page-bridge.js",
+    "sidepanel.js",
+    "icons/icon16.png",
+    "icons/icon48.png",
+    "icons/icon128.png"
+  ]
+}

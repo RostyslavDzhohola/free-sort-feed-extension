@@ -91,3 +91,12 @@ Certify all three statements:
 
 - 1.1.1 adds no required permissions, only `optional_host_permissions` for TikTok, so the update installs silently for existing users.
 - If a reviewer asks about the page-world script: `page-bridge.js` is injected only into the tab the user is scanning, after they click Run. It reads the counts the page already loaded and returns them to the extension's scanner. When the user clicks a result, it also opens that Reel in Instagram's own viewer by calling the grid's own click handler, the same as clicking the tile. It makes no network requests of its own.
+
+## Dashboard changes needed
+
+- Store listing: summary, description, the five screenshots in the order above, small promo tile, marquee.
+- Privacy practices: single purpose, the permission justifications (new: the TikTok optional host permission), the "Website content" data-usage answer, and the three certifications.
+
+## Website impact
+
+Turn on `RELEASE_1_1`: follow "Shipping 1.1" in `apps/website/README.md`, then deploy.
