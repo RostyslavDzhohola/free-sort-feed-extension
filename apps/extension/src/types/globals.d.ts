@@ -1,4 +1,4 @@
-import type { OutliersState, ViewSettings } from "./state";
+import type { OutliersState, ScanSnapshot, ViewSettings } from "./state";
 
 export {};
 
@@ -14,5 +14,9 @@ declare global {
     __outliers_profile: { handle: string; followers: number | null } | undefined;
     __outliers_state: OutliersState | undefined;
     __outliers_bridge: string | undefined;
+    /** The finished scan, for the panel to keep before the page moves to another profile. */
+    __outliers_snapshot: (() => ScanSnapshot | null) | undefined;
+    /** Set by the panel before injecting: rebuild this scan instead of scrolling for a new one. */
+    __outliers_restore: ScanSnapshot | undefined;
   }
 }

@@ -19,7 +19,7 @@ import {
   sortLabel,
   viewsMultiple,
 } from "./shared/videos";
-import type { OutliersEntry, OutliersState, Platform, ViewSettings } from "./types/state";
+import type { OutliersEntry, OutliersState, Platform, ScanSnapshot, ViewSettings } from "./types/state";
 
 /** What one grid tile shows. Counts are null when the tile doesn't show them. */
 interface TileRead {
@@ -1354,6 +1354,32 @@ function init(): void {
   }
 
   window.__outliers_apply_view = applyView;
+
+  function snapshot(): ScanSnapshot | null {
+    if (!runCtx.isDone || !PROFILE_HANDLE || runCtx.videoMap.size === 0) return null;
+    return {
+      platform: adapter.platform,
+      handle: PROFILE_HANDLE,
+      followers: currentFollowers(),
+      scanLimit: SCAN_LIMIT,
+      videos: Array.from(runCtx.videoMap.values()),
+      savedAt: Date.now(),
+    };
+  }
+
+  window.__outliers_snapshot = snapshot;
+
+  // Back on a profile scanned earlier in this tab: show that scan again without scrolling.
+  function restore(saved: ScanSnapshot): void {
+    _runGeneration++;
+    resetRunContext();
+    for (const video of saved.videos) {
+      if (video?.id) runCtx.videoMap.set(video.id, video);
+    }
+    if (followers === null) followers = positiveOrNull(saved.followers);
+    ensureAppStyle();
+    analyze(_runGeneration);
+  }
   watchLibrary();
 
   function run(): void {
@@ -1368,6 +1394,13 @@ function init(): void {
     // this isn't the scan the user asked for.
     if (seeded && seeded.handle !== PROFILE_HANDLE) {
       reportError("The page changed. Wait for the profile to load, then run the scan again.");
+      return;
+    }
+
+    const saved = window.__outliers_restore;
+    window.__outliers_restore = undefined;
+    if (saved && saved.platform === adapter.platform && saved.handle === PROFILE_HANDLE && saved.videos?.length) {
+      restore(saved);
       return;
     }
 

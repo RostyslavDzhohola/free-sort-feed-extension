@@ -75,6 +75,18 @@ export interface OutliersState {
   errorText: string | null;
 }
 
+/** A finished scan, kept per tab and profile so coming back to the profile brings it back. */
+export interface ScanSnapshot {
+  platform: Platform;
+  handle: string;
+  followers: number | null;
+  scanLimit: number | null;
+  /** Every scanned video, before Show/Sort, so the view can change after a restore. */
+  videos: Array<OutliersEntry & { id: string }>;
+  /** Epoch ms. */
+  savedAt: number;
+}
+
 /** Messages sent from injected script → side panel via chrome.runtime.sendMessage. */
 export type OutliersMessage =
   | { type: "outliers:state"; state: OutliersState }

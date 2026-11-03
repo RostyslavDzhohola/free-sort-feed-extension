@@ -1,6 +1,7 @@
 // Background service worker — opens the side panel for the tab whose toolbar icon was clicked.
 // The panel belongs to that tab: Chrome hides it on other tabs and shows it again on return.
 import { startHotReload } from "./hot-reload";
+import { SCAN_SNAPSHOT_PREFIX } from "./shared/storage-keys";
 
 declare const __OUTLIERS_WATCH__: boolean;
 
@@ -17,6 +18,20 @@ chrome.action.onClicked.addListener(function (tab) {
   });
   chrome.sidePanel.open({ tabId: tab.id }).catch(function (err) {
     console.warn("[outliers] could not open the side panel:", err);
+  });
+});
+
+// Scans kept for a tab (see keepScanSnapshot in sidepanel.ts) go when the tab closes.
+chrome.tabs.onRemoved.addListener(function (tabId) {
+  const prefix = SCAN_SNAPSHOT_PREFIX + tabId + ":";
+  chrome.storage.session.get().then(function (all) {
+    const keys = Object.keys(all).filter(function (key) {
+      return key.startsWith(prefix);
+    });
+    if (keys.length > 0) return chrome.storage.session.remove(keys);
+    return undefined;
+  }).catch(function () {
+    // Non-fatal: session storage clears when the browser closes anyway.
   });
 });
 

@@ -1,5 +1,5 @@
 import { startHotReload } from "./hot-reload";
-import { SAVED_REELS_KEY } from "./shared/storage-keys";
+import { SAVED_REELS_KEY, scanSnapshotKey } from "./shared/storage-keys";
 import { buildOutliersCsv, buildSavedCsv } from "./shared/export-csv";
 import { buildEmptyStateCopy } from "./shared/empty-state-copy";
 import { readProfileInfo, type ProfileInfo } from "./shared/read-profile";
@@ -39,6 +39,7 @@ import type {
   OutliersState,
   Platform,
   SavedReel,
+  ScanSnapshot,
   SortDir,
   SortKey,
   ViewSettings,
@@ -2544,6 +2545,16 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
     latestFollowers = info.followers;
     if (profileWaitStartedAt == null) profileWaitStartedAt = Date.now();
     const waitedLong = Date.now() - profileWaitStartedAt >= PROFILE_WAIT_HINT_MS;
+    // A scan of this profile from earlier in this tab comes back instead of a fresh Run.
+    const kept = isScanStarting(tabId) ? null : await readScanSnapshot(tabId, ref);
+    if (isStale()) return;
+    if (kept && info.onScanTab) {
+      profileReady = true;
+      profileWaitStartedAt = null;
+      await restoreScan(tabId, kept, info);
+      return;
+    }
+    keptScanAvailable = kept !== null;
     // Keep polling until the follower count and the scan tab are both in: either can arrive late.
     profileReady = info.followers !== null && info.onScanTab;
     if (profileReady) profileWaitStartedAt = null;
@@ -2582,10 +2593,14 @@ function adoptProfileFromUrl(url: string | null): void {
 function readinessHint(info: ProfileInfo, waitedLong: boolean): StatsHint | undefined {
   if (!info.onScanTab) {
     if (info.platform === "tiktok") {
-      return { text: "Open the Videos tab of this profile to scan it." };
+      return {
+        text: keptScanAvailable
+          ? "Open the Videos tab to see your last scan of this profile again."
+          : "Open the Videos tab of this profile to scan it.",
+      };
     }
     return {
-      text: "Outliers scans the Reels tab.",
+      text: keptScanAvailable ? "Your last scan of this profile is kept. Open the Reels tab to see it." : "Outliers scans the Reels tab.",
       actionLabel: "Open Reels tab",
       onAction: openReelsTab,
     };
@@ -2687,6 +2702,7 @@ async function handleNavigation(details: { tabId: number; url: string }, generat
 
   lastKnownProfile = newProfile;
   lastKnownProfileRef = newRef;
+  keptScanAvailable = false;
   cancelViewPush();
 
   await retireScanInPage(details.tabId);
@@ -2706,6 +2722,64 @@ async function handleNavigation(details: { tabId: number; url: string }, generat
   // The navigation poll rehydrates on its next tick, once the new profile has rendered.
 }
 
+// ── Kept scans ───────────────────────────────────────────────────────────
+// A finished scan is kept in chrome.storage.session (memory only, for this browser session) per
+// tab and profile when the tab moves to another profile, so coming back brings it back.
+let keptScanAvailable = false;
+
+async function keepScanSnapshot(tabId: number, kept: ScanSnapshot | null): Promise<void> {
+  if (!kept || !kept.handle || !Array.isArray(kept.videos) || kept.videos.length === 0) return;
+  try {
+    await chrome.storage.session.set({ [scanSnapshotKey(tabId, kept.platform, kept.handle)]: kept });
+  } catch {
+    // Non-fatal: the scan just isn't kept.
+  }
+}
+
+async function readScanSnapshot(tabId: number, ref: ProfileRef): Promise<ScanSnapshot | null> {
+  const key = scanSnapshotKey(tabId, ref.platform, ref.handle);
+  try {
+    const result = await chrome.storage.session.get(key);
+    const kept = result[key] as ScanSnapshot | undefined;
+    return kept && Array.isArray(kept.videos) && kept.videos.length > 0 ? kept : null;
+  } catch {
+    return null;
+  }
+}
+
+async function forgetScanSnapshot(tabId: number, ref: ProfileRef): Promise<void> {
+  keptScanAvailable = false;
+  try {
+    await chrome.storage.session.remove(scanSnapshotKey(tabId, ref.platform, ref.handle));
+  } catch {
+    // Non-fatal
+  }
+}
+
+// Rebuilds a kept scan on the page with the panel's current Show/Sort; no scrolling.
+async function restoreScan(tabId: number, kept: ScanSnapshot, info: ProfileInfo): Promise<void> {
+  keptScanAvailable = false;
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", files: ["page-bridge.js"] });
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (function (s: ScanSnapshot, v: ViewSettings, p: { handle: string; followers: number | null }) {
+        window.__outliers_scan_limit = s.scanLimit;
+        window.__outliers_view = v;
+        window.__outliers_profile = p;
+        window.__outliers_restore = s;
+      }) as unknown as () => void,
+      args: [kept, currentView(), { handle: info.handle, followers: info.followers ?? kept.followers }],
+    });
+    await chrome.scripting.executeScript({ target: { tabId }, files: ["injected.js"] });
+    statusEl.textContent = "Brought back your scan from " + new Date(kept.savedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + ". Reset to scan again.";
+    statusEl.className = "status-msg";
+  } catch {
+    // The page moved on; the poll reads it again.
+    profileReady = false;
+  }
+}
+
 // Drops the page's scan (its reset reloads the page) so it can't be restored onto another profile.
 // A scan whose profile the page shows again (or a video viewer over it) is kept: the tab may be
 // back on that profile by the time this runs. With `onlyIf`, the reset goes to the document
@@ -2715,17 +2789,18 @@ async function retireScanInPage(
   onlyIf?: { documentId: string | undefined; staleHandle: string }
 ): Promise<void> {
   try {
-    await chrome.scripting.executeScript({
+    const result = await chrome.scripting.executeScript({
       target: onlyIf?.documentId ? { tabId, documentIds: [onlyIf.documentId] } : { tabId },
       args: [onlyIf ? onlyIf.staleHandle : null],
       func: (function (staleHandle: string | null) {
         const w = window as unknown as {
           __outliers_reset?: () => void;
+          __outliers_snapshot?: () => unknown;
           __outliers_state?: { profileHandle?: string | null };
           __outliers_active?: boolean;
         };
         const scanned = String(w.__outliers_state?.profileHandle ?? "").toLowerCase();
-        if (staleHandle !== null && scanned !== staleHandle.toLowerCase()) return;
+        if (staleHandle !== null && scanned !== staleHandle.toLowerCase()) return null;
         if (scanned) {
           let first = window.location.pathname.split("/")[1] ?? "";
           try {
@@ -2734,13 +2809,22 @@ async function retireScanInPage(
             // Keep the raw segment
           }
           first = first.toLowerCase();
-          if (/^(reel|reels|p|tv)$/.test(first) || first.replace(/^@/, "") === scanned) return;
+          if (/^(reel|reels|p|tv)$/.test(first) || first.replace(/^@/, "") === scanned) return null;
+        }
+        // Hand the finished scan back first, so returning to its profile can bring it back.
+        let kept: unknown = null;
+        try {
+          kept = typeof w.__outliers_snapshot === "function" ? w.__outliers_snapshot() : null;
+        } catch {
+          kept = null;
         }
         if (typeof w.__outliers_reset === "function") w.__outliers_reset();
         w.__outliers_state = undefined;
         w.__outliers_active = false;
-      }) as unknown as () => void,
+        return kept;
+      }) as unknown as () => unknown,
     });
+    await keepScanSnapshot(tabId, (result?.[0]?.result as ScanSnapshot | null | undefined) ?? null);
   } catch {
     // Non-fatal: the document is gone, so there is nothing left to retire.
   }
@@ -3203,6 +3287,9 @@ resetBtn.addEventListener("click", async function () {
 
   try {
     if (tabId != null) {
+      // Reset means start over: the kept copy of this scan goes too.
+      const ref = lastKnownProfileRef;
+      if (ref) await forgetScanSnapshot(tabId, ref);
       await chrome.scripting.executeScript({
         target: { tabId },
         func: function () {
