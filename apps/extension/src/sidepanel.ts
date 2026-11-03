@@ -2522,6 +2522,7 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
   }
 
   let info: ProfileInfo | null = null;
+  let infoDocumentId: string | undefined;
   try {
     // The MAIN world sees the page's own data, so the count is exact in any language.
     const result = await chrome.scripting.executeScript({
@@ -2530,6 +2531,7 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
       func: readProfileInfo,
     });
     info = (result?.[0]?.result as ProfileInfo | null | undefined) ?? null;
+    infoDocumentId = result?.[0]?.documentId;
   } catch {
     info = null;
   }
@@ -2551,7 +2553,7 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
     if (kept && info.onScanTab) {
       profileReady = true;
       profileWaitStartedAt = null;
-      await restoreScan(tabId, kept, info);
+      await restoreScan(tabId, kept, info, infoDocumentId);
       return;
     }
     keptScanAvailable = kept !== null;
@@ -2759,26 +2761,48 @@ async function forgetScanSnapshot(tabId: number, ref: ProfileRef): Promise<void>
 }
 
 // Rebuilds a kept scan on the page with the panel's current Show/Sort; no scrolling.
-async function restoreScan(tabId: number, kept: ScanSnapshot, info: ProfileInfo): Promise<void> {
+async function restoreScan(
+  tabId: number,
+  kept: ScanSnapshot,
+  info: ProfileInfo,
+  documentId: string | undefined
+): Promise<void> {
   keptScanAvailable = false;
+  // Owned like a Run startup: Run stays off meanwhile, Show/Sort edits land in startup.view, and
+  // every injection goes to the document whose profile was just read.
+  const generation = bindGeneration;
+  const epoch = documentEpoch;
+  const startup: ScanStartup = { tabId, view: currentView() };
+  startingScans.set(tabId, startup);
+  updateRunAvailability();
+  const moved = function (): boolean {
+    return !isStillBound(tabId, generation) || epoch !== documentEpoch;
+  };
+  const target = documentId ? { tabId, documentIds: [documentId] } : { tabId };
   try {
-    await chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", files: ["page-bridge.js"] });
+    await chrome.scripting.executeScript({ target, world: "MAIN", files: ["page-bridge.js"] });
+    if (moved()) return;
     await chrome.scripting.executeScript({
-      target: { tabId },
+      target,
       func: (function (s: ScanSnapshot, v: ViewSettings, p: { handle: string; followers: number | null }) {
         window.__outliers_scan_limit = s.scanLimit;
         window.__outliers_view = v;
         window.__outliers_profile = p;
         window.__outliers_restore = s;
       }) as unknown as () => void,
-      args: [kept, currentView(), { handle: info.handle, followers: info.followers ?? kept.followers }],
+      args: [kept, startup.view, { handle: info.handle, followers: info.followers ?? kept.followers }],
     });
-    await chrome.scripting.executeScript({ target: { tabId }, files: ["injected.js"] });
+    if (moved()) return;
+    await chrome.scripting.executeScript({ target, files: ["injected.js"] });
+    if (moved()) return;
     statusEl.textContent = "Brought back your scan from " + new Date(kept.savedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + ". Reset to scan again.";
     statusEl.className = "status-msg";
   } catch {
-    // The page moved on; the poll reads it again.
-    profileReady = false;
+    // The page moved on (Chrome refuses a document that's gone); the poll reads it again.
+    if (!moved()) profileReady = false;
+  } finally {
+    if (startingScans.get(tabId) === startup) startingScans.delete(tabId);
+    if (isStillBound(tabId, generation)) updateRunAvailability();
   }
 }
 

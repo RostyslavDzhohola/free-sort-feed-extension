@@ -91,5 +91,7 @@ export interface ScanSnapshot {
 export type OutliersMessage =
   | { type: "outliers:state"; state: OutliersState }
   | { type: "outliers:reset" }
+  /** A scan just finished: the background keeps it for this tab (see ScanSnapshot). */
+  | { type: "outliers:keep-scan"; snapshot: ScanSnapshot }
   /** The viewer bar's Save: the panel owns the Library and answers { ok }. */
   | { type: "outliers:save"; entry: OutliersEntry; save: boolean };

@@ -1258,6 +1258,7 @@ function init(): void {
     hideInteractionLock();
     runCtx.isDone = true;
     updateState(state);
+    keepFinishedScan();
   }
 
   function finalizeFromCurrentMap(myGen: number): void {
@@ -1280,6 +1281,7 @@ function init(): void {
 
   function autoScrollAndRun(): void {
     _runGeneration++;
+    _scannedAt = Date.now();
     const myGen = _runGeneration;
 
     resetRunContext();
@@ -1373,6 +1375,9 @@ function init(): void {
 
   window.__outliers_apply_view = applyView;
 
+  // When the scan was made; a restored scan keeps its original time.
+  let _scannedAt = Date.now();
+
   function snapshot(): ScanSnapshot | null {
     if (!runCtx.isDone || !PROFILE_HANDLE || runCtx.videoMap.size === 0) return null;
     return {
@@ -1381,8 +1386,22 @@ function init(): void {
       followers: currentFollowers(),
       scanLimit: SCAN_LIMIT,
       videos: Array.from(runCtx.videoMap.values()),
-      savedAt: Date.now(),
+      savedAt: _scannedAt,
     };
+  }
+
+  // Kept as soon as the scan finishes, so a reload or full navigation can't lose it even with
+  // the panel closed. The background stores it for this tab.
+  function keepFinishedScan(): void {
+    const kept = snapshot();
+    if (!kept) return;
+    try {
+      chrome.runtime.sendMessage({ type: "outliers:keep-scan", snapshot: kept }).catch(function () {
+        // Non-fatal: the panel still keeps it when the tab leaves the profile.
+      });
+    } catch {
+      // Cut off from the extension (it was reloaded); nothing to keep it in.
+    }
   }
 
   window.__outliers_snapshot = snapshot;
@@ -1391,6 +1410,7 @@ function init(): void {
   function restore(saved: ScanSnapshot): void {
     _runGeneration++;
     resetRunContext();
+    _scannedAt = typeof saved.savedAt === "number" ? saved.savedAt : Date.now();
     for (const video of saved.videos) {
       if (video?.id) runCtx.videoMap.set(video.id, video);
     }
