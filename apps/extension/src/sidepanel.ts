@@ -172,6 +172,9 @@ let reviewPromptDevMode: ReviewPromptDevMode = "auto";
 let storyCardGenerationInFlight = false;
 
 const savedByUrl = new Map<string, SavedReel>();
+// Until the first restore after the panel opens, a scan found on the page takes the panel's
+// opening Show/Sort (DEFAULT_VIEW) instead of handing its own back to the controls.
+let openingViewPending = true;
 
 // ── Storage keys ──────────────────────────────────────────────────────────
 const SCAN_LIMIT_KEY = "outliers_scan_limit";
@@ -2437,6 +2440,9 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
       },
     });
     if (isStale()) return;
+    // The first page read after opening decides: a scan found now takes the opening view.
+    const opening = openingViewPending;
+    openingViewPending = false;
     const payload = stateResult?.[0]?.result as { state: OutliersState | null; url: string } | undefined;
     url = payload?.url ?? null;
     adoptProfileFromUrl(url);
@@ -2461,7 +2467,7 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
       profileReady = true;
       profileWaitStartedAt = null;
       const editing = startedDuringStartup || isScanStarting(tabId);
-      const keepControls = editing
+      const keepControls = editing || opening
         || activityAtStart !== viewActivityOf(tabId, generation) || hasViewWrites(tabId, generation);
       renderState(rawState, !keepControls);
       // An edit made before the scan was restored queued no write; send it now that it's known.
@@ -3396,8 +3402,8 @@ async function init(): Promise<void> {
   closeShareModal();
   switchPanelView("outliers");
   syncScanLimitUI(loadScanLimit());
-  // Every open starts on 5× Outliers, Views, highest first. A scan still on the page
-  // brings its own Show and Sort when the panel restores it.
+  // Every open starts on 5× Outliers, Views, highest first, and a scan still on the page is
+  // refiltered to match (see openingViewPending). Picks made while the panel is open stick.
   forgetSavedView();
   syncFilterModeUI(DEFAULT_VIEW.filterMode);
   syncMinViewsUI(loadMinViews());
