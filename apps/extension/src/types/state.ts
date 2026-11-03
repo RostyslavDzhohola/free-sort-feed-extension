@@ -78,4 +78,6 @@ export interface OutliersState {
 /** Messages sent from injected script → side panel via chrome.runtime.sendMessage. */
 export type OutliersMessage =
   | { type: "outliers:state"; state: OutliersState }
-  | { type: "outliers:reset" };
+  | { type: "outliers:reset" }
+  /** The viewer bar's Save: the panel owns the Library and answers { ok }. */
+  | { type: "outliers:save"; entry: OutliersEntry; save: boolean };

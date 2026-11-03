@@ -1,4 +1,5 @@
 import { startHotReload } from "./hot-reload";
+import { SAVED_REELS_KEY } from "./shared/storage-keys";
 import { buildOutliersCsv, buildSavedCsv } from "./shared/export-csv";
 import { buildEmptyStateCopy } from "./shared/empty-state-copy";
 import { readProfileInfo, type ProfileInfo } from "./shared/read-profile";
@@ -181,7 +182,6 @@ const SCAN_LIMIT_KEY = "outliers_scan_limit";
 const MIN_VIEWS_KEY = "outliers_min_views";
 // Show and Sort used to be remembered here; every panel now opens on DEFAULT_VIEW.
 const RETIRED_VIEW_KEYS = ["outliers_filter_mode", "outliers_sort_key", "outliers_sort_dir"];
-const SAVED_REELS_KEY = "outliers_saved_reels";
 const REVIEW_PROMPT_STATE_KEY = "outliers_review_prompt_state";
 // Persisted in localStorage so you can flip modal testing modes quickly.
 const REVIEW_PROMPT_DEV_MODE_KEY = "outliers_review_prompt_dev_mode";
@@ -1045,7 +1045,7 @@ function metricChip(className: string, text: string, title: string, icon?: strin
   return chip;
 }
 
-/** Every number we have for a video, with the one it's sorted by highlighted. */
+/** Every number we have for a video except the one it's sorted by: the headline above shows that. */
 function buildMetricChips(entry: OutliersEntry, followers: number | null, activeKey: SortKey): HTMLElement {
   const wrap = document.createElement("div");
   wrap.className = "metric-chips";
@@ -1055,17 +1055,17 @@ function buildMetricChips(entry: OutliersEntry, followers: number | null, active
     : ["views", "likes", "comments"];
   for (let i = 0; i < counts.length; i++) {
     const key = counts[i]!;
+    if (key === activeKey) continue;
     const value = metricValue(entry, key, followers);
     const exact = value === null
       ? (key === "likes" && entry.likesHidden ? "Likes hidden by the creator" : "Not shown for this video")
       : formatExact(value) + " " + key;
-    wrap.appendChild(metricChip(key === activeKey ? "active" : "", value === null ? "—" : formatCount(value), exact, METRIC_ICONS[key]));
+    wrap.appendChild(metricChip("", value === null ? "—" : formatCount(value), exact, METRIC_ICONS[key]));
   }
   const multiple = viewsMultiple(entry, followers);
-  if (multiple !== null) {
-    wrap.appendChild(metricChip("multiple" + (activeKey === "multiple" ? " active" : ""), formatMultiple(multiple), "Views ÷ followers"));
+  if (multiple !== null && activeKey !== "multiple") {
+    wrap.appendChild(metricChip("multiple", formatMultiple(multiple), "Views ÷ followers"));
   }
-  // The post date helps with every sort; the headline above already shows the sorted metric.
   const postedAt = metricValue(entry, "date", followers);
   if (postedAt !== null && activeKey !== "date") {
     wrap.appendChild(metricChip("", formatMetricPhrase("date", postedAt), sortLabel("date")));
@@ -2634,9 +2634,20 @@ function updateRunAvailability(): void {
 chrome.runtime.onMessage.addListener(function (
   msg: OutliersMessage,
   sender: chrome.runtime.MessageSender,
-  _sendResponse: (response?: unknown) => void
-): undefined {
+  sendResponse: (response?: unknown) => void
+): true | undefined {
   if (cachedTabId != null && sender.tab?.id !== cachedTabId) return;
+
+  if (msg.type === "outliers:save") {
+    // Save or remove from the viewer bar over Instagram's or TikTok's own viewer.
+    if (!msg.entry?.url) return;
+    (msg.save ? saveReelFromResult(msg.entry) : unsaveReel(msg.entry.url)).then(function () {
+      sendResponse({ ok: true });
+    }).catch(function () {
+      sendResponse({ ok: false });
+    });
+    return true;
+  }
 
   if (msg.type === "outliers:state") {
     statePushes++;
