@@ -37,6 +37,8 @@
 .sp-zone.active { outline-color: var(--orange-bright); background: rgba(229, 111, 18, 0.07); }
 .sp-zone-inline { display: inline-flex; gap: 6px; margin: 0; padding: 2px 18px 2px 2px; }
 .sp-zone > .pin { position: absolute; top: -9px; right: -9px; z-index: 2; }
+/* Pin 5 sits just past the Copy button, without widening the header. */
+.sp-zone-inline > .pin { right: -15px; }
 /* Values on the right of a zone stay clear of its pin. */
 .sp-zone > .sp-ctl { padding-right: 16px; }
 
@@ -86,7 +88,9 @@
 .sp-results-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 0 6px; border-bottom: 1px solid var(--sp-line); margin-bottom: 4px; font-size: 14px; font-weight: 700; }
 .sp-results-head small { font-weight: 400; color: var(--sp-muted); font-size: 12px; }
 .sp-tool { padding: 3px 8px; border-radius: 8px; background: #fff; border: 1px solid #b991e6; font-size: 11.5px; font-weight: 700; color: var(--sp-text); cursor: pointer; box-shadow: 0 2px 0 rgba(112, 8, 160, 0.2); }
-.sp-list { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
+/* The list takes its full height as soon as it shows, so the card doesn't grow row by row while scanning. */
+.sp-list { list-style: none; margin: 0; padding: 0; height: 260px; overflow-y: auto; }
+.sp-list:empty { height: auto; }
 .sp-list li {
   display: grid; grid-template-columns: auto 34px minmax(0, 1fr); grid-template-areas: "r t i" "r t a";
   column-gap: 8px; row-gap: 4px; align-items: start; padding: 8px 0; border-bottom: 1px solid var(--sp-line); font-size: 13px;

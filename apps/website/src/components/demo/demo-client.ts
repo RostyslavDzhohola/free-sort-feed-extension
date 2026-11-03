@@ -225,7 +225,8 @@ function mount(root: HTMLElement): void {
           })
         )
         .join("");
-      page.gridMeta.textContent = gridMeta(state, profile.followers);
+      // A no-break space keeps the sort arrow with its label when the line wraps.
+      page.gridMeta.textContent = gridMeta(state, profile.followers).replace(/ ([↑↓])$/, "\u00a0$1");
       page.gridEmpty.hidden = outliers.length > 0;
       if (outliers.length === 0) {
         const copy = emptyState(state, profile.followers);

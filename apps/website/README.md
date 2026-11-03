@@ -119,7 +119,7 @@ Every initial state is rendered on the server, so the page reads correctly witho
 
 A website can't scan Instagram for a visitor. Cross-origin reads are blocked, there's a login wall and Instagram's terms forbid it, and scanning would need a server, which would break "nothing leaves your browser". So chapter I replays snapshots of real Reels tabs, each verified against a real extension CSV export (`extension-5x.csv`). A snapshot and its export may come from different sessions; `comparison.json` records which. `lib/demo-engine.ts` mirrors the 1.1 panel (v1.1.1):
 - the scan stops at exactly the scan limit (the replay collects 12 Reels a step, about a screen of the grid), and Stop finalizes what's been collected;
-- Show (5× Outliers, Min Views, All) and Sort by re-rank the collected Reels at once, during and after a scan, in the panel and in the page grid;
+- Show (5× Outliers, Min Views, All) and Sort by re-rank the collected Reels in the panel at once, during and after a scan; the page grid appears when the scan ends and follows them from then on;
 - the scan limit locks while scanning, and a new one applies to the next scan, after Reset → Run;
 - progress, results, empty-state, page-grid header and Copy text match the extension word for word.
 
