@@ -115,7 +115,7 @@ test("home page copy follows the spec", () => {
   assert.ok(home.includes('<span class="mark">at least 5× more views than followers</span>'), "marked phrase");
   assert.equal(home.match(/<details>/g)?.length, RELEASE_1_1 ? 9 : 8, "FAQ items (1.1 adds TikTok)");
   assert.ok(home.includes("Is it really free? Which browsers?"), "the FAQ opens with free");
-  assert.ok(home.includes("I set a small scan limit, but it scanned more."), "scan-limit FAQ");
+  assert.ok(home.includes(RELEASE_1_1 ? "It scanned fewer Reels than my scan limit." : "I set a small scan limit, but it scanned more."), "scan-limit FAQ (1.1 stops at exactly the limit)");
   assert.ok(/real snapshot of @[\w.]+, captured|sample data from a fictional profile/.test(home), "hero compare names its data source");
   assert.ok(
     /Replay of a real snapshot captured .+, checked against the extension&#39;s own export\. Live numbers on Instagram will differ\.|Sample data from a fictional profile, @sample\.studio\./.test(home),
@@ -150,9 +150,13 @@ test("revision 2: it reads as completely free, without promising forever", () =>
 
 test("revision 2: demo replays snapshots through the panel hooks", () => {
   const home = html["/"];
-  for (const hook of ["data-panel-run", "data-panel-stop", "data-panel-reset", "data-panel-limit", "data-panel-mode", "data-panel-list", "data-panel-csv", "data-panel-copy"]) {
+  for (const hook of ["data-panel-run", "data-panel-stop", "data-panel-reset", "data-panel-limit", "data-panel-mode", "data-panel-sort-key", "data-panel-sort-dir", "data-panel-list", "data-panel-csv", "data-panel-copy"]) {
     assert.ok(home.includes(hook), hook);
   }
+  // The replica is the 1.1 panel (v1.1.1) whatever RELEASE_1_1 says, so this site ships only once 1.1 is live.
+  for (const mode of ["ratio5x", "minViews", "all"]) assert.ok(home.includes(`data-panel-mode="${mode}"`), `Show: ${mode}`);
+  const sortOptions = [...home.match(/<select[^>]*data-panel-sort-key[^>]*>([\s\S]*?)<\/select>/)[1].matchAll(/<option value="([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(sortOptions, ["views", "multiple"], "the replica sorts only by what a snapshot holds");
   for (const zone of [1, 2, 3, 4, 5]) assert.ok(home.includes(`data-zone="${zone}"`) && home.includes(`id="demo-hint-${zone}"`), `hint ${zone}`);
   const json = home.match(/<script type="application\/json" data-demo-data>([\s\S]*?)<\/script>/)[1];
   const { profiles } = JSON.parse(json);

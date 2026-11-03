@@ -1,7 +1,5 @@
-// Slider curves, ported from apps/extension/src/sidepanel.ts (v1.0.7).
+// Slider curves, ported from apps/extension/src/sidepanel.ts (unchanged from v1.0.7 through v1.1.1).
 // test/sliders.test.mjs checks every slider position against a fixture extracted from that file.
-
-import { formatExact } from "./count";
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -112,10 +110,6 @@ export function sliderPositionToScanLimit(position: number): number | null {
   return roundScanLimitValue(rawLimit);
 }
 
-/** "100 reels" / "All reels", as the side panel labels the scan limit. */
-export function formatScanLimit(limit: number | null): string {
-  return limit === null ? "All reels" : formatExact(limit) + " reels";
-}
 
 // ── Min Views: log scale 1K–1M, snapping near 1K / 10K / 100K / 1M ────────
 

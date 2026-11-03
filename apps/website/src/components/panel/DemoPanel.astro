@@ -1,6 +1,6 @@
 ---
-// The v1.0.7 side panel (unchanged in v1.0.8), as an interactive replica for the demo. Markup and initial state only:
-// components/demo/demo-client.ts drives it through the hooks listed in ./types.ts.
+// The 1.1 side panel (v1.1.1, the store version), as an interactive replica for the demo. Markup and initial
+// state only: components/demo/demo-client.ts drives it through the hooks listed in ./types.ts.
 import { MIN_VIEWS_SLIDER_MAX, SCAN_SLIDER_MAX } from "@outliers/core";
 import icon128 from "../../assets/icon-128.png";
 import Pin from "./Pin.astro";
@@ -15,20 +15,25 @@ const { initial } = Astro.props;
 const limitFill = ((initial.scanLimit.position / SCAN_SLIDER_MAX) * 100).toFixed(2) + "%";
 const minFill = ((initial.minViews.position / MIN_VIEWS_SLIDER_MAX) * 100).toFixed(2) + "%";
 const modes = [
-  { value: "ratio5x", label: "5× Outliers" },
-  { value: "minViews", label: "Min Views" },
+  { value: "ratio5x", label: "5× Outliers", title: "Videos with 5× more views than the profile has followers" },
+  { value: "minViews", label: "Min Views", title: "Videos over a view count you choose" },
+  { value: "all", label: "All", title: "Every scanned video, sorted" },
 ];
 ---
 
 <div class="sp" data-panel>
   <div class="sp-head">
-    <div><b>Outliers</b><small>Find viral outlier Reels</small></div>
+    <div><b>Outliers</b><small>Find outlier videos on Instagram &amp; TikTok</small></div>
     <img src={icon128.src} alt="" width="40" height="40" />
   </div>
   <div class="sp-switch" aria-hidden="true"><span class="on">Outliers</span><span>Library</span></div>
 
   <div class="sp-zone" data-zone="1">
-    <div class="sp-stats"><span>Active threshold</span><b data-panel-threshold>{initial.thresholdLabel}</b></div>
+    <dl class="sp-stats">
+      <div><dt>Instagram</dt><dd class="sp-handle" data-panel-handle>{initial.handle}</dd></div>
+      <div><dt>Followers</dt><dd class="sp-followers" data-panel-followers>{initial.followers}</dd></div>
+      <div><dt data-panel-threshold-title>{initial.thresholdTitle}</dt><dd data-panel-threshold>{initial.thresholdLabel}</dd></div>
+    </dl>
     <Pin n={1} label={PANEL_ZONES[1]} />
   </div>
 
@@ -49,18 +54,19 @@ const modes = [
       data-panel-limit
     />
     <div class="sp-marks" aria-hidden="true"><span>1</span><span>100</span><span>150</span><span>200</span><span>500</span><span>All</span></div>
-    <p class="sp-limit-note" data-panel-limit-note>{initial.scanLimit.note}</p>
+    <p class="sp-note" data-panel-limit-note>{initial.scanLimit.note}</p>
     <Pin n={2} label={PANEL_ZONES[2]} />
   </div>
 
   <div class="sp-zone" data-zone="3">
-    <div class="sp-ctl"><span id="demo-mode-label">Filter mode</span></div>
+    <div class="sp-ctl"><span id="demo-mode-label">Show</span></div>
     <div class="sp-modes" role="radiogroup" aria-labelledby="demo-mode-label">
       {
         modes.map((m) => (
           <button
             type="button"
             role="radio"
+            title={m.title}
             class:list={{ on: m.value === initial.mode }}
             aria-checked={m.value === initial.mode ? "true" : "false"}
             tabindex={m.value === initial.mode ? 0 : -1}
@@ -89,6 +95,14 @@ const modes = [
       />
       <div class="sp-marks" aria-hidden="true"><span>1K</span><span>10K</span><span>100K</span><span>1M</span></div>
     </div>
+    <div class="sp-ctl sp-sort-head"><label for="demo-sort-key">Sort by</label></div>
+    <div class="sp-sort">
+      <select id="demo-sort-key" class="sp-select" data-panel-sort-key>
+        {initial.sort.options.map((o) => <option value={o.key} selected={o.key === initial.sort.key}>{o.label}</option>)}
+      </select>
+      <button class="sp-dir" type="button" aria-label={initial.sort.dirAria} data-panel-sort-dir>{initial.sort.dirLabel}</button>
+    </div>
+    <p class="sp-note">{initial.sort.note}</p>
     <Pin n={3} label={PANEL_ZONES[3]} />
   </div>
 
@@ -106,10 +120,10 @@ const modes = [
 
   <div class="sp-results" data-panel-results hidden>
     <div class="sp-results-head">
-      <span>Outliers <small data-panel-meta></small></span>
+      <span><span data-panel-results-title>Outliers</span> <small data-panel-meta></small></span>
       <span class="sp-zone sp-zone-inline" data-zone="5">
         <button class="sp-tool" type="button" data-panel-csv aria-label="Download CSV">CSV</button>
-        <button class="sp-tool" type="button" data-panel-copy aria-label="Copy outliers as text">Copy</button>
+        <button class="sp-tool" type="button" data-panel-copy aria-label="Copy the list as text">Copy</button>
         <Pin n={5} label={PANEL_ZONES[5]} />
       </span>
     </div>

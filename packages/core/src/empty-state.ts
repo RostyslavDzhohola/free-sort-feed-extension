@@ -1,14 +1,17 @@
-// "No Reels qualified" copy, copied verbatim from apps/extension/src/shared/empty-state-copy.ts.
-// test/parity.test.mjs fails if the two drift apart.
+// "No videos qualified" copy, copied verbatim from apps/extension/src/shared/empty-state-copy.ts (v1.1.1)
+// apart from the import path. test/parity.test.mjs fails if the two drift apart.
 
-import type { FilterMode } from "./filter";
+import type { FilterMode, Platform } from "./types";
 
 interface EmptyStateCopyInput {
+  platform?: Platform | null;
   filterMode: FilterMode;
   followers: number | null;
   threshold: number | null;
   minViews: number | null;
   scanLimit: number | null;
+  /** How many videos the scan collected; the limit alone overstates a short profile. */
+  scannedCount?: number | null;
 }
 
 export interface EmptyStateCopy {
@@ -21,35 +24,52 @@ function formatExact(n: number): string {
   return n.toLocaleString("en-US");
 }
 
-function getScanLimitHint(scanLimit: number | null): string {
+function nouns(platform: Platform | null | undefined): { plural: string; singular: string } {
+  return platform === "tiktok"
+    ? { plural: "videos", singular: "video" }
+    : { plural: "Reels", singular: "Reel" };
+}
+
+function getScanLimitHint(input: EmptyStateCopyInput, plural: string): string {
+  const { scanLimit, scannedCount } = input;
   if (scanLimit == null) return "";
-  return " Scanned: first " + formatExact(scanLimit) + " reels only.";
+  if (scannedCount != null && scannedCount < scanLimit) return "";
+  return " Scanned the first " + formatExact(scanLimit) + " " + plural + " only.";
 }
 
 export function buildEmptyStateCopy(input: EmptyStateCopyInput): EmptyStateCopy {
-  const { filterMode, followers, threshold, minViews, scanLimit } = input;
-  const scanLimitHint = getScanLimitHint(scanLimit);
+  const { filterMode, followers, threshold, minViews } = input;
+  const { plural, singular } = nouns(input.platform);
+  const scanLimitHint = getScanLimitHint(input, plural);
+
+  if (filterMode === "all") {
+    return {
+      title: "No " + plural + " found.",
+      detail: "Outliers couldn’t read any " + plural + " on this page. Scroll the profile so its grid loads, then run the scan again.",
+      status: "",
+    };
+  }
 
   if (filterMode === "minViews") {
     const activeMinViews = minViews ?? threshold ?? 10_000;
     return {
-      title: "No Reels hit your minimum views filter.",
-      detail: "Current minimum: " + formatExact(activeMinViews) + " views. Lower Min Views or raise the scan limit to see more." + scanLimitHint,
+      title: "No " + plural + " hit your minimum views filter.",
+      detail: "Current minimum: " + formatExact(activeMinViews) + " views. Lower Min Views, or pick All to see every " + singular + " sorted." + scanLimitHint,
       status: "",
     };
   }
 
   if (followers && threshold) {
     return {
-      title: "No Reels hit the 5× filter.",
-      detail: "This profile has " + formatExact(followers) + " followers, so a Reel needs " + formatExact(threshold) + "+ views. Switch to Min Views or raise the scan limit to see more." + scanLimitHint,
+      title: "No " + plural + " hit the 5× filter.",
+      detail: "This profile has " + formatExact(followers) + " followers, so a " + singular + " needs " + formatExact(threshold) + "+ views. Switch to Min Views or All to see more." + scanLimitHint,
       status: "",
     };
   }
 
   return {
-    title: "No Reels hit the 5× filter.",
-    detail: "5× mode compares Reel views to follower count. Switch to Min Views or raise the scan limit to see more." + scanLimitHint,
+    title: "The 5× filter needs a follower count.",
+    detail: "Outliers couldn’t read this profile’s followers. Switch to Min Views or All to see its " + plural + "." + scanLimitHint,
     status: "",
   };
 }

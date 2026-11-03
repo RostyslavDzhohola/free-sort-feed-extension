@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-export const STORE_RELEASE = "v1.0.8";
+export const STORE_RELEASE = "v1.1.1";
 
 const repoRoot = new URL("../../../", import.meta.url);
 
@@ -20,7 +20,7 @@ export function extractStoreRelease(tag = STORE_RELEASE) {
     // Shallow and single-branch clones skip older tags.
     throw new Error(`Tag ${tag} isn't in this clone. Fetch it with: git fetch --depth=1 origin tag ${tag}`);
   }
-  // Releases up to 1.1.0 kept the extension at the repo root; later ones live in apps/extension/.
+  // Releases up to 1.1.1 keep the extension at the repo root (src/); later ones live in apps/extension/.
   const src = git("ls-tree", "--name-only", tag, "apps/extension/src").trim() ? "apps/extension/src" : "src";
   const dir = mkdtempSync(join(tmpdir(), "outliers-" + tag + "-"));
   process.on("exit", () => rmSync(dir, { recursive: true, force: true }));

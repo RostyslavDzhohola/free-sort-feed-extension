@@ -4,20 +4,19 @@
 // captured once through the extension, ranked by @outliers/core with the extension's exact rule.
 import {
   DEFAULT_MIN_VIEWS,
-  MULTIPLIER,
+  OUTLIER_MULTIPLIER,
   formatCount,
   formatExact,
   formatScanLimit,
   minViewsToSliderPosition,
   scanLimitToSliderPosition,
-  thresholdFor,
-  thresholdLabel,
+  sortLabel,
 } from "@outliers/core";
 import Chapter from "../Chapter.astro";
 import { DemoPanel, panelHints, type PanelInitialState } from "../panel";
 import { icons } from "../icons";
 import { demoProfiles } from "../../data/demo/profiles";
-import { DEFAULT_SETTINGS } from "../../lib/demo-engine";
+import { DEFAULT_SETTINGS, SNAPSHOT_SORT_KEYS, activeThreshold, sortDirLabel } from "../../lib/demo-engine";
 import { avatarHtml, limitNote, tileHtml } from "../../lib/demo-render";
 import { creditFor, honestyLabel, type CopyProfile } from "../../lib/demo-copy";
 import "../../styles/tiles.css";
@@ -29,8 +28,13 @@ const first = profiles[0]!;
 const single = profiles.length === 1;
 const hasReal = profiles.some((p) => p.kind === "real");
 
+const bar = activeThreshold(DEFAULT_SETTINGS, first.snapshot.followers);
+const dir = sortDirLabel(DEFAULT_SETTINGS.sortDir);
 const initial: PanelInitialState = {
-  thresholdLabel: thresholdLabel(thresholdFor(DEFAULT_SETTINGS.mode, first.snapshot.followers, DEFAULT_SETTINGS.minViews)),
+  handle: "@" + first.snapshot.handle,
+  followers: formatExact(first.snapshot.followers),
+  thresholdTitle: bar.title,
+  thresholdLabel: bar.label,
   mode: DEFAULT_SETTINGS.mode,
   scanLimit: {
     position: scanLimitToSliderPosition(DEFAULT_SETTINGS.scanLimit),
@@ -38,6 +42,14 @@ const initial: PanelInitialState = {
     note: limitNote(first.kind, first.snapshot.reels.length),
   },
   minViews: { position: minViewsToSliderPosition(DEFAULT_MIN_VIEWS), label: formatExact(DEFAULT_MIN_VIEWS) + " views" },
+  sort: {
+    key: DEFAULT_SETTINGS.sortKey,
+    dir: DEFAULT_SETTINGS.sortDir,
+    dirLabel: dir.text,
+    dirAria: dir.aria,
+    options: SNAPSHOT_SORT_KEYS.map((key) => ({ key, label: sortLabel(key) })),
+    note: "This snapshot holds views. The extension also sorts by likes, comments and engagement rate.",
+  },
 };
 
 const gridHtml = first.snapshot.reels.map((reel, i) => tileHtml(reel, i, first.assetBase)).join("");
@@ -69,7 +81,7 @@ const payload = {
 const payloadJson = JSON.stringify(payload).replace(/</g, "\\u003c");
 
 const meta = (p: (typeof profiles)[number]) =>
-  `${p.snapshot.followersText} followers · 5× bar ${formatCount(p.snapshot.followers * MULTIPLIER)} · ` +
+  `${p.snapshot.followersText} followers · 5× bar ${formatCount(p.snapshot.followers * OUTLIER_MULTIPLIER)} · ` +
   (p.kind === "sample" ? "sample data" : `Snapshot · ${p.capturedLabel}`);
 const firstCredit = creditFor(copyOf(first));
 ---
@@ -141,8 +153,15 @@ const firstCredit = creditFor(copyOf(first));
             </a>
             <div class="ig-tabs" aria-hidden="true"><span>Posts</span><span class="on">Reels</span><span>Tagged</span></div>
             <div class="demo-viewport" tabindex="0" role="region" aria-label="Instagram Reels grid, scrollable" data-demo-viewport>
+              <div class="demo-grid-head" data-demo-grid-head hidden>
+                <b>Outliers · @<span data-demo-grid-handle>{first.snapshot.handle}</span></b>
+                <small data-demo-grid-meta></small>
+              </div>
               <div class="demo-grid" role="img" aria-label="Instagram Reels grid" data-demo-grid set:html={gridHtml} />
-              <p class="demo-grid-empty" data-demo-grid-empty hidden>No Reels cleared the bar on this scan.</p>
+              <div class="demo-grid-empty" data-demo-grid-empty hidden>
+                <strong data-demo-grid-empty-title></strong>
+                <p data-demo-grid-empty-detail></p>
+              </div>
             </div>
             <div class="demo-lock" data-demo-lock hidden>
               <span>Outliers is scanning · page locked</span>
@@ -172,7 +191,7 @@ const firstCredit = creditFor(copyOf(first));
             rel="noopener noreferrer">@<span data-demo-credit-handle>{firstCredit?.handle ?? ""}</span><span aria-hidden="true"> ↗</span></a
           >.{" "}<span data-demo-credit-detail>{firstCredit?.detail ?? ""}</span>
         </p>
-        <p class="demo-notice" data-demo-notice hidden>New settings apply to your next scan. Press Reset, then Run.</p>
+        <p class="demo-notice" data-demo-notice hidden>A new scan limit applies to your next scan. Press Reset, then Run.</p>
         <p class="demo-follow-wrap" data-demo-follow-wrap hidden>
           <a class="link-arrow" data-demo-follow href={`https://www.instagram.com/${first.snapshot.handle}/`} target="_blank" rel="noopener noreferrer">
             Follow @<span data-demo-follow-handle>{first.snapshot.handle}</span> on Instagram <span aria-hidden="true">→</span>

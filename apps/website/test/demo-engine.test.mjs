@@ -8,23 +8,25 @@ const sample = JSON.parse(readFileSync(new URL("../src/data/demo/sample.studio/s
 const { reels, followers } = sample;
 
 const scan = (settings) => engine.finishScan(engine.startScan(engine.initialState(settings), reels, followers), reels, followers);
+const update = (state, patch) => engine.updateSettings(state, patch, reels, followers);
+const views = (state) => state.result.outliers.map((r) => r.views);
 
 test("a full 5× scan of the sample ranks 6 of 36 Reels by views", () => {
   const done = scan(engine.DEFAULT_SETTINGS);
   assert.equal(done.phase, "done");
   assert.equal(done.collected, 36);
-  assert.deepEqual(done.result.outliers.map((r) => r.views), [1_380_000, 520_000, 312_000, 214_000, 141_000, 96_300]);
-  assert.equal(engine.activeThreshold(done, followers).label, "92,000 views");
-  assert.equal(engine.resultsMeta(done.result.outliers.length, done.collected), "— 6 of 36 reels");
+  assert.deepEqual(views(done), [1_380_000, 520_000, 312_000, 214_000, 141_000, 96_300]);
+  assert.deepEqual(engine.activeThreshold(done.settings, followers), { title: "Active threshold", label: "92,000 views" });
+  assert.equal(engine.resultsTitle(done.settings.mode), "Outliers");
+  assert.equal(engine.resultsMeta(done.result.outliers.length, done.collected), "— 6 of 36 Reels");
+  assert.equal(engine.gridMeta(done, followers), "6 of 36 Reels • 92,000 views • sorted by views ↓");
 });
 
-test("Reels are collected in batches, so a tiny limit collects a whole batch", () => {
-  const one = scan({ ...engine.DEFAULT_SETTINGS, scanLimit: 1 });
-  assert.equal(one.collected, engine.BATCH_SIZE);
-  const thirteen = scan({ ...engine.DEFAULT_SETTINGS, scanLimit: 13 });
-  assert.equal(thirteen.collected, 24);
-  const all = scan({ ...engine.DEFAULT_SETTINGS, scanLimit: null });
-  assert.equal(all.collected, 36);
+test("the scan stops at exactly the scan limit, like 1.1", () => {
+  assert.equal(scan({ ...engine.DEFAULT_SETTINGS, scanLimit: 1 }).collected, 1);
+  assert.equal(scan({ ...engine.DEFAULT_SETTINGS, scanLimit: 13 }).collected, 13);
+  assert.equal(scan({ ...engine.DEFAULT_SETTINGS, scanLimit: 100 }).collected, 36, "a limit past the grid ends at its last Reel");
+  assert.equal(scan({ ...engine.DEFAULT_SETTINGS, scanLimit: null }).collected, 36);
 });
 
 test("results fill in live while scanning, and Stop finalizes what's collected", () => {
@@ -32,57 +34,76 @@ test("results fill in live while scanning, and Stop finalizes what's collected",
   assert.equal(state.phase, "scanning");
   assert.equal(state.result.outliers.length, 0);
   state = engine.collectBatch(state, reels, followers);
-  assert.equal(state.collected, 12);
+  assert.equal(state.collected, engine.BATCH_SIZE);
   assert.equal(state.phase, "scanning");
-  assert.deepEqual(state.result.outliers.map((r) => r.views), [1_380_000, 214_000]);
+  assert.deepEqual(views(state), [1_380_000, 214_000]);
   state = engine.stopScan(state);
   assert.equal(state.phase, "done");
   assert.equal(state.collected, 12);
 });
 
-test("settings changed after a scan apply only after Reset → Run", () => {
+test("Show and Sort by re-rank the scanned Reels at once, during and after a scan", () => {
   let state = scan(engine.DEFAULT_SETTINGS);
-  state = engine.updateSettings(state, { mode: "minViews", minViews: 300_000 });
-  assert.equal(state.applied.mode, "ratio5x", "results keep the bar they were made with");
-  assert.equal(state.result.outliers.length, 6);
+  state = update(state, { mode: "minViews", minViews: 300_000 });
+  assert.deepEqual(views(state), [1_380_000, 520_000, 312_000]);
+  state = update(state, { sortDir: "asc" });
+  assert.deepEqual(views(state), [312_000, 520_000, 1_380_000]);
+  state = update(state, { mode: "all" });
+  assert.equal(state.result.outliers.length, 36);
+  assert.equal(engine.resultsTitle(state.settings.mode), "Reels");
+  assert.deepEqual(engine.activeThreshold(state.settings, followers), { title: "Showing", label: "All Reels" });
+  assert.equal(engine.hasPendingChanges(state), false, "no rescan needed");
+
+  let live = engine.collectBatch(engine.startScan(engine.initialState(), reels, followers), reels, followers);
+  live = update(live, { mode: "all", sortKey: "multiple", sortDir: "asc" });
+  assert.equal(live.phase, "scanning");
+  assert.equal(live.result.outliers.length, 12);
+  assert.equal(live.result.sortKey, "multiple");
+  live = engine.collectBatch(live, reels, followers);
+  assert.equal(live.result.outliers.length, 24, "later batches keep the new view");
+});
+
+test("the scan limit locks while scanning, and after a scan waits for Reset → Run", () => {
+  const scanning = engine.startScan(engine.initialState(), reels, followers);
+  const locked = update(scanning, { scanLimit: 12 });
+  assert.equal(locked.settings.scanLimit, 100);
+  assert.equal(locked.scannedLimit, 100);
+
+  let state = scan(engine.DEFAULT_SETTINGS);
+  state = update(state, { scanLimit: 12 });
+  assert.equal(state.collected, 36, "results keep the scan they came from");
   assert.equal(engine.hasPendingChanges(state), true);
   state = engine.resetScan(state);
   assert.equal(state.phase, "idle");
   assert.equal(state.result, null);
-  assert.equal(state.applied.mode, "minViews");
   state = engine.finishScan(engine.startScan(state, reels, followers), reels, followers);
-  assert.deepEqual(state.result.outliers.map((r) => r.views), [1_380_000, 520_000, 312_000]);
+  assert.equal(state.collected, 12);
   assert.equal(engine.hasPendingChanges(state), false);
-});
 
-test("controls are locked while scanning; idle changes apply at once", () => {
-  const scanning = engine.startScan(engine.initialState(), reels, followers);
-  assert.equal(engine.updateSettings(scanning, { mode: "minViews" }), scanning);
-  const idle = engine.updateSettings(engine.initialState(), { scanLimit: 200 });
-  assert.equal(idle.applied.scanLimit, 200);
+  const idle = update(engine.initialState(), { scanLimit: 200 });
+  assert.equal(idle.scannedLimit, 200);
 });
 
 test("progress text matches the extension's wording", () => {
-  assert.equal(engine.progressText(24, 100), "Scanning… 24 / 100 reels");
-  assert.equal(engine.progressText(24, null), "Scanning… 24 reels found");
+  assert.equal(engine.progressText(24, 100), "Scanning… 24 / 100 Reels");
+  assert.equal(engine.progressText(24, null), "Scanning… 24 Reels found");
 });
 
-test("empty results use the extension's copy, naming the Reels actually collected", () => {
-  const none = scan({ mode: "minViews", minViews: 1_000_000, scanLimit: 1 });
-  assert.equal(none.result.outliers.length, 1, "1.38M clears 1M");
-  const empty = scan({ mode: "minViews", minViews: 2_000_000, scanLimit: 1 });
+test("empty results use the extension's copy, with the limit hint only when the limit was reached", () => {
+  const empty = scan({ ...engine.DEFAULT_SETTINGS, mode: "minViews", minViews: 2_000_000, scanLimit: 1 });
   const copy = engine.emptyState(empty, followers);
   assert.equal(copy.title, "No Reels hit your minimum views filter.");
-  assert.equal(copy.detail, "Current minimum: 2,000,000 views. Lower Min Views or raise the scan limit to see more. Scanned: first 12 reels only.");
-  const fullEmpty = scan({ mode: "minViews", minViews: 2_000_000, scanLimit: null });
-  assert.ok(!engine.emptyState(fullEmpty, followers).detail.includes("Scanned:"), "no limit hint when the whole grid was read");
+  assert.equal(copy.detail, "Current minimum: 2,000,000 views. Lower Min Views, or pick All to see every Reel sorted. Scanned the first 1 Reels only.");
+  const short = scan({ ...engine.DEFAULT_SETTINGS, mode: "minViews", minViews: 2_000_000, scanLimit: 100 });
+  assert.ok(!engine.emptyState(short, followers).detail.includes("Scanned"), "no hint when the grid ran out first");
+  const stopped = engine.stopScan(engine.collectBatch(engine.startScan(engine.initialState({ ...engine.DEFAULT_SETTINGS, mode: "minViews", minViews: 2_000_000 }), reels, followers), reels, followers));
+  assert.ok(!engine.emptyState(stopped, followers).detail.includes("Scanned"), "no hint after an early Stop");
 });
 
 test("the plain-text report matches the extension's Copy format", () => {
-  const done = scan(engine.DEFAULT_SETTINGS);
-  const text = engine.plainTextReport("sample.studio", "92,000 views", done.result.outliers.slice(0, 2));
+  const done = scan({ ...engine.DEFAULT_SETTINGS, scanLimit: 12 });
   assert.equal(
-    text,
-    "Outliers report for @sample.studio (92,000 views)\n\n#1 | 1.4M views | 75.0x\nhttps://www.instagram.com/sample.studio/reel/DEMO0009/\n\n#2 | 520K views | 28.3x\nhttps://www.instagram.com/sample.studio/reel/DEMO0035/"
+    engine.plainTextReport(done, "sample.studio", followers),
+    "Outliers report for @sample.studio on Instagram (92,000 views, sorted by views ↓)\n\n#1 | 1.4M views | 75.0×\nhttps://www.instagram.com/sample.studio/reel/DEMO0009/\n\n#2 | 214K views | 11.6×\nhttps://www.instagram.com/sample.studio/reel/DEMO0003/"
   );
 });

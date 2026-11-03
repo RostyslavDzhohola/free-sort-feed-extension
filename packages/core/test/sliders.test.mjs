@@ -24,8 +24,8 @@ test("min-views slider matches the extension at every position", () => {
 test("slider anchors land where the side panel shows them", () => {
   assert.equal(core.scanLimitToSliderPosition(100), 200);
   assert.equal(core.sliderPositionToScanLimit(1000), null);
-  assert.equal(core.formatScanLimit(100), "100 reels");
-  assert.equal(core.formatScanLimit(null), "All reels");
+  assert.equal(core.formatScanLimit(100), "100 Reels");
+  assert.equal(core.formatScanLimit(null), "All Reels");
   for (const marker of [1_000, 10_000, 100_000, 1_000_000]) {
     assert.equal(core.sliderPositionToMinViews(core.minViewsToSliderPosition(marker)), marker);
   }
