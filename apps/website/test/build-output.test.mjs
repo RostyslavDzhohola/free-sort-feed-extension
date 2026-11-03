@@ -234,7 +234,6 @@ test("1.1 copy and the promo video stay off until 1.1 is in the store, behind on
     assert.ok(home.includes("Sort by any metric") && home.includes("TikTok, too") && home.includes("Change it, no rescan"), "1.1 features show");
     assert.ok(!home.includes('class="features-soon"'));
     assert.ok(home.includes("Does it work on TikTok?"), "TikTok FAQ");
-    assert.ok(html["/privacy/"].includes("<code>tiktok.com</code>"), "privacy lists the optional TikTok access");
     const video = home.match(/<video[^>]*>/)?.[0];
     assert.ok(video, "promo video on the page");
     for (const file of ["outliers-1.1-promo.mp4", "outliers-1.1-promo-poster.jpg"]) {
@@ -245,7 +244,9 @@ test("1.1 copy and the promo video stay off until 1.1 is in the store, behind on
     return;
   }
   assert.ok(/<span class="smallcaps">Coming soon<\/span> TikTok support, and sorting by likes and comments\./.test(home), "labelled coming-soon line");
-  for (const page of Object.values(html)) {
+  // /privacy/ is the store listing's policy, so it covers 1.1 already (checked below).
+  for (const [route, page] of Object.entries(html)) {
+    if (route === "/privacy/") continue;
     assert.ok(!/new in 1\.1|Sort by any metric|Change it, no rescan|Instagram and TikTok|tiktok\.com\/@handle|<video/.test(page), "no 1.1 promises");
     assert.ok(!page.includes("/promo/"), "no link to the unreleased video");
   }
@@ -261,6 +262,8 @@ test("the site is honest about its own analytics, and keeps the extension's clai
     assert.ok(privacy.includes("The extension sends nothing to DataFast or anywhere else."));
   }
   assert.ok(privacy.includes("No analytics, tracking, ads or cookies."), "the extension's own claims stay");
-  assert.ok(privacy.includes(RELEASE_1_1 ? "version 1.1" : "version 1.0.8"), "policy covers the store version");
+  assert.ok(privacy.includes("versions 1.0.8 and 1.1.1"), "policy covers the live and the reviewed version");
+  assert.ok(privacy.includes("<code>tiktok.com</code>") && privacy.includes("Turn on TikTok"), "privacy lists the optional TikTok access");
+  assert.ok(!privacy.includes("/promo/"), "no link to the unreleased video");
   assert.ok(html["/"].includes("it counts visits and button clicks with cookieless analytics"), "privacy band separates site and extension");
 });
