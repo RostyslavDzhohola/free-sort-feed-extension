@@ -15,7 +15,7 @@ The release runs through the Chrome Web Store API v2 with a service account, so 
 | 20 | auth: key missing, refused, or the service account isn't on the publisher | stop; see Key problems |
 | 30 | a check failed; `error` names it | fix the cause, re-run the same command |
 | 40 | the store API returned an error; `details` has its body | re-run once; if it repeats, stop and report the body |
-| 50 | listing gate | send Ros the gate message (step 7) |
+| 50 | listing gate | update the listing draft (step 7) |
 
 Every command is safe to re-run: state lives in git tags, `release-out/X.Y.Z/` and the store's own status.
 
@@ -28,9 +28,8 @@ Every command is safe to re-run: state lives in git tags, `release-out/X.Y.Z/` a
 5. **Cancel the older submission** when preflight said `cancellable`: `pnpm release cancel --confirm`. The store allows 6 cancels a day.
 6. **`pnpm release upload X.Y.Z`**: exit 0 with `uploadState: SUCCEEDED` and `crxVersion` X.Y.Z. The store keeps one draft per item and `publish` submits the latest upload, so run one release at a time.
 7. **`pnpm release publish X.Y.Z`**: submits for review with `DEFAULT_PUBLISH`, so the store goes live on approval.
-   - Exit 50 is the listing gate: the store doc lists dashboard changes, or the manifest's description or permissions changed since the live version. The API can't edit the listing, so send Ros:
-     > Uploaded X.Y.Z. Before I submit it: in the Developer Dashboard (your own Chrome), apply the "Dashboard changes needed" in `<absolute path of the store doc>`, save the draft without submitting, then tell me "done".
-   - On Ros's "done": `pnpm release publish X.Y.Z --listing-done`. Done when it exits 0 with `state: PENDING_REVIEW` (or `PUBLISHED`). Relay any `warnings` to Ros.
+   - Exit 50 is the listing gate: the store doc lists dashboard changes, or the manifest's description or permissions changed since the live version. The API can't edit the listing, so a Codex `gpt-6.1-sol` child (Standard tier) does it in Ros's own signed-in Chrome: it applies the store doc's "Dashboard changes needed" on the Store listing and Privacy practices tabs, saves each tab, never clicks Submit, and reports every field, the screenshot order and any dashboard warning. If Google asks for a passkey or re-verification, it leaves the tab on the prompt and waits for Ros (every 30 s, up to 15 min).
+   - When the child reports a clean save: `pnpm release publish X.Y.Z --listing-done`. Done when it exits 0 with `state: PENDING_REVIEW` (or `PUBLISHED`). Relay any `warnings` to Ros.
 8. **Wait for review.** Reviews take days, sometimes weeks. Create a T3 scheduled task that runs `pnpm release status X.Y.Z` every 6 hours for up to 21 days and messages the thread only when the exit code changes. Exit 0: go to step 9. Exit 12: tell Ros. Still 10 after 21 days: tell Ros the store's docs say to contact developer support. Delete the scheduled task when it ends.
 9. **Website.** Only after `status` exits 0, and only when the store doc's "Website impact" isn't None: do what it says (for 1.1 that's "Shipping 1.1" in `apps/website/README.md`), run `pnpm test`, then `vercel deploy --prod` from the repo root, then fetch https://outliers-extension.vercel.app and check that the new copy is there. The site may only promise what the live store version does.
 10. **Report** to Ros in one message: version, PR and tag links, zip sha256 and size, submit time, live time, website state, anything left open.
@@ -50,6 +49,8 @@ Every command is safe to re-run: state lives in git tags, `release-out/X.Y.Z/` a
 
 ## One-time setup
 
+Done on 2026-11-02 (Cloud project `outliers-release`, no billing; service account `cws-publisher@outliers-release.iam.gserviceaccount.com`). Redo only after losing the key or the account.
+
 1. Ros, in the Developer Dashboard: turn on 2-step verification if it's off, copy the **Publisher ID**, and paste it into the thread. The agent puts it in `release.config.json` (`publisherId`) and commits it; it's an identifier, not a secret.
 2. Ros, in the Google Cloud Console: create a project (e.g. `outliers-release`), enable the **Chrome Web Store API**, create a service account with no roles, and add a **JSON key**. If key creation is blocked by an organization policy, tell the agent.
 3. Ros, in the Developer Dashboard: **Account**, add the service account's email (`…@….iam.gserviceaccount.com`). A publisher can have one service account.
@@ -62,8 +63,9 @@ Every command is safe to re-run: state lives in git tags, `release-out/X.Y.Z/` a
 - 401 or 403 from the store: the service account's email isn't on the publisher (setup step 3), or `publisherId` is wrong.
 - Rotate the key yearly, or at once if it may have leaked: new key, setup step 4, then Ros deletes the old key in the Cloud Console.
 
-## Confirm on the first run, then update this file
+## What the first run (1.1.1, 2026-11-02) showed
 
-- Whether dashboard listing edits made after an upload are kept and submitted by `publish`.
-- Whether the manifest `description` overwrites the dashboard summary.
-- Whether the store refuses an upload while another version is under review (the script cancels first anyway).
+- Listing edits saved in the dashboard after an API upload are kept, and `publish` submits them together with the package.
+- The store's summary is "Summary from package": the manifest `description` is the summary. Change it in the manifest, not the dashboard.
+- A new host permission brings the dashboard warning "your extension may require an in-depth review which will delay publishing."
+- Still untested: whether the store refuses an upload while another version is under review. The script cancels first anyway.
