@@ -117,6 +117,7 @@ export function summarizeStatus(s) {
 /** Where a version stands in the store, as an exit code: 0 live, 10 in review, 11 staged, 12 rejected/cancelled. */
 export function versionState(summary, version) {
   const { published, submitted } = summary;
+  if (summary.takenDown) return { code: EXIT.rejected, state: "TAKEN_DOWN" };
   if (published?.version === version && published.state === "PUBLISHED") {
     return { code: EXIT.ok, state: "LIVE" };
   }
@@ -390,7 +391,8 @@ function bump(config, version) {
   return { version, from: current, edited: files.map((f) => f.replace(`${ROOT}/`, "")), storeDoc: docPath.replace(`${ROOT}/`, ""), createdDoc };
 }
 
-async function preflight(config, version) {
+/** The release's tag: it exists, sits on origin/main, and carries the version in both files. Returns its commit. */
+function verifyTag(config, version) {
   assertVersion(version);
   const tag = `v${version}`;
   git("fetch", "--quiet", "origin", "--tags");
@@ -401,10 +403,15 @@ async function preflight(config, version) {
   } catch {
     throw new ReleaseError(EXIT.precondition, `${tag} (${commit.slice(0, 7)}) isn't on origin/main.`);
   }
-  const { dir, manifest, pkg } = manifestAt(config, tag);
+  const { dir, manifest, pkg } = manifestAt(config, commit);
   if (manifest.version !== version || pkg?.version !== version) {
     throw new ReleaseError(EXIT.precondition, `At ${tag}, manifest.json says ${manifest.version} and package.json says ${pkg?.version}; both must be ${version}.`);
   }
+  return { tag, commit, dir };
+}
+
+async function preflight(config, version) {
+  const { tag, commit, dir } = verifyTag(config, version);
   const summary = summarizeStatus(await client(config).fetchStatus());
   const decision = uploadDecision(summary, version);
   if (decision.action === "stop" && !decision.cancellable) throw new ReleaseError(decision.code, decision.reason, summary);
@@ -420,24 +427,25 @@ async function preflight(config, version) {
 }
 
 function build(config, version) {
-  assertVersion(version);
-  const tag = `v${version}`;
+  const { tag, commit, dir } = verifyTag(config, version);
   const out = outDir(version);
+  const zipName = `outliers-${version}.zip`;
+  const zipPath = join(out, zipName);
+  // Replace only the build. upload.json stays: publish compares it with the new build and asks for a
+  // fresh upload if they differ.
+  mkdirSync(out, { recursive: true });
+  for (const f of [zipPath, join(out, "build.json")]) rmSync(f, { force: true });
   // Outside the repo: inside it, pnpm would treat the main checkout's workspace as the root and skip
   // installing the tag's own dependencies.
-  const work = join(mkdtempSync(join(tmpdir(), `outliers-release-${version}-`)), "work");
-  rmSync(out, { recursive: true, force: true });
-  mkdirSync(out, { recursive: true });
-  git("worktree", "add", "--detach", work, tag);
+  const parent = mkdtempSync(join(tmpdir(), `outliers-release-${version}-`));
+  const work = join(parent, "work");
   try {
-    const dir = extensionDirAt(config, tag);
+    git("worktree", "add", "--detach", work, commit);
     const ext = join(work, dir);
     run("pnpm", ["install", "--frozen-lockfile"], { cwd: work });
     for (const script of ["typecheck", "lint", "test", "build"]) {
       run("pnpm", ["run", "--if-present", script], { cwd: ext });
     }
-    const zipName = `outliers-${version}.zip`;
-    const zipPath = join(out, zipName);
     run("zip", ["-X", "-D", "-q", "-r", zipPath, ".", "-x", "*.map", "-x", "*.DS_Store"], { cwd: join(ext, "dist") });
     const entries = run("unzip", ["-Z1", zipPath]).split("\n").filter(Boolean);
     const check = verifyZipEntries(entries, config.zipAllowlist);
@@ -452,16 +460,18 @@ function build(config, version) {
     if (bytes.length > config.zipMaxBytes) {
       throw new ReleaseError(EXIT.precondition, `The zip is ${bytes.length} bytes, over zipMaxBytes (${config.zipMaxBytes}).`);
     }
-    const record = { version, tag, commit: git("rev-parse", `${tag}^{commit}`), zip: zipPath.replace(`${ROOT}/`, ""), bytes: bytes.length, sha256: sha256(bytes), files: entries.length, builtAt: new Date().toISOString() };
+    const record = { version, tag, commit, zip: zipPath.replace(`${ROOT}/`, ""), bytes: bytes.length, sha256: sha256(bytes), files: entries.length, builtAt: new Date().toISOString() };
     writeFileSync(join(out, "build.json"), `${JSON.stringify(record, null, 2)}\n`);
     return record;
   } finally {
     try {
       git("worktree", "remove", "--force", work);
     } catch {
+      // Not registered, or removal failed: delete the files, then let git drop the registration.
+    } finally {
+      rmSync(parent, { recursive: true, force: true });
       git("worktree", "prune");
     }
-    rmSync(dirname(work), { recursive: true, force: true });
   }
 }
 
@@ -474,9 +484,14 @@ function readBuild(version) {
   return { record, bytes };
 }
 
+const lastUploadPath = () => join(ROOT, "release-out", "last-upload.json");
+
 async function upload(config, version, { pollMs = 5000, maxPolls = 60 } = {}) {
-  assertVersion(version);
+  const { commit } = verifyTag(config, version);
   const { record, bytes } = readBuild(version);
+  if (record.commit !== commit) {
+    throw new ReleaseError(EXIT.precondition, `The build is from ${record.commit.slice(0, 7)}, but v${version} now points at ${commit.slice(0, 7)}. Rebuild.`);
+  }
   const cws = client(config);
   const summary = summarizeStatus(await cws.fetchStatus());
   const decision = uploadDecision(summary, version);
@@ -493,8 +508,10 @@ async function upload(config, version, { pollMs = 5000, maxPolls = 60 } = {}) {
   if (res.crxVersion && res.crxVersion !== version) {
     throw new ReleaseError(EXIT.api, `The store read version ${res.crxVersion} from the upload, not ${version}.`, res);
   }
-  const uploaded = { version, sha256: record.sha256, uploadState: res.uploadState, crxVersion: res.crxVersion ?? null, uploadedAt: new Date().toISOString() };
+  const uploaded = { version, commit, sha256: record.sha256, uploadState: res.uploadState, crxVersion: res.crxVersion ?? null, uploadedAt: new Date().toISOString() };
   writeFileSync(join(outDir(version), "upload.json"), `${JSON.stringify(uploaded, null, 2)}\n`);
+  // The store keeps one draft per item, and publish submits whatever was uploaded last.
+  writeFileSync(lastUploadPath(), `${JSON.stringify(uploaded, null, 2)}\n`);
   return uploaded;
 }
 
@@ -517,18 +534,34 @@ async function publish(config, version, flags) {
   if (state.code === EXIT.ok || state.code === EXIT.pending) {
     return { version, skipped: `${version} is already ${state.state}.`, store: summary };
   }
-  const uploadPath = join(outDir(version), "upload.json");
-  if (!existsSync(uploadPath)) throw new ReleaseError(EXIT.precondition, `No upload on record for ${version}. Run \`pnpm release upload ${version}\` first.`);
-  if (JSON.parse(readFileSync(uploadPath, "utf8")).sha256 !== readBuild(version).record.sha256) {
-    throw new ReleaseError(EXIT.precondition, "The uploaded zip and the current build differ. Upload again.");
+  if (state.code === EXIT.rejected && state.state === "TAKEN_DOWN") {
+    throw new ReleaseError(EXIT.rejected, "The item is taken down. Ros decides.", summary);
   }
-  const gate = listingGate(config, version, summary.published?.version);
-  if (gate.needed && !flags["listing-done"]) {
-    throw new ReleaseError(EXIT.gate, `Listing gate: Ros updates the dashboard from ${gate.storeDoc}, then re-run with --listing-done.`, gate);
+  // A staged version was approved already; publishing it again releases it.
+  if (state.code !== EXIT.staged) {
+    const readReceipt = (path) => (existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : null);
+    const receipt = readReceipt(join(outDir(version), "upload.json"));
+    const last = readReceipt(lastUploadPath());
+    if (!receipt) throw new ReleaseError(EXIT.precondition, `No upload on record for ${version}. Run \`pnpm release upload ${version}\` first.`);
+    if (receipt.sha256 !== readBuild(version).record.sha256) {
+      throw new ReleaseError(EXIT.precondition, "The uploaded zip and the current build differ. Upload again.");
+    }
+    if (last?.version !== version || last?.sha256 !== receipt.sha256) {
+      throw new ReleaseError(EXIT.precondition, `The store's draft is ${last?.version ?? "unknown"}, not this build of ${version}. Upload ${version} again.`);
+    }
+    const gate = listingGate(config, version, summary.published?.version);
+    if (gate.needed && !flags["listing-done"]) {
+      throw new ReleaseError(EXIT.gate, `Listing gate: Ros updates the dashboard from ${gate.storeDoc}, then re-run with --listing-done.`, gate);
+    }
   }
   const request = { publishType: flags.staged ? "STAGED_PUBLISH" : "DEFAULT_PUBLISH", blockOnWarnings: Boolean(flags["block-on-warnings"]) };
   const res = await cws.publish(request);
-  return { version, request, state: res.state ?? null, warnings: res.warningInfo?.warnings ?? [], store: summarizeStatus(await cws.fetchStatus()) };
+  const after = summarizeStatus(await cws.fetchStatus());
+  const result = versionState(after, version);
+  if (![EXIT.ok, EXIT.pending, EXIT.staged].includes(result.code)) {
+    throw new ReleaseError(EXIT.api, `Publish returned, but the store doesn't show ${version} as submitted.`, { response: res, store: after });
+  }
+  return { version, request, state: res.state ?? null, warnings: res.warningInfo?.warnings ?? [], store: after };
 }
 
 // ---------- CLI ----------

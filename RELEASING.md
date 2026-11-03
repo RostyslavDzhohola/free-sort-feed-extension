@@ -11,7 +11,7 @@ The release runs through the Chrome Web Store API v2 with a service account, so 
 | 0 | done (with `status X.Y.Z`: live) | next step |
 | 10 | in review | keep polling |
 | 11 | staged (approved, waiting) | `publish X.Y.Z` again, only if Ros asked for a staged release |
-| 12 | rejected or cancelled | stop; tell Ros (the reason is only in his email and the dashboard) |
+| 12 | rejected, cancelled or taken down | stop; tell Ros (the reason is only in his email and the dashboard) |
 | 20 | auth: key missing, refused, or the service account isn't on the publisher | stop; see Key problems |
 | 30 | a check failed; `error` names it | fix the cause, re-run the same command |
 | 40 | the store API returned an error; `details` has its body | re-run once; if it repeats, stop and report the body |
@@ -24,9 +24,9 @@ Every command is safe to re-run: state lives in git tags, `release-out/X.Y.Z/` a
 1. **Version PR.** Skip when `apps/extension/src/manifest.json` on `origin/main` already has X.Y.Z. Branch `release/X.Y.Z` from fresh `origin/main`, run `pnpm release bump X.Y.Z`, and fill in the store doc it names (`apps/extension/store/chrome-web-store-X.Y.Z.md`, below). Code changes go through the standing Codex code review. Squash-merge. Done when the PR is merged and `pnpm test` passes on `main`.
 2. **Tag** the merge commit: `git tag -a vX.Y.Z <sha> -m "Outliers X.Y.Z" && git push origin vX.Y.Z`. A pushed tag is permanent: if it's wrong, release the next patch version.
 3. **`pnpm release preflight X.Y.Z`**: exit 0. Read two fields: `upload.cancellable` (an older version is under review) and `listingGate.needed`.
-4. **`pnpm release build X.Y.Z`**: builds from the tag in a fresh worktree, runs typecheck, lint, tests and build, zips `dist/`, and checks the zip against `zipAllowlist` in `release.config.json`. Exit 0 leaves `release-out/X.Y.Z/outliers-X.Y.Z.zip` and `build.json`. When a release adds a file to `dist/` on purpose, add it to `zipAllowlist` in the version PR.
+4. **`pnpm release build X.Y.Z`**: builds from the tag in a fresh worktree, runs typecheck, lint, tests and build, zips `dist/`, and checks the zip against `zipAllowlist` in `release.config.json`. Exit 0 leaves `release-out/X.Y.Z/outliers-X.Y.Z.zip` and `build.json`. A rebuild after an upload needs a fresh upload before `publish`. When a release adds a file to `dist/` on purpose, add it to `zipAllowlist` in the version PR.
 5. **Cancel the older submission** when preflight said `cancellable`: `pnpm release cancel --confirm`. The store allows 6 cancels a day.
-6. **`pnpm release upload X.Y.Z`**: exit 0 with `uploadState: SUCCEEDED` and `crxVersion` X.Y.Z.
+6. **`pnpm release upload X.Y.Z`**: exit 0 with `uploadState: SUCCEEDED` and `crxVersion` X.Y.Z. The store keeps one draft per item and `publish` submits the latest upload, so run one release at a time.
 7. **`pnpm release publish X.Y.Z`**: submits for review with `DEFAULT_PUBLISH`, so the store goes live on approval.
    - Exit 50 is the listing gate: the store doc lists dashboard changes, or the manifest's description or permissions changed since the live version. The API can't edit the listing, so send Ros:
      > Uploaded X.Y.Z. Before I submit it: in the Developer Dashboard (your own Chrome), apply the "Dashboard changes needed" in `<absolute path of the store doc>`, save the draft without submitting, then tell me "done".

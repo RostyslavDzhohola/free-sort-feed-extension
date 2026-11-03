@@ -70,6 +70,12 @@ test("versionState maps store states to exit codes", () => {
   assert.equal(versionState(status(["PUBLISHED", "1.0.8"], null), "1.1.1").state, "NOT_SUBMITTED");
 });
 
+test("versionState never reports a taken-down item as live", () => {
+  const s = versionState(status(["PUBLISHED", "1.1.1"], null, { takenDown: true }), "1.1.1");
+  assert.equal(s.code, EXIT.rejected);
+  assert.equal(s.state, "TAKEN_DOWN");
+});
+
 test("uploadDecision: fresh version uploads", () => {
   assert.equal(uploadDecision(status(["PUBLISHED", "1.0.8"], null), "1.1.1").action, "upload");
   assert.equal(uploadDecision(status(["PUBLISHED", "1.0.8"], ["CANCELLED", "1.1.0"]), "1.1.1").action, "upload");
