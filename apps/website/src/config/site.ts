@@ -12,7 +12,7 @@ export const site = {
   repoUrl: "https://github.com/RostyslavDzhohola/free-sort-feed-extension",
   contactEmail: "rosty.build@gmail.com",
   /** Shown on /privacy. Update when the policy changes or on launch day. */
-  privacyEffectiveDate: "October 27, 2026",
+  privacyEffectiveDate: "November 2, 2026",
   indexable: SITE_INDEXABLE,
   /** DataFast analytics (cookieless), or false. See site.config.mjs. */
   analytics: DATAFAST,
