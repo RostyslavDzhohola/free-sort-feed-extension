@@ -2654,8 +2654,10 @@ chrome.runtime.onMessage.addListener(function (
   if (cachedTabId != null && sender.tab?.id !== cachedTabId) return;
 
   if (msg.type === "outliers:save") {
-    // Save or remove from the viewer bar over Instagram's or TikTok's own viewer.
-    if (!msg.entry?.url) return;
+    // Save or remove from the viewer bar over Instagram's or TikTok's own viewer. Only the panel
+    // of the tab it came from answers, even before that panel has finished binding.
+    const ownTab = cachedTabId ?? panelTabId();
+    if (ownTab == null || sender.tab?.id !== ownTab || !msg.entry?.url) return;
     (msg.save ? saveReelFromResult(msg.entry) : unsaveReel(msg.entry.url)).then(function () {
       sendResponse({ ok: true });
     }).catch(function () {

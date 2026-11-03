@@ -71,7 +71,7 @@ function init(): void {
   const _savedUrls = new Set<string>();
   let _saveBusy = false;
   // A failed Save keeps its message up for a moment on the video it was for.
-  let _saveError: { url: string; until: number } | null = null;
+  let _saveError: { url: string; until: number; text: string } | null = null;
   // The one video the viewer was last asked to show, until it shows it.
   let _viewerPending: { id: string; timer: number; onPopState: () => void } | null = null;
 
@@ -601,7 +601,7 @@ function init(): void {
       // Opaque when off too, so Instagram's own arrow never shows through.
       NAV + " .outliers-nav-arrow.is-off { background: #d9c7e6; color: #9a86ad; cursor: default; box-shadow: none; }",
       NAV + " .outliers-nav-arrow svg { width: 24px; height: 24px; }",
-      NAV + " .outliers-nav-bar { position: fixed; top: 16px; left: 16px; z-index: 2147483646; max-width: calc(100vw - 32px); display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; padding: 6px 6px 6px 12px; border-radius: 999px; background: #f99b21; color: #2b1943; font-size: 14px; font-weight: 800; box-shadow: 0 6px 18px rgba(0,0,0,0.3); }",
+      NAV + " .outliers-nav-bar { position: fixed; top: 16px; left: 16px; z-index: 2147483646; max-width: calc(100vw - 112px); display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; padding: 6px 6px 6px 12px; border-radius: 999px; background: #f99b21; color: #2b1943; font-size: 14px; font-weight: 800; box-shadow: 0 6px 18px rgba(0,0,0,0.3); }",
       NAV + " .outliers-nav-count { white-space: nowrap; }",
       NAV + " .outliers-nav-stats { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; font-size: 13px; }",
       NAV + " .outliers-nav-stat { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }",
@@ -999,16 +999,19 @@ function init(): void {
     const stats = nav.querySelector(".outliers-nav-stats") as HTMLElement | null;
     const save = nav.querySelector(".outliers-nav-save") as HTMLButtonElement | null;
     if (!entry || !stats || !save) return;
-    // Rebuilt only when the video changes; the sync timer calls this five times a second.
-    if (stats.getAttribute("data-url") !== entry.url) {
-      stats.setAttribute("data-url", entry.url);
+    // Rebuilt only when what it shows changes; the sync timer calls this five times a second.
+    const multiple = viewsMultiple(entry, followers);
+    const shown = entry.url + "|" + countKeys().map(function (key) {
+      return String(entry[key] ?? "");
+    }).join(",") + "|" + String(multiple);
+    if (stats.getAttribute("data-shown") !== shown) {
+      stats.setAttribute("data-shown", shown);
       stats.replaceChildren();
       for (const key of countKeys()) {
         const stat = statEl(key, entry[key], false);
         stat.className = "outliers-nav-stat";
         stats.appendChild(stat);
       }
-      const multiple = viewsMultiple(entry, followers);
       if (multiple !== null) {
         const chip = document.createElement("span");
         chip.className = "outliers-nav-stat multiple";
@@ -1018,8 +1021,10 @@ function init(): void {
       }
     }
     if (_saveBusy) return;
+    // Mid-step the bar already counts the next video, which isn't showing yet: hold Save until it is.
+    save.disabled = _viewerPending !== null;
     if (_saveError && _saveError.url === entry.url && Date.now() < _saveError.until) {
-      save.textContent = "Open the Outliers panel to save";
+      save.textContent = _saveError.text;
       save.classList.remove("is-saved");
       return;
     }
@@ -1034,11 +1039,20 @@ function init(): void {
   // The side panel owns the Library, so Save goes through it; with the panel closed there is
   // nobody to answer, and the button says so.
   function toggleViewerSave(button: HTMLButtonElement): void {
-    const entry = _viewerList[_viewerIndex];
-    if (!entry || _saveBusy) return;
+    const shownId = shownVideoId();
+    const entry = shownId === null ? undefined : _viewerList[listIndexOf(shownId)];
+    if (!entry || _saveBusy || _viewerPending !== null) return;
     const save = !_savedUrls.has(entry.url);
     _saveBusy = true;
     button.disabled = true;
+    // After an extension reload this script is cut off from the extension; only a page reload helps.
+    const cutOff = function (): boolean {
+      try {
+        return !chrome.runtime?.id;
+      } catch {
+        return true;
+      }
+    };
     const done = function (ok: boolean): void {
       _saveBusy = false;
       button.disabled = false;
@@ -1046,7 +1060,11 @@ function init(): void {
         if (save) _savedUrls.add(entry.url);
         else _savedUrls.delete(entry.url);
       } else {
-        _saveError = { url: entry.url, until: Date.now() + 4000 };
+        _saveError = {
+          url: entry.url,
+          until: Date.now() + 4000,
+          text: cutOff() ? "Reload the page to save" : "Open the Outliers panel to save",
+        };
       }
       const nav = document.getElementById(VIEWER_NAV_ID);
       if (nav) renderViewerBar(nav);
