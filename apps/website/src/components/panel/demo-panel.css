@@ -1,4 +1,4 @@
-/* v1.0.7 side panel replica for the demo. Colours and the Comic-style font stack follow the real
+/* 1.1 side panel replica (v1.1.1) for the demo. Colours and the Comic-style font stack follow the real
    extension UI (apps/extension/src/sidepanel.html); a few text colours are darkened to meet WCAG AA. */
 .sp {
   --sp-text: #2b1943;
@@ -10,12 +10,13 @@
   --sp-orange: #f99b21;
   --sp-orange-text: #9a5700;
   --sp-orange-soft: #fff1de;
+  --sp-surface-soft: #f6efff;
   position: relative; width: 100%; padding: 16px 16px 14px; border-radius: 14px;
   font-family: var(--panel-font); color: var(--sp-text); font-variant-numeric: tabular-nums;
   background: radial-gradient(circle at 15% -5%, #ffe7c7 0, transparent 38%), radial-gradient(circle at 88% 6%, #ebddff 0, transparent 30%), #f7f0ff;
   border: 1px solid var(--sp-line);
 }
-.sp button, .sp input { font-family: inherit; }
+.sp button, .sp input, .sp select { font-family: inherit; }
 .sp :focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
 .sp-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .sp-head b { display: block; font-size: 17px; }
@@ -39,9 +40,11 @@
 /* Values on the right of a zone stay clear of its pin. */
 .sp-zone > .sp-ctl { padding-right: 16px; }
 
-.sp-stats { display: flex; justify-content: space-between; gap: 8px; padding: 10px 12px; background: #fff; border: 1px solid var(--sp-line); border-radius: 12px; font-size: 13px; }
-.sp-stats span { color: var(--sp-muted); font-weight: 600; }
-.sp-stats b { color: var(--sp-purple-strong); }
+.sp-stats { display: grid; gap: 6px; margin: 0; padding: 11px 12px; background: #fff; border: 1px solid var(--sp-line); border-radius: 12px; font-size: 13px; }
+.sp-stats div { display: flex; justify-content: space-between; gap: 8px; min-width: 0; }
+.sp-stats dt { color: var(--sp-muted); font-weight: 600; }
+.sp-stats dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sp-purple-strong); font-weight: 700; }
+.sp-stats .sp-handle, .sp-stats .sp-followers { color: var(--sp-text); }
 .sp-ctl { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 700; color: var(--sp-muted); margin-bottom: 4px; }
 .sp-ctl b { color: var(--sp-orange-text); font-weight: 700; }
 .sp-minviews { margin-top: 10px; }
@@ -55,7 +58,16 @@
 .sp-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; border: 2px solid #fff; background: var(--sp-orange); box-shadow: 0 3px 0 #d87e08, 0 0 0 1px rgba(58, 29, 101, 0.12); }
 .sp-range::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #fff; background: var(--sp-orange); box-shadow: 0 3px 0 #d87e08; }
 .sp-marks { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--sp-muted); }
-.sp-limit-note { margin-top: 4px; font-size: 11.5px; font-style: italic; color: var(--sp-muted); }
+.sp-note { margin-top: 4px; font-size: 11.5px; font-style: italic; color: var(--sp-muted); }
+
+.sp-sort-head { margin-top: 12px; }
+.sp-sort { display: flex; gap: 6px; }
+.sp-select, .sp-dir {
+  padding: 7px 10px; border: 1px solid #b991e6; border-radius: 11px; background: var(--sp-surface-soft); color: var(--sp-purple-strong);
+  font-size: 12.5px; font-weight: 800; cursor: pointer; box-shadow: 0 3px 0 rgba(112, 8, 160, 0.22);
+}
+.sp-select { flex: 1; min-width: 0; }
+.sp-dir { flex: none; }
 
 .sp-controls { display: grid; margin: 4px 0 6px; }
 .sp-btn { padding: 10px; border-radius: 12px; font-size: 14px; font-weight: 700; cursor: pointer; transition: transform 0.12s ease, box-shadow 0.12s ease; }
@@ -75,14 +87,24 @@
 .sp-results-head small { font-weight: 400; color: var(--sp-muted); font-size: 12px; }
 .sp-tool { padding: 3px 8px; border-radius: 8px; background: #fff; border: 1px solid #b991e6; font-size: 11.5px; font-weight: 700; color: var(--sp-text); cursor: pointer; box-shadow: 0 2px 0 rgba(112, 8, 160, 0.2); }
 .sp-list { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
-.sp-list li { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--sp-line); font-size: 13px; }
+.sp-list li {
+  display: grid; grid-template-columns: auto 34px minmax(0, 1fr); grid-template-areas: "r t i" "r t a";
+  column-gap: 8px; row-gap: 4px; align-items: start; padding: 8px 0; border-bottom: 1px solid var(--sp-line); font-size: 13px;
+}
 .sp-list li:last-child { border-bottom: 0; }
-.sp-list .r { min-width: 26px; color: var(--sp-muted); font-weight: 700; }
-.sp-list .i { flex: 1; min-width: 0; }
-.sp-list .v { display: block; font-weight: 600; }
-.sp-list .x { display: block; font-size: 11.5px; font-weight: 700; color: var(--sp-purple-strong); }
-.sp-list .a { display: flex; gap: 4px; flex: none; }
-.sp-act { padding: 3px 7px; border-radius: 7px; border: 1px solid #b991e6; background: #fff; font-size: 11px; font-weight: 700; color: var(--sp-text); text-decoration: none; cursor: pointer; }
+.sp-list .r { grid-area: r; align-self: center; min-width: 24px; color: var(--sp-muted); font-weight: 700; }
+.sp-list .t { grid-area: t; display: block; width: 34px; height: 50px; border-radius: 7px; object-fit: cover; border: 1px solid var(--sp-line); background: linear-gradient(160deg, var(--sp-purple-soft), var(--sp-orange-soft)); }
+.sp-list .i { grid-area: i; min-width: 0; }
+.sp-list .p { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 800; }
+.sp-list .cs { display: flex; flex-wrap: wrap; gap: 2px 9px; margin-top: 2px; font-size: 11.5px; color: var(--sp-muted); }
+.sp-list .c { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.sp-list .c svg { width: 10px; height: 10px; fill: currentColor; }
+.sp-list .c.m { color: var(--sp-orange-text); font-weight: 700; }
+.sp-list .c.on { color: var(--sp-purple-strong); font-weight: 800; }
+.sp-list .a { grid-area: a; display: flex; gap: 4px; }
+.sp-act { display: inline-flex; align-items: center; justify-content: center; padding: 3px 9px; border-radius: 7px; border: 1px solid #b991e6; background: #fff; font-size: 11px; font-weight: 700; color: var(--sp-text); text-decoration: none; cursor: pointer; }
 .sp-open { background: var(--sp-purple); color: #fff; border-color: #4a2e91; }
+.sp-link { width: 30px; padding: 3px 0; }
+.sp-link svg { width: 14px; height: 14px; fill: var(--sp-purple-strong); }
 .sp-empty { padding: 10px 2px 4px; font-size: 13px; }
 .sp-empty p { margin-top: 4px; color: var(--sp-muted); font-size: 12.5px; }

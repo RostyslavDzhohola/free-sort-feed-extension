@@ -1,6 +1,6 @@
 // Questions and troubleshooting copy. Answers are trusted, static HTML.
 // Copy must match the store version of the extension (v1.0.8); see DESIGN-SPEC §2 before editing.
-// Entries that changed in 1.1 have a second version, used only when site.release11 is on.
+// Entries that changed in 1.1 have a second version, used only when site.release11 is on, checked against v1.1.1.
 import { site } from "../config/site";
 
 export interface QA {
@@ -53,6 +53,30 @@ const changeAfterScan: QA = site.release11
       answer: "<p>Yes. New settings apply to your next scan. Press Reset (it reloads the tab), then Run.</p>",
     };
 
+const noneQualified: QA = site.release11
+  ? {
+      question: "It says no Reels qualified, but I can see Reels.",
+      answer:
+        "<p>Usually that means nothing in the scan cleared the bar, and the panel tells you which bar it used. Switch Show to Min Views or All, which applies at once, or raise the scan limit and scan again. If the tiles don't show view counts, Outliers can't read them. Make sure you're on the Reels tab rather than Posts, refresh, and run again.</p>",
+    }
+  : {
+      question: "It says no Reels qualified, but I can see Reels.",
+      answer:
+        "<p>Usually that means nothing in the scan cleared the bar, and the panel tells you which bar it used. Try Min Views or a deeper scan. If the tiles don't show view counts, Outliers can't read them. Make sure you're on the Reels tab rather than Posts, refresh, and run again.</p>",
+    };
+
+const scanLimitCount: QA = site.release11
+  ? {
+      question: "It scanned fewer Reels than my scan limit.",
+      answer:
+        "<p>The scan stops at exactly your scan limit, or sooner when the profile runs out of videos or you press Stop. The results header always shows how many were actually scanned.</p>",
+    }
+  : {
+      question: "I set a small scan limit, but it scanned more.",
+      answer:
+        "<p>The scan limit tells Outliers how far to scroll. Instagram loads Reels in batches, so a very small limit can collect a few extra. The results header always shows how many Reels were actually scanned.</p>",
+    };
+
 const tiktok: QA[] = site.release11
   ? [
       {
@@ -73,17 +97,9 @@ export const homeFaq: QA[] = [
   },
   ...tiktok,
   runGreyedOut,
-  {
-    question: "It says no Reels qualified, but I can see Reels.",
-    answer:
-      "<p>Usually that means nothing in the scan cleared the bar, and the panel tells you which bar it used. Try Min Views or a deeper scan. If the tiles don't show view counts, Outliers can't read them. Make sure you're on the Reels tab rather than Posts, refresh, and run again.</p>",
-  },
+  noneQualified,
   changeAfterScan,
-  {
-    question: "I set a small scan limit, but it scanned more.",
-    answer:
-      "<p>The scan limit tells Outliers how far to scroll. Instagram loads Reels in batches, so a very small limit can collect a few extra. The results header always shows how many Reels were actually scanned.</p>",
-  },
+  scanLimitCount,
   sortByLikes,
   savedReels,
 ];
@@ -97,18 +113,31 @@ export const diagnostics: QA[] = [
         ? "In 5× Outliers, Run unlocks only after Outliers reads the profile's follower count. Min Views and All don't need it."
         : "Run unlocks only after Outliers reads the profile's follower count. That applies in both modes, including Min Views."
     }</p>
-<ol>
+${
+      site.release11
+        ? `<ol>
+  <li>Open the profile: its Reels tab on Instagram (<code>instagram.com/username/reels/</code>), or its Videos tab on TikTok (<code>tiktok.com/@username</code>). The panel keeps checking while the page loads.</li>
+  <li>If the panel says it couldn't read the follower count yet, scroll to the top of the profile so the count in the header is showing, or switch Show to Min Views or All.</li>
+  <li>Still grey? Refresh the tab.</li>
+</ol>
+<p>Outliers can only read what Instagram or TikTok shows you in that tab. If either asks you to log in before it shows the profile, log in first.</p>`
+        : `<ol>
   <li>Open the profile's Reels tab: <code>instagram.com/username/reels/</code>. The panel follows the tab you're on and keeps checking while the page loads.</li>
   <li>If the panel says it couldn't read the follower count yet, scroll to the top of the profile so the count in the header is showing.</li>
   <li>Still grey? Refresh the Instagram tab.</li>
 </ol>
-<p>Outliers can only read what Instagram shows you in that tab. If Instagram asks you to log in before it shows the profile, log in first.</p>`,
+<p>Outliers can only read what Instagram shows you in that tab. If Instagram asks you to log in before it shows the profile, log in first.</p>`
+    }`,
   },
   {
     question: "It says no Reels qualified, but I can see Reels",
     answer: `<p>Most often the scan worked and nothing cleared the bar. The panel shows the bar it used.</p>
 <ul>
-  <li><b>The bar is high.</b> In 5× mode the bar grows with the account: a profile with 200,000 followers needs Reels past 1,000,000 views. Switch to Min Views or raise the scan limit, then press Reset and Run.</li>
+  <li><b>The bar is high.</b> In 5× mode the bar grows with the account: a profile with 200,000 followers needs Reels past 1,000,000 views. ${
+    site.release11
+      ? "Switch Show to Min Views or All, which applies at once. To scan deeper, raise the scan limit, then press Reset and Run."
+      : "Switch to Min Views or raise the scan limit, then press Reset and Run."
+  }</li>
   <li><b>The counts couldn't be read.</b> If view counts aren't visible on the tiles, Outliers can't read them. Make sure you're on the Reels tab rather than Posts, refresh, and run again.</li>
 </ul>`,
   },
@@ -122,11 +151,13 @@ export const diagnostics: QA[] = [
         answer:
           "<p>Results belong to the scan that produced them. Filter and scan-limit changes apply to your next scan. Press Reset (it reloads the tab), then Run.</p>",
       },
-  {
-    question: "It scanned more Reels than my scan limit",
-    answer:
-      "<p>The scan limit tells Outliers how far to scroll. Instagram loads Reels in batches, so a very small limit can collect a few more than you set. The results header always shows how many Reels were actually scanned.</p>",
-  },
+  site.release11
+    ? { ...scanLimitCount, question: "It scanned fewer Reels than my scan limit" }
+    : {
+        question: "It scanned more Reels than my scan limit",
+        answer:
+          "<p>The scan limit tells Outliers how far to scroll. Instagram loads Reels in batches, so a very small limit can collect a few more than you set. The results header always shows how many Reels were actually scanned.</p>",
+      },
   { ...sortByLikes, question: "Can it sort by likes or comments?" },
 ];
 
@@ -148,5 +179,7 @@ export const knownLimits: string[] = [
     : "Reads the counts Instagram shows you, so log in if Instagram asks.",
   ...(site.release11 ? [] : ["Ranks by views only. Sorting by likes and comments isn't available yet."]),
   "The Library stays on one device. There's no sync.",
-  "The results CSV covers the current scan. The Library has its own CSV export.",
+  site.release11
+    ? "The results CSV covers the list the panel shows for the current Show setting. The Library has its own CSV export."
+    : "The results CSV covers the current scan. The Library has its own CSV export.",
 ];

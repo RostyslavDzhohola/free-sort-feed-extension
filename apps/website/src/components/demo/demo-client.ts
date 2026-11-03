@@ -5,12 +5,15 @@ import {
   SCAN_SLIDER_MAX,
   buildOutliersCsv,
   formatExact,
+  formatMetricPhrase,
   formatScanLimit,
+  metricValue,
   minViewsToSliderPosition,
   scanLimitToSliderPosition,
   sliderPositionToMinViews,
   sliderPositionToScanLimit,
   type FilterMode,
+  type SortKey,
 } from "@outliers/core";
 import type { SnapshotReel } from "../../data/demo/types";
 import {
@@ -19,12 +22,15 @@ import {
   collectBatch,
   emptyState,
   finishScan,
+  gridMeta,
   hasPendingChanges,
   initialState,
   plainTextReport,
   progressText,
   resetScan,
   resultsMeta,
+  resultsTitle,
+  sortDirLabel,
   startScan,
   stopScan,
   updateSettings,
@@ -56,6 +62,9 @@ function mount(root: HTMLElement): void {
 
   const el = <T extends HTMLElement = HTMLElement>(attr: string) => root.querySelector<T>(`[${attr}]`)!;
   const panel = {
+    handle: el(PANEL_HOOKS.handle),
+    followers: el(PANEL_HOOKS.followers),
+    thresholdTitle: el(PANEL_HOOKS.thresholdTitle),
     threshold: el(PANEL_HOOKS.threshold),
     limit: el<HTMLInputElement>(PANEL_HOOKS.limit),
     limitValue: el(PANEL_HOOKS.limitValue),
@@ -64,6 +73,8 @@ function mount(root: HTMLElement): void {
     minViewsArea: el(PANEL_HOOKS.minViewsArea),
     minViews: el<HTMLInputElement>(PANEL_HOOKS.minViews),
     minViewsValue: el(PANEL_HOOKS.minViewsValue),
+    sortKey: el<HTMLSelectElement>(PANEL_HOOKS.sortKey),
+    sortDir: el<HTMLButtonElement>(PANEL_HOOKS.sortDir),
     run: el<HTMLButtonElement>(PANEL_HOOKS.run),
     stop: el<HTMLButtonElement>(PANEL_HOOKS.stop),
     reset: el<HTMLButtonElement>(PANEL_HOOKS.reset),
@@ -72,6 +83,7 @@ function mount(root: HTMLElement): void {
     progressFill: el(PANEL_HOOKS.progressFill),
     progressText: el(PANEL_HOOKS.progressText),
     results: el(PANEL_HOOKS.results),
+    resultsTitle: el(PANEL_HOOKS.resultsTitle),
     meta: el(PANEL_HOOKS.meta),
     list: el(PANEL_HOOKS.list),
     empty: el(PANEL_HOOKS.empty),
@@ -89,7 +101,12 @@ function mount(root: HTMLElement): void {
     followers: el("data-demo-followers"),
     viewport: el("data-demo-viewport"),
     grid: el("data-demo-grid"),
+    gridHead: el("data-demo-grid-head"),
+    gridHandle: el("data-demo-grid-handle"),
+    gridMeta: el("data-demo-grid-meta"),
     gridEmpty: el("data-demo-grid-empty"),
+    gridEmptyTitle: el("data-demo-grid-empty-title"),
+    gridEmptyDetail: el("data-demo-grid-empty-detail"),
     lock: el("data-demo-lock"),
     hint: el("data-demo-hint"),
     honesty: el("data-demo-honesty"),
@@ -122,28 +139,34 @@ function mount(root: HTMLElement): void {
   }
 
   function renderControls(): void {
-    const { pending, phase } = state;
+    const { settings, phase } = state;
     const scanning = phase === "scanning";
-    panel.threshold.textContent = activeThreshold(state, profile.followers).label;
+    const bar = activeThreshold(settings, profile.followers);
+    panel.thresholdTitle.textContent = bar.title;
+    panel.threshold.textContent = bar.label;
 
     const note = limitNote(profile.kind, profile.reels.length);
-    syncRange(panel.limit, scanLimitToSliderPosition(pending.scanLimit), SCAN_SLIDER_MAX, `${formatScanLimit(pending.scanLimit)}. ${note}`);
-    panel.limitValue.textContent = formatScanLimit(pending.scanLimit);
+    syncRange(panel.limit, scanLimitToSliderPosition(settings.scanLimit), SCAN_SLIDER_MAX, `${formatScanLimit(settings.scanLimit)}. ${note}`);
+    panel.limitValue.textContent = formatScanLimit(settings.scanLimit);
     panel.limitNote.textContent = note;
+    // Only the scan limit locks while scanning; Show and Sort by reshape what's been collected.
     panel.limit.disabled = scanning;
 
     for (const button of panel.modes) {
-      const on = button.dataset.panelMode === pending.mode;
+      const on = button.dataset.panelMode === settings.mode;
       button.classList.toggle("on", on);
       button.setAttribute("aria-checked", String(on));
       button.tabIndex = on ? 0 : -1;
-      button.disabled = scanning;
     }
-    panel.minViewsArea.hidden = pending.mode !== "minViews";
-    const minLabel = formatExact(pending.minViews) + " views";
-    syncRange(panel.minViews, minViewsToSliderPosition(pending.minViews), MIN_VIEWS_SLIDER_MAX, minLabel);
+    panel.minViewsArea.hidden = settings.mode !== "minViews";
+    const minLabel = formatExact(settings.minViews) + " views";
+    syncRange(panel.minViews, minViewsToSliderPosition(settings.minViews), MIN_VIEWS_SLIDER_MAX, minLabel);
     panel.minViewsValue.textContent = minLabel;
-    panel.minViews.disabled = scanning;
+
+    panel.sortKey.value = settings.sortKey;
+    const dir = sortDirLabel(settings.sortDir);
+    panel.sortDir.textContent = dir.text;
+    panel.sortDir.setAttribute("aria-label", dir.aria);
 
     // Run → Stop → Reset swap places; if the focused one disappears, hand focus to its replacement.
     const actions = [panel.run, panel.stop, panel.reset];
@@ -155,20 +178,22 @@ function mount(root: HTMLElement): void {
   }
 
   function renderProgressAndResults(): void {
-    const { phase, applied, collected, result } = state;
+    const { phase, scannedLimit, collected, result, settings } = state;
     panel.progress.hidden = phase !== "scanning";
     if (phase === "scanning") {
-      const pct = applied.scanLimit != null ? Math.min(100, (collected / applied.scanLimit) * 100) : 100;
+      const pct = scannedLimit != null ? Math.min(100, (collected / scannedLimit) * 100) : 100;
       panel.progressFill.style.width = pct.toFixed(1) + "%";
-      panel.progressFill.classList.toggle("pulse", applied.scanLimit == null);
-      panel.progressText.textContent = progressText(collected, applied.scanLimit);
+      panel.progressFill.classList.toggle("pulse", scannedLimit == null);
+      panel.progressText.textContent = progressText(collected, scannedLimit);
     }
 
-    panel.results.hidden = phase === "idle" || !result;
+    const outliers = result?.outliers ?? [];
+    // Like the extension: while scanning, the list appears with its first result.
+    panel.results.hidden = phase === "idle" || !result || (phase === "scanning" && outliers.length === 0);
     if (!result) return;
-    const outliers = result.outliers;
+    panel.resultsTitle.textContent = resultsTitle(settings.mode);
     panel.meta.textContent = resultsMeta(outliers.length, collected);
-    panel.list.innerHTML = outliers.map((reel, i) => resultRowHtml(reel, i + 1)).join("");
+    panel.list.innerHTML = outliers.map((reel, i) => resultRowHtml(reel, i + 1, result.sortKey, profile.followers, profile.assetBase)).join("");
     const showEmpty = phase === "done" && outliers.length === 0;
     panel.empty.hidden = !showEmpty;
     if (showEmpty) {
@@ -176,19 +201,37 @@ function mount(root: HTMLElement): void {
       panel.emptyTitle.textContent = copy.title;
       panel.emptyDetail.textContent = copy.detail;
     }
-    panel.csv.disabled = phase !== "done";
-    panel.copy.disabled = phase !== "done";
+    const ready = phase === "done" && outliers.length > 0;
+    panel.csv.disabled = !ready;
+    panel.copy.disabled = !ready;
   }
 
-  /** Before/while scanning: the newest-first grid. Once done: outliers only, ranked, like the extension's page grid. */
+  /**
+   * Before/while scanning: the newest-first grid. Once done: the extension's page grid, a card per
+   * listed Reel in the panel's order, headed by the sorted metric. Show and Sort by re-render it.
+   */
   function renderGrid(): void {
     const ranked = state.phase === "done";
     if (ranked) {
-      const outliers = state.result?.outliers ?? [];
+      const result = state.result;
+      const outliers = result?.outliers ?? [];
+      const sortKey: SortKey = result?.sortKey ?? "views";
       page.grid.innerHTML = outliers
-        .map((reel, i) => tileHtml(reel, gridIndex.get(reel.url) ?? i, profile.assetBase, { rank: i + 1, ratio: reel.ratio }))
+        .map((reel, i) =>
+          tileHtml(reel, gridIndex.get(reel.url) ?? i, profile.assetBase, {
+            rank: i + 1,
+            ratio: reel.ratio,
+            label: formatMetricPhrase(sortKey, metricValue(reel, sortKey, profile.followers)),
+          })
+        )
         .join("");
+      page.gridMeta.textContent = gridMeta(state, profile.followers);
       page.gridEmpty.hidden = outliers.length > 0;
+      if (outliers.length === 0) {
+        const copy = emptyState(state, profile.followers);
+        page.gridEmptyTitle.textContent = copy.title;
+        page.gridEmptyDetail.textContent = copy.detail;
+      }
       if (!gridShowsResults) page.viewport.scrollTop = 0;
     } else if (gridShowsResults || page.grid.childElementCount !== profile.reels.length) {
       page.grid.innerHTML = profile.reels.map((reel, i) => tileHtml(reel, i, profile.assetBase)).join("");
@@ -196,6 +239,7 @@ function mount(root: HTMLElement): void {
       page.viewport.scrollTop = 0;
     }
     gridShowsResults = ranked;
+    page.gridHead.hidden = !ranked;
     page.grid.classList.toggle("ranked", ranked);
     page.lock.hidden = state.phase !== "scanning";
   }
@@ -207,6 +251,9 @@ function mount(root: HTMLElement): void {
 
   function renderProfile(): void {
     page.url.textContent = profile.handle;
+    panel.handle.textContent = "@" + profile.handle;
+    panel.followers.textContent = formatExact(profile.followers);
+    page.gridHandle.textContent = profile.handle;
     page.profileLink.href = `https://www.instagram.com/${profile.handle}/`;
     page.avatar.innerHTML = avatarHtml(profile.handle, profile.avatar);
     page.handle.textContent = profile.handle;
@@ -231,7 +278,7 @@ function mount(root: HTMLElement): void {
 
   // ── Scanning ────────────────────────────────────────────────────────
   function tickDelay(): number {
-    const target = Math.min(state.applied.scanLimit ?? profile.reels.length, profile.reels.length);
+    const target = Math.min(state.scannedLimit ?? profile.reels.length, profile.reels.length);
     const batches = Math.max(1, Math.ceil(target / BATCH_SIZE));
     return Math.min(1200, Math.max(260, Math.round(3600 / batches)));
   }
@@ -257,19 +304,22 @@ function mount(root: HTMLElement): void {
 
   function finish(): void {
     window.clearTimeout(timer);
-    const { result, collected } = state;
+    const { result, collected, settings } = state;
     const count = result?.outliers.length ?? 0;
+    const bar = activeThreshold(settings, profile.followers).label;
     announce(
-      count > 0
-        ? `Scan complete. ${count} of ${collected} Reels cleared ${activeThreshold(state, profile.followers).label}.`
-        : `Scan complete. No Reels cleared ${activeThreshold(state, profile.followers).label}.`
+      settings.mode === "all"
+        ? `Scan complete. ${collected} Reels, sorted.`
+        : count > 0
+          ? `Scan complete. ${count} of ${collected} Reels cleared ${bar}.`
+          : `Scan complete. No Reels cleared ${bar}.`
     );
   }
 
   function run(): void {
     if (state.phase !== "idle") return;
     state = startScan(state, profile.reels, profile.followers);
-    trackGoal("demo_run", { profile: profile.handle, mode: state.applied.mode });
+    trackGoal("demo_run", { profile: profile.handle, mode: state.settings.mode });
     setStatus("");
     announce(`Scanning @${profile.handle}'s Reels.`);
     if (reduced) {
@@ -313,29 +363,33 @@ function mount(root: HTMLElement): void {
   }
 
   // ── Settings ────────────────────────────────────────────────────────
-  function setMode(mode: FilterMode): void {
-    state = updateSettings(state, { mode });
+  function update(patch: Parameters<typeof updateSettings>[1]): void {
+    state = updateSettings(state, patch, profile.reels, profile.followers);
     render();
+  }
+
+  function setMode(mode: FilterMode): void {
+    update({ mode });
   }
 
   panel.limit.addEventListener("input", () => {
     const position = Number(panel.limit.value);
-    state = updateSettings(state, { scanLimit: sliderPositionToScanLimit(position) });
-    render();
+    update({ scanLimit: sliderPositionToScanLimit(position) });
     panel.limit.value = String(position); // let the thumb follow the pointer; it snaps on release
     setFill(panel.limit, position, SCAN_SLIDER_MAX);
   });
   panel.limit.addEventListener("change", () => render());
   panel.minViews.addEventListener("input", () => {
     const position = Number(panel.minViews.value);
-    state = updateSettings(state, { minViews: sliderPositionToMinViews(position) });
-    render();
+    update({ minViews: sliderPositionToMinViews(position) });
     panel.minViews.value = String(position);
     setFill(panel.minViews, position, MIN_VIEWS_SLIDER_MAX);
   });
   panel.minViews.addEventListener("change", () => render());
-  stepByValue(panel.limit, sliderPositionToScanLimit, () => state.pending.scanLimit);
-  stepByValue(panel.minViews, sliderPositionToMinViews, () => state.pending.minViews);
+  stepByValue(panel.limit, sliderPositionToScanLimit, () => state.settings.scanLimit);
+  stepByValue(panel.minViews, sliderPositionToMinViews, () => state.settings.minViews);
+  panel.sortKey.addEventListener("change", () => update({ sortKey: panel.sortKey.value as SortKey }));
+  panel.sortDir.addEventListener("click", () => update({ sortDir: state.settings.sortDir === "desc" ? "asc" : "desc" }));
 
   wireRadioGroup(panel.modes, (button) => setMode(button.dataset.panelMode as FilterMode));
   wireRadioGroup(page.profiles, (button, viaKeyboard) => selectProfile(button.dataset.demoProfile!, viaKeyboard));
@@ -346,36 +400,42 @@ function mount(root: HTMLElement): void {
 
   // ── Export & copy ───────────────────────────────────────────────────
   panel.csv.addEventListener("click", () => {
-    const outliers = state.result?.outliers ?? [];
-    if (state.phase !== "done" || outliers.length === 0) {
-      setStatus("No outliers to export for the current filters.");
+    const result = state.result;
+    if (state.phase !== "done" || !result) {
+      setStatus("Run a scan first to export CSV.");
       return;
     }
-    const csv = buildOutliersCsv(outliers, {
+    if (result.outliers.length === 0) {
+      setStatus("Nothing to export for the current Show setting.");
+      return;
+    }
+    const csv = buildOutliersCsv(result.outliers, {
       profilePath: `https://www.instagram.com/${profile.handle}/`,
-      filterMode: state.applied.mode,
-      thresholdLabel: activeThreshold(state, profile.followers).label,
+      filterMode: state.settings.mode,
+      thresholdLabel: activeThreshold(state.settings, profile.followers).label,
       exportedAt: new Date().toISOString(),
+      followers: profile.followers,
+      sortKey: result.sortKey,
+      sortDir: result.sortDir,
     });
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = `outliers_${profile.handle}_replay.csv`;
+    a.download = `outliers_instagram_${profile.handle}_replay.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    setStatus("CSV downloaded.");
+    setStatus("CSV exported.");
   });
 
   panel.copy.addEventListener("click", () => {
-    const outliers = state.result?.outliers ?? [];
-    if (outliers.length === 0) {
-      setStatus("No outliers to copy for the current filters.");
+    if (!state.result || state.result.outliers.length === 0) {
+      setStatus("No outliers available to copy yet.");
       return;
     }
-    copyText(plainTextReport(profile.handle, activeThreshold(state, profile.followers).label, outliers)).then((ok) =>
-      setStatus(ok ? "Outliers copied." : "Copy failed. Please try again.")
+    copyText(plainTextReport(state, profile.handle, profile.followers)).then((ok) =>
+      setStatus(ok ? "List copied." : "Copy failed. Please try again.")
     );
   });
 
@@ -383,9 +443,9 @@ function mount(root: HTMLElement): void {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-copy-url]");
     if (!button) return;
     copyText(button.dataset.copyUrl!).then((ok) => {
-      const label = button.textContent;
-      button.textContent = ok ? "Copied!" : "Copy failed";
-      window.setTimeout(() => (button.textContent = label), 1500);
+      const icon = button.innerHTML;
+      button.textContent = ok ? "✓" : "!";
+      window.setTimeout(() => (button.innerHTML = icon), 1500);
     });
   });
 

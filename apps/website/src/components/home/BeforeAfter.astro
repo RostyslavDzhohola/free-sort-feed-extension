@@ -1,7 +1,7 @@
 ---
 // Before/after compare (DESIGN-SPEC §6.1), drawn from a demo snapshot (data/demo/profiles.ts → heroProfile).
 // Both grids are rendered here; the island only moves the divider.
-import { findOutliers } from "@outliers/core";
+import { findOutliers, pageGridMeta } from "@outliers/core";
 import { heroProfile } from "../../data/demo/profiles";
 import { avatarHtml, tileHtml } from "../../lib/demo-render";
 import "../../styles/tiles.css";
@@ -13,7 +13,8 @@ const before = snapshot.reels.slice(0, 9);
 const after = run.outliers.slice(0, 6);
 // Circle the #3 multiple: it sits in view at the resting 50% position.
 const circled = Math.min(2, after.length - 1);
-const summary = `${run.outliers.length} of ${run.scannedCount} reels • ${run.thresholdLabel}`;
+// The extension's page grid header line, e.g. "6 of 120 Reels • 3,295 views • sorted by views ↓".
+const summary = pageGridMeta({ ...run, platform: "instagram", activeThresholdLabel: run.thresholdLabel });
 // Grid position drives each tile's cover colours; ranked results are copies, so look them up by URL.
 const gridIndex = new Map(snapshot.reels.map((reel, i) => [reel.url, i]));
 const beforeHtml = before.map((reel, i) => tileHtml(reel, i, assetBase)).join("");

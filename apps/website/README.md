@@ -4,7 +4,7 @@ The marketing site for the Outliers Chrome extension, direction C ("Field Notes"
 
 Live at **https://outliers-extension.vercel.app** (Vercel project `outliers-extension`).
 
-The source of truth for design is `DESIGN-SPEC.md` in the design worktree (direction C). Its §0 (Revision 2) and §6.4 (the demo) override older sections. Copy must match how the extension really behaves (§2 guardrails). `apps/extension/src` is 1.1 now, but the store still runs 1.0.8, so check the default copy against the `v1.0.8` tag (`git show v1.0.8:src/sidepanel.ts`) and the 1.1 copy against `apps/extension/src`.
+The source of truth for design is `DESIGN-SPEC.md` in the design worktree (direction C). Its §0 (Revision 2) and §6.4 (the demo) override older sections. Copy must match how the extension really behaves (§2 guardrails). The store runs 1.0.8 until 1.1.1 is approved, so check the default copy against the `v1.0.8` tag (`git show v1.0.8:src/sidepanel.ts`) and the 1.1 copy against `v1.1.1` (its `src/` is identical to `apps/extension/src`). The demo panel is the 1.1 panel whatever `RELEASE_1_1` says, so this site ships only once 1.1.1 is live.
 
 ## Develop
 
@@ -50,11 +50,11 @@ SITE_INDEXABLE=false DATAFAST=false pnpm build:web
 
 ### Shipping 1.1
 
-The 1.1 copy follows the features the 1.1 thread verified in PR #10. Once 1.1 is approved and live in the store:
+The 1.1 wording in `components/home/Features.astro`, `Hero.astro` and `data/faq.ts` (the `release11` branches) is checked against v1.1.1, the demo runs the 1.1 panel, and `packages/core` mirrors v1.1.1 (`STORE_RELEASE`). The privacy page covers 1.0.8 and 1.1.1 already. Once 1.1.1 is approved and live in the store:
 1. Change the `RELEASE_1_1` default to `process.env.RELEASE_1_1 !== "false"` in `site.config.mjs`.
-2. Check the 1.1 wording in `components/home/Features.astro`, and `data/faq.ts` (the 1.1 branches) against the released extension. Check `pages/privacy.astro` too, and bump `privacyEffectiveDate` if it changes.
-3. Replace the demo's v1.0.x panel replica with the 1.1 panel (see "Swapping the side panel"); the replay still shows the old panel. Port 1.1's logic into `packages/core` and bump its `STORE_RELEASE` to `v1.1.0` in the same change.
-4. Run `pnpm test`, then `vercel deploy --prod`.
+2. Check `pages/privacy.astro` against the released extension, and bump `privacyEffectiveDate` if it changes.
+3. Run `pnpm test`, then `vercel deploy --prod`.
+4. Fetch the site and check the 1.1 copy and `/promo/outliers-1.1-promo.mp4` are served.
 
 `RELEASE_1_1=true pnpm --filter @outliers/website test` builds and checks the 1.1 site without changing the default.
 
@@ -117,13 +117,15 @@ Every initial state is rendered on the server, so the page reads correctly witho
 
 ## The demo: a replay of a real snapshot
 
-A website can't scan Instagram for a visitor. Cross-origin reads are blocked, there's a login wall and Instagram's terms forbid it, and scanning would need a server, which would break "nothing leaves your browser". So chapter I replays snapshots of real Reels tabs, each verified against a real extension CSV export (`extension-5x.csv`). A snapshot and its export may come from different sessions; `comparison.json` records which. `lib/demo-engine.ts` mirrors the v1.0.7 panel (the scan is unchanged in v1.0.8):
-- it collects tiles in batches of 12 before checking the scan limit;
-- Stop finalizes what's been collected;
-- settings changed after a scan apply only after Reset → Run;
-- progress and Copy text match the extension word for word. Empty-state text does too, with **one deliberate exception**: v1.0.7's scan-limit hint ("Scanned: first N reels only") names the limit even when a batch overshot it or Stop ended the scan early. That's a known extension bug, so the replay names the number of Reels actually collected, and only when the limit was reached.
+A website can't scan Instagram for a visitor. Cross-origin reads are blocked, there's a login wall and Instagram's terms forbid it, and scanning would need a server, which would break "nothing leaves your browser". So chapter I replays snapshots of real Reels tabs, each verified against a real extension CSV export (`extension-5x.csv`). A snapshot and its export may come from different sessions; `comparison.json` records which. `lib/demo-engine.ts` mirrors the 1.1 panel (v1.1.1):
+- the scan stops at exactly the scan limit (the replay collects 12 Reels a step, about a screen of the grid), and Stop finalizes what's been collected;
+- Show (5× Outliers, Min Views, All) and Sort by re-rank the collected Reels at once, during and after a scan, in the panel and in the page grid;
+- the scan limit locks while scanning, and a new one applies to the next scan, after Reset → Run;
+- progress, results, empty-state, page-grid header and Copy text match the extension word for word.
 
-Results come from `findOutliers` in `@outliers/core`. Open and Copy link point at the real Reels, and a "Follow @handle on Instagram" link appears after results. The label "Replay of a real snapshot captured {date}, checked against the extension's own export. Live numbers on Instagram will differ." is always shown (`lib/demo-copy.ts`). Third-party creators also get a credit and disclosure linking to their Instagram, which says "shown with permission" only once `permission` is `"granted"`.
+A snapshot holds each Reel's views, not its likes or comments, so the replica's Sort by offers Views and Views ÷ followers, and a note says the extension also sorts by likes, comments and engagement rate. Result rows show the numbers the snapshot holds (views and the multiple of followers).
+
+Results come from `findOutliers` in `@outliers/core`, a thin wrapper over the extension's `selectVideos`. Open and Copy link point at the real Reels, and a "Follow @handle on Instagram" link appears after results. The label "Replay of a real snapshot captured {date}, checked against the extension's own export. Live numbers on Instagram will differ." is always shown (`lib/demo-copy.ts`). Third-party creators also get a credit and disclosure linking to their Instagram, which says "shown with permission" only once `permission` is `"granted"`.
 
 ### Adding the real snapshots (data drop)
 
@@ -165,11 +167,11 @@ To check a pending profile in a production build locally, run `SHOW_PENDING_DEMO
 
 ## Swapping the side panel
 
-The extension's side panel is being redesigned. The demo drives the panel only through the hooks in `components/panel/types.ts`, so it never depends on how the panel looks:
-- `PANEL_HOOKS`: `data-panel-*` attributes for the threshold, the scan-limit and Min Views sliders, the mode buttons, Run/Stop/Reset, status, progress, the results list, empty state, CSV and Copy.
-- `data-zone="1"`–`"5"` wrappers around the annotated areas (Active threshold, Scan limit, Filter mode, Ranked results, Export & copy). Each holds `<Pin n={…} hint />`. The demo toggles `.active` on the hinted zone and shows the hint text from `components/panel/hints.ts`.
+The demo drives the panel only through the hooks in `components/panel/types.ts`, so it never depends on how the panel looks:
+- `PANEL_HOOKS`: `data-panel-*` attributes for the profile, followers and threshold rows, the scan-limit and Min Views sliders, the Show buttons, Sort by and its direction, Run/Stop/Reset, status, progress, the results title, list and empty state, CSV and Copy.
+- `data-zone="1"`–`"5"` wrappers around the annotated areas (Profile and bar, Scan limit, Show and Sort by, Results, Export & copy). Each holds `<Pin n={…} hint />`. The demo toggles `.active` on the hinted zone and shows the hint text from `components/panel/hints.ts`.
 
-`components/panel/DemoPanel.astro` is today's v1.0.7 panel. To switch to the redesign:
+`components/panel/DemoPanel.astro` is the 1.1 panel (v1.1.1). To switch to a later redesign:
 
 1. Add `components/panel/<NewPanel>.astro`. Render every `PANEL_HOOKS` element with the noted element type, the five zones with their pins, and your own `.active` zone highlight.
 2. Update `hints.ts` if the copy changes.

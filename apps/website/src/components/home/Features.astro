@@ -45,7 +45,7 @@ const current: Feature[] = [
   },
 ];
 
-// Outliers 1.1, as verified by the 1.1 thread (PR #10). Ships only when site.release11 is on.
+// Outliers 1.1, checked against the store release v1.1.1 (apps/extension/src). Ships only when site.release11 is on.
 const release11: Feature[] = [
   {
     kicker: "Sort · new in 1.1",
@@ -70,7 +70,7 @@ const release11: Feature[] = [
   {
     kicker: "Results · new in 1.1",
     title: "Change it, no rescan",
-    body: "Switch <b>Show</b> or <b>Sort by</b> after a scan and the results update at once, in the side panel and in the grid of cards on the profile.",
+    body: "Switch <b>Show</b> or <b>Sort by</b> during or after a scan and the results update at once, in the side panel and in the grid of cards on the profile. On Instagram, open a card and the Reel viewer's arrows step through the list in that order.",
   },
   {
     kicker: "Platforms · new in 1.1",
@@ -80,7 +80,7 @@ const release11: Feature[] = [
   {
     kicker: "Scan",
     title: "As deep as you like",
-    body: "Set a scan limit, and Outliers scrolls the profile's grid for you. <b>Stop</b> keeps what it has found so far.",
+    body: "Set a scan limit from 1 to All, and Outliers scrolls the profile's grid for you, stopping at exactly that many. <b>Stop</b> keeps what it has found so far.",
   },
   {
     kicker: "Keep",

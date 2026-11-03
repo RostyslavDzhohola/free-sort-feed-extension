@@ -24,3 +24,6 @@
 .tile .tv svg { width: 10px; height: 10px; fill: #fff; }
 .tile .rk { position: absolute; top: 7px; left: 7px; z-index: 1; font: italic 500 17px/1 var(--serif); font-variation-settings: "SOFT" 100, "WONK" 1; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4); }
 .tile .rt { position: absolute; top: 7px; right: 7px; z-index: 2; padding: 3px 6px; border-radius: 999px; background: var(--paper); color: var(--orange-ink); font: 700 11px/1 var(--sans); }
+/* Ranked: a card from the extension's page grid, headed by the sorted metric. */
+.tile .tp { position: absolute; left: 6px; right: 6px; bottom: 21px; z-index: 1; overflow: hidden; font: 700 12.5px/1.15 var(--sans); white-space: nowrap; text-overflow: ellipsis; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); }
+.tile.ranked::after { background: linear-gradient(180deg, transparent 45%, rgba(0, 0, 0, 0.55)); }
