@@ -17,6 +17,7 @@ import {
 } from "./shared/platform";
 import {
   DEFAULT_MIN_VIEWS,
+  DEFAULT_VIEW,
   formatCount,
   formatExact,
   formatMetricPhrase,
@@ -174,10 +175,9 @@ const savedByUrl = new Map<string, SavedReel>();
 
 // ── Storage keys ──────────────────────────────────────────────────────────
 const SCAN_LIMIT_KEY = "outliers_scan_limit";
-const FILTER_MODE_KEY = "outliers_filter_mode";
 const MIN_VIEWS_KEY = "outliers_min_views";
-const SORT_KEY_KEY = "outliers_sort_key";
-const SORT_DIR_KEY = "outliers_sort_dir";
+// Show and Sort used to be remembered here; every panel now opens on DEFAULT_VIEW.
+const RETIRED_VIEW_KEYS = ["outliers_filter_mode", "outliers_sort_key", "outliers_sort_dir"];
 const SAVED_REELS_KEY = "outliers_saved_reels";
 const REVIEW_PROMPT_STATE_KEY = "outliers_review_prompt_state";
 // Persisted in localStorage so you can flip modal testing modes quickly.
@@ -710,23 +710,6 @@ function setScanLimitControlsDisabled(disabled: boolean): void {
 }
 
 // ── Filter mode helpers ───────────────────────────────────────────────────
-function loadFilterMode(): FilterMode {
-  try {
-    const raw = localStorage.getItem(FILTER_MODE_KEY);
-    return isFilterMode(raw) ? raw : "ratio5x";
-  } catch {
-    return "ratio5x";
-  }
-}
-
-function saveFilterMode(mode: FilterMode): void {
-  try {
-    localStorage.setItem(FILTER_MODE_KEY, mode);
-  } catch {
-    // Non-fatal
-  }
-}
-
 function loadMinViews(): number | null {
   try {
     const raw = localStorage.getItem(MIN_VIEWS_KEY);
@@ -751,20 +734,9 @@ function saveMinViews(minViews: number | null): void {
   }
 }
 
-function loadSort(): { key: SortKey; dir: SortDir } {
+function forgetSavedView(): void {
   try {
-    const key = localStorage.getItem(SORT_KEY_KEY);
-    const dir = localStorage.getItem(SORT_DIR_KEY);
-    return { key: isSortKey(key) ? key : "views", dir: dir === "asc" ? "asc" : "desc" };
-  } catch {
-    return { key: "views", dir: "desc" };
-  }
-}
-
-function saveSort(key: SortKey, dir: SortDir): void {
-  try {
-    localStorage.setItem(SORT_KEY_KEY, key);
-    localStorage.setItem(SORT_DIR_KEY, dir);
+    for (const key of RETIRED_VIEW_KEYS) localStorage.removeItem(key);
   } catch {
     // Non-fatal
   }
@@ -2352,9 +2324,7 @@ function renderState(rawState: OutliersState, syncControls = false): void {
     if (state.sortKey) selectedSortKey = state.sortKey;
     if (state.sortDir) selectedSortDir = state.sortDir;
     syncSortUI();
-    saveFilterMode(state.filterMode);
     if (state.minViews) saveMinViews(state.minViews);
-    saveSort(selectedSortKey, selectedSortDir);
   }
 
   statusEl.textContent = "";
@@ -3073,9 +3043,7 @@ runBtn.addEventListener("click", async function () {
       return bound() && epoch !== documentEpoch;
     };
 
-    saveFilterMode(view.filterMode);
     if (view.filterMode === "minViews") saveMinViews(view.minViews);
-    saveSort(selectedSortKey, selectedSortDir);
 
     statusEl.textContent = "Starting scan…";
 
@@ -3251,7 +3219,6 @@ for (let i = 0; i < filterModeBtns.length; i++) {
       syncMinViewsUI(DEFAULT_MIN_VIEWS);
       saveMinViews(DEFAULT_MIN_VIEWS);
     }
-    saveFilterMode(mode);
     setFilterControlsDisabled(false);
     onViewChanged();
   });
@@ -3411,14 +3378,12 @@ sortKeySelect.addEventListener("change", function () {
   const key = sortKeySelect.value;
   if (!isSortKey(key)) return;
   selectedSortKey = key;
-  saveSort(selectedSortKey, selectedSortDir);
   syncSortUI();
   onViewChanged();
 });
 
 sortDirBtn.addEventListener("click", function () {
   selectedSortDir = selectedSortDir === "desc" ? "asc" : "desc";
-  saveSort(selectedSortKey, selectedSortDir);
   syncSortUI();
   onViewChanged();
 });
@@ -3431,11 +3396,13 @@ async function init(): Promise<void> {
   closeShareModal();
   switchPanelView("outliers");
   syncScanLimitUI(loadScanLimit());
-  syncFilterModeUI(loadFilterMode());
+  // Every open starts on 5× Outliers, Views, highest first. A scan still on the page
+  // brings its own Show and Sort when the panel restores it.
+  forgetSavedView();
+  syncFilterModeUI(DEFAULT_VIEW.filterMode);
   syncMinViewsUI(loadMinViews());
-  const sort = loadSort();
-  selectedSortKey = sort.key;
-  selectedSortDir = sort.dir;
+  selectedSortKey = DEFAULT_VIEW.sortKey;
+  selectedSortDir = DEFAULT_VIEW.sortDir;
   syncSortUI();
   setFilterControlsDisabled(false);
   await refreshTikTokAccess();
