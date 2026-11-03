@@ -259,7 +259,7 @@ test("the site is honest about its own analytics, and keeps the extension's clai
   assert.ok(!/This site has no analytics/.test(privacy), "the old no-analytics claim is gone");
   if (DATAFAST) {
     assert.ok(privacy.includes("DataFast") && privacy.includes("cookieless mode"), "privacy names DataFast and cookieless mode");
-    assert.ok(privacy.includes("The extension sends nothing to DataFast or anywhere else."));
+    assert.ok(privacy.includes("The extension sends nothing to DataFast, and nothing to the developer."));
   }
   assert.ok(privacy.includes("No analytics, tracking, ads or cookies."), "the extension's own claims stay");
   assert.ok(privacy.includes("versions 1.0.8 and 1.1.1"), "policy covers the live and the reviewed version");

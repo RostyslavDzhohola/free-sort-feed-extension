@@ -30,13 +30,14 @@ import { site } from "../config/site";
       <li>It doesn't read your messages, your feed, your other tabs or your browsing history, and it never sees your password.</li>
     </ul>
     <p>All of this is processed in your browser. Outliers' parts (the side panel, its background worker and the reader in your tab) pass it to each other through Chrome's internal extension messaging. None of it leaves your device.</p>
+    <p>The only network requests Outliers makes itself are for cover images. To show them in the side panel and on a Story card, it loads them from Instagram's or TikTok's own image servers, the same images the page already shows you. Like any image on the web, that request tells the image server which image is wanted and comes from your IP address. It carries none of your scan results, Library or settings.</p>
   </DocSection>
 
   <DocSection numeral="II." title="What it keeps, and where" id="keeps">
     <p>Everything Outliers keeps stays in this Chrome profile, on this device. None of it is synced to other devices or sent to anyone.</p>
     <ul class="doc-list">
       <li><b>Your Library.</b> For each video you save: its link, cover image link, view count and multiple (views ÷ followers), the profile it came from, and when you saved it. Version 1.1 also keeps its other counts and whether it's from Instagram or TikTok. Kept in Chrome's local extension storage until you clear it.</li>
-      <li><b>Your settings.</b> Scan limit, filter mode and Min Views, plus Sort from version 1.1. Kept in the extension's own local storage.</li>
+      <li><b>Your settings.</b> Scan limit, filter mode and Min Views, plus Sort from version 1.1. Kept in the extension's own local storage until you change them or remove Outliers.</li>
       <li><b>Review reminders.</b> A few dates and counts, so Outliers doesn't ask you to rate it too often. Kept in Chrome's local extension storage.</li>
       <li><b>The current scan.</b> Results stay in that tab's memory until you press Reset, reload or close the tab.</li>
       <li><b>Exports</b> happen only when you ask. A CSV or a Story card image goes to your downloads, and Copy puts text on your clipboard.</li>
@@ -45,7 +46,7 @@ import { site } from "../config/site";
 
   <DocSection numeral="III." title="What it never does" id="never">
     <ul class="doc-list">
-      <li>It never uploads your research. There's no Outliers server, and nothing is sent to the developer or anyone else.</li>
+      <li>It never uploads your research. There's no Outliers server, and nothing it reads or keeps is sent to the developer or anyone else.</li>
       <li>No analytics, tracking, ads or cookies.</li>
       <li>No account or sign-up.</li>
       <li>It doesn't sell or transfer data to anyone, doesn't use it for anything except finding and sorting videos, and never uses it to judge creditworthiness or for lending.</li>
@@ -102,7 +103,7 @@ import { site } from "../config/site";
     <ul class="doc-list">
       <li><b>What it records:</b> the pages you view, the site that sent you, your approximate location (country and city, from your IP address), your device type, browser and operating system, clicks on links that leave the site (such as <b>Add to Chrome</b>), and presses of the demo's <b>Run</b> button.</li>
       <li><b>How it tells visits apart:</b> by a hashed identifier made from your IP address, browser and this site's domain, with a salt that changes about every 24 hours. It can't recognise you from one day to the next. It may also keep a session value in your browser for the current tab.</li>
-      <li><b>What it never gets:</b> anything from the extension. The extension sends nothing to DataFast or anywhere else.</li>
+      <li><b>What it never gets:</b> anything from the extension. The extension sends nothing to DataFast, and nothing to the developer.</li>
     </ul>
     <p>No ads, and no other third-party scripts. Fonts are served from the site itself. The site is hosted on Vercel, which keeps standard request logs, such as IP address and browser type, to run and protect the service.</p>
     <p>To opt out, block <code>datafa.st</code> with any content blocker; the site works the same without it.</p>
