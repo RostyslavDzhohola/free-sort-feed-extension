@@ -36,7 +36,7 @@ The settings live in [`site.config.mjs`](./site.config.mjs):
 | `SITE_URL` | `https://outliers-extension.vercel.app` | Canonical URLs, `og:url`/`og:image`, `sitemap-index.xml`, and the `Sitemap:` line in `robots.txt`. |
 | `SITE_INDEXABLE` | `true` (launched) | Set `SITE_INDEXABLE=false` for a build that must stay out of search: every page then ships `<meta name="robots" content="noindex, nofollow">`. The 404 page is always noindex. |
 | `DATAFAST` | on | The DataFast website id and domain. `DATAFAST=false` builds without the script. |
-| `RELEASE_1_1` | `false` | Turns on everything for Outliers 1.1: the features list (sort by any metric, Show: All, re-sort without rescanning, TikTok), the FAQ and support wording, and the promo video. The privacy page doesn't follow it: it's the store listing's policy, so it already covers 1.0.8 and 1.1. While it's off, a "Coming soon" line shows and `public/promo/` is removed from `dist/`. Flip it only once 1.1 is live in the Chrome Web Store. |
+| `RELEASE_1_1` | `true` (1.1.1 live since 2026-11-03) | Turns on everything for Outliers 1.1: the features list (sort by any metric, Show: All, re-sort without rescanning, TikTok), the FAQ and support wording, and the promo video. The privacy page doesn't follow it: it's the store listing's policy, so it already covers 1.0.8 and 1.1. With `RELEASE_1_1=false`, the build shows the 1.0.8 copy with a "Coming soon" line, and `public/promo/` is removed from `dist/`. |
 | `PROMO_VIDEO` | `/promo/outliers-1.1-promo.mp4` | The 1.1 promo video and poster in `public/promo/` (36 s, 1080p, about 10 MB, re-encoded for the web with `+faststart`). It shows at the top of Features when `RELEASE_1_1` is on. |
 | `SHOW_PENDING_DEMO_PROFILES` | `false` | Includes demo profiles whose permission is `"pending"` in a build. Use it only for a local preview. `astro dev` always shows them. |
 
@@ -50,13 +50,7 @@ SITE_INDEXABLE=false DATAFAST=false pnpm build:web
 
 ### Shipping 1.1
 
-The 1.1 wording in `components/home/Features.astro`, `Hero.astro` and `data/faq.ts` (the `release11` branches) is checked against v1.1.1, the demo runs the 1.1 panel, and `packages/core` mirrors v1.1.1 (`STORE_RELEASE`). The privacy page covers 1.0.8 and 1.1.1 already. Once 1.1.1 is approved and live in the store:
-1. Change the `RELEASE_1_1` default to `process.env.RELEASE_1_1 !== "false"` in `site.config.mjs`.
-2. Check `pages/privacy.astro` against the released extension, and bump `privacyEffectiveDate` if it changes.
-3. Run `pnpm test`, then `vercel deploy --prod`.
-4. Fetch the site and check the 1.1 copy and `/promo/outliers-1.1-promo.mp4` are served.
-
-`RELEASE_1_1=true pnpm --filter @outliers/website test` builds and checks the 1.1 site without changing the default.
+Shipped on 2026-11-03, when 1.1.1 went live in the Chrome Web Store: the 1.1 copy, the 1.1 demo panel and `packages/core` on v1.1.1 (PR #15), then `RELEASE_1_1` on by default. `RELEASE_1_1=false pnpm --filter @outliers/website test` still builds and checks the 1.0.8 copy.
 
 ## Analytics (DataFast)
 

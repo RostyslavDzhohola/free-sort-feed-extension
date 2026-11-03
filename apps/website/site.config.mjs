@@ -29,11 +29,10 @@ export const DATAFAST = process.env.DATAFAST !== "false" && {
 };
 
 /**
- * Outliers 1.1 (sort by likes, comments and every metric, simple sort, TikTok). Keep false until the
- * owner approves 1.1 and it's live in the Chrome Web Store: the site may only promise what the store
- * version does. While false, the features section shows a "Coming soon" line instead.
+ * Outliers 1.1 (sort by likes, comments and every metric, Show: All, TikTok). On since 1.1.1 went live in
+ * the Chrome Web Store on 2026-11-03. Set RELEASE_1_1=false for a build of the 1.0.8 copy.
  */
-export const RELEASE_1_1 = process.env.RELEASE_1_1 === "true";
+export const RELEASE_1_1 = process.env.RELEASE_1_1 !== "false";
 
 /**
  * The 1.1 promo video in public/promo/. It ships, and shows at the top of Features, only with RELEASE_1_1:
