@@ -1,7 +1,7 @@
 ---
 // The privacy policy for the Outliers extension and this website. It's the policy URL on the
-// Chrome Web Store listing, so it covers every version a user or reviewer can have: 1.0.8 (live)
-// and 1.1.x (TikTok, more counts, sorting). That's why it doesn't follow RELEASE_1_1.
+// Chrome Web Store listing, so it covers every version a user or reviewer can have: 1.0.8, 1.1.x
+// (TikTok, more counts, sorting) and 1.2.x (kept scans). That's why it doesn't follow RELEASE_1_1.
 // Every statement must match the extension: storage keys in apps/extension/src/sidepanel.ts
 // (`git show v1.0.8:src/sidepanel.ts` for 1.0.8), permissions in its manifest.json, and the
 // "Privacy practices" answers in apps/extension/store/. Bump site.privacyEffectiveDate on any change.
@@ -18,7 +18,7 @@ import { site } from "../config/site";
   <Fragment slot="heading">Privacy, in <em>plain words.</em></Fragment>
   <Fragment slot="lede">
     <p>Outliers is a Chrome extension that finds the videos that did best on a profile. It runs in the Instagram tab you're on, or, from version 1.1, a TikTok tab once you turn TikTok on. There's no Outliers server and no account. This page explains what it reads, what it keeps, and what it never does.</p>
-    <p class="doc-meta">Effective {site.privacyEffectiveDate}. Covers the Outliers Chrome extension (versions 1.0.8 and 1.1.1, and later versions until this page says otherwise) and this website.</p>
+    <p class="doc-meta">Effective {site.privacyEffectiveDate}. Covers the Outliers Chrome extension (versions 1.0.8, 1.1.1 and 1.2.0, and later versions until this page says otherwise) and this website.</p>
   </Fragment>
 
   <DocSection numeral="I." title="What Outliers reads" id="reads">
@@ -37,9 +37,9 @@ import { site } from "../config/site";
     <p>Everything Outliers keeps stays in this Chrome profile, on this device. None of it is synced to other devices or sent to anyone.</p>
     <ul class="doc-list">
       <li><b>Your Library.</b> For each video you save: its link, cover image link, view count and multiple (views ÷ followers), the profile it came from, and when you saved it. Version 1.1 also keeps its other counts and whether it's from Instagram or TikTok. Kept in Chrome's local extension storage until you clear it.</li>
-      <li><b>Your settings.</b> Scan limit, filter mode and Min Views, plus Sort from version 1.1. Kept in the extension's own local storage until you change them or remove Outliers.</li>
+      <li><b>Your settings.</b> Scan limit and Min Views, kept in the extension's own local storage until you change them or remove Outliers. Versions before 1.2 also keep the filter mode, and 1.1 keeps Sort; version 1.2 always opens on 5× Outliers sorted by Views, and deletes those two saved settings.</li>
       <li><b>Review reminders.</b> A few dates and counts, so Outliers doesn't ask you to rate it too often. Kept in Chrome's local extension storage.</li>
-      <li><b>The current scan.</b> Results stay in that tab's memory until you press Reset, reload or close the tab.</li>
+      <li><b>Your scans.</b> Results stay in that tab's memory until you press Reset or close the tab (before version 1.2, also until you reload it). From version 1.2, each finished scan is also kept in Chrome's session extension storage, which Chrome holds in memory and doesn't write to disk, so the scan comes back when you return to that profile or reload the tab. It keeps up to 12, dropping the oldest first. A scan is deleted when you press Reset on its profile or close its tab, and all of them are deleted when Chrome quits.</li>
       <li><b>Exports</b> happen only when you ask. A CSV or a Story card image goes to your downloads, and Copy puts text on your clipboard.</li>
     </ul>
   </DocSection>
@@ -69,7 +69,7 @@ import { site } from "../config/site";
       </div>
       <div>
         <dt><code>storage</code><small>Permission</small></dt>
-        <dd>Keeps your Library, settings and review reminders on this device.</dd>
+        <dd>Keeps your Library, settings and review reminders on this device, and from version 1.2 your finished scans until you close the tab.</dd>
       </div>
       <div>
         <dt><code>instagram.com</code><small>Site access</small></dt>
@@ -89,7 +89,7 @@ import { site } from "../config/site";
   <DocSection numeral="V." title="Deleting your data" id="deleting">
     <ul class="doc-list">
       <li><b>Saved videos:</b> open the Library and press <b>Clear</b>. This removes saved videos only.</li>
-      <li><b>Scan results:</b> press <b>Reset</b> in the side panel, or reload the tab.</li>
+      <li><b>Scan results:</b> press <b>Reset</b> in the side panel, or close the tab. Before version 1.2, reloading the tab also clears them.</li>
       <li><b>Everything:</b> remove Outliers from Chrome at <code>chrome://extensions</code>. Chrome deletes the extension's stored data with it.</li>
     </ul>
   </DocSection>

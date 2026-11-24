@@ -200,6 +200,7 @@ The scanner runs in the extension's isolated world, where it can talk to the sid
 - No remote servers, no analytics, no tracking
 - Outliers only runs on a page when you open the side panel there; it reads Instagram, and TikTok once you allow it
 - Saved videos stay in `chrome.storage.local` on your device
+- Finished scans are kept in `chrome.storage.session` (in memory) until you press Reset or close the tab, so they come back when you return to a profile
 
 ## Limitations
 
