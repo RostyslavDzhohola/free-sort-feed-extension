@@ -167,7 +167,7 @@ export const otherQuestions: QA[] = [
   {
     question: "How do I remove saved Reels?",
     answer:
-      "<p>Open the Library and press <b>Clear</b>. It removes saved Reels only; your scan limit and filter settings stay. Removing Outliers from Chrome deletes everything it stored.</p>",
+      "<p>Open the Library and press <b>Clear</b>. It removes saved Reels only; your scan limit and Min Views stay. Removing Outliers from Chrome deletes everything it stored.</p>",
   },
   free,
 ];

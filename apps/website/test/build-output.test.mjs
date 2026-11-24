@@ -266,7 +266,7 @@ test("the site is honest about its own analytics, and keeps the extension's clai
     assert.ok(privacy.includes("The extension sends nothing to DataFast, and nothing to the developer."));
   }
   assert.ok(privacy.includes("No analytics, tracking, ads or cookies."), "the extension's own claims stay");
-  assert.ok(privacy.includes("versions 1.0.8 and 1.1.1"), "policy covers the live and the reviewed version");
+  assert.ok(privacy.includes("versions 1.0.8, 1.1.1 and 1.2.0"), "policy covers the live and the reviewed version");
   assert.ok(privacy.includes("<code>tiktok.com</code>") && privacy.includes("Turn on TikTok"), "privacy lists the optional TikTok access");
   assert.ok(!privacy.includes("/promo/"), "no link to the unreleased video");
   assert.ok(html["/"].includes("it counts visits and button clicks with cookieless analytics"), "privacy band separates site and extension");
