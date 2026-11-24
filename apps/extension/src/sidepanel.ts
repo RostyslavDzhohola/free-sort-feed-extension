@@ -1,4 +1,5 @@
 import { startHotReload } from "./hot-reload";
+import { SAVED_REELS_KEY, keepScan, scanSnapshotKey } from "./shared/storage-keys";
 import { buildOutliersCsv, buildSavedCsv } from "./shared/export-csv";
 import { buildEmptyStateCopy } from "./shared/empty-state-copy";
 import { readProfileInfo, type ProfileInfo } from "./shared/read-profile";
@@ -17,6 +18,7 @@ import {
 } from "./shared/platform";
 import {
   DEFAULT_MIN_VIEWS,
+  DEFAULT_VIEW,
   formatCount,
   formatExact,
   formatMetricPhrase,
@@ -37,6 +39,7 @@ import type {
   OutliersState,
   Platform,
   SavedReel,
+  ScanSnapshot,
   SortDir,
   SortKey,
   ViewSettings,
@@ -171,14 +174,15 @@ let reviewPromptDevMode: ReviewPromptDevMode = "auto";
 let storyCardGenerationInFlight = false;
 
 const savedByUrl = new Map<string, SavedReel>();
+// Until the first restore after the panel opens, a scan found on the page takes the panel's
+// opening Show/Sort (DEFAULT_VIEW) instead of handing its own back to the controls.
+let openingViewPending = true;
 
 // ── Storage keys ──────────────────────────────────────────────────────────
 const SCAN_LIMIT_KEY = "outliers_scan_limit";
-const FILTER_MODE_KEY = "outliers_filter_mode";
 const MIN_VIEWS_KEY = "outliers_min_views";
-const SORT_KEY_KEY = "outliers_sort_key";
-const SORT_DIR_KEY = "outliers_sort_dir";
-const SAVED_REELS_KEY = "outliers_saved_reels";
+// Show and Sort used to be remembered here; every panel now opens on DEFAULT_VIEW.
+const RETIRED_VIEW_KEYS = ["outliers_filter_mode", "outliers_sort_key", "outliers_sort_dir"];
 const REVIEW_PROMPT_STATE_KEY = "outliers_review_prompt_state";
 // Persisted in localStorage so you can flip modal testing modes quickly.
 const REVIEW_PROMPT_DEV_MODE_KEY = "outliers_review_prompt_dev_mode";
@@ -710,23 +714,6 @@ function setScanLimitControlsDisabled(disabled: boolean): void {
 }
 
 // ── Filter mode helpers ───────────────────────────────────────────────────
-function loadFilterMode(): FilterMode {
-  try {
-    const raw = localStorage.getItem(FILTER_MODE_KEY);
-    return isFilterMode(raw) ? raw : "ratio5x";
-  } catch {
-    return "ratio5x";
-  }
-}
-
-function saveFilterMode(mode: FilterMode): void {
-  try {
-    localStorage.setItem(FILTER_MODE_KEY, mode);
-  } catch {
-    // Non-fatal
-  }
-}
-
 function loadMinViews(): number | null {
   try {
     const raw = localStorage.getItem(MIN_VIEWS_KEY);
@@ -751,20 +738,9 @@ function saveMinViews(minViews: number | null): void {
   }
 }
 
-function loadSort(): { key: SortKey; dir: SortDir } {
+function forgetSavedView(): void {
   try {
-    const key = localStorage.getItem(SORT_KEY_KEY);
-    const dir = localStorage.getItem(SORT_DIR_KEY);
-    return { key: isSortKey(key) ? key : "views", dir: dir === "asc" ? "asc" : "desc" };
-  } catch {
-    return { key: "views", dir: "desc" };
-  }
-}
-
-function saveSort(key: SortKey, dir: SortDir): void {
-  try {
-    localStorage.setItem(SORT_KEY_KEY, key);
-    localStorage.setItem(SORT_DIR_KEY, dir);
+    for (const key of RETIRED_VIEW_KEYS) localStorage.removeItem(key);
   } catch {
     // Non-fatal
   }
@@ -1070,7 +1046,7 @@ function metricChip(className: string, text: string, title: string, icon?: strin
   return chip;
 }
 
-/** Every number we have for a video, with the one it's sorted by highlighted. */
+/** Every number we have for a video except the one it's sorted by: the headline above shows that. */
 function buildMetricChips(entry: OutliersEntry, followers: number | null, activeKey: SortKey): HTMLElement {
   const wrap = document.createElement("div");
   wrap.className = "metric-chips";
@@ -1080,17 +1056,17 @@ function buildMetricChips(entry: OutliersEntry, followers: number | null, active
     : ["views", "likes", "comments"];
   for (let i = 0; i < counts.length; i++) {
     const key = counts[i]!;
+    if (key === activeKey) continue;
     const value = metricValue(entry, key, followers);
     const exact = value === null
       ? (key === "likes" && entry.likesHidden ? "Likes hidden by the creator" : "Not shown for this video")
       : formatExact(value) + " " + key;
-    wrap.appendChild(metricChip(key === activeKey ? "active" : "", value === null ? "—" : formatCount(value), exact, METRIC_ICONS[key]));
+    wrap.appendChild(metricChip("", value === null ? "—" : formatCount(value), exact, METRIC_ICONS[key]));
   }
   const multiple = viewsMultiple(entry, followers);
-  if (multiple !== null) {
-    wrap.appendChild(metricChip("multiple" + (activeKey === "multiple" ? " active" : ""), formatMultiple(multiple), "Views ÷ followers"));
+  if (multiple !== null && activeKey !== "multiple") {
+    wrap.appendChild(metricChip("multiple", formatMultiple(multiple), "Views ÷ followers"));
   }
-  // The post date helps with every sort; the headline above already shows the sorted metric.
   const postedAt = metricValue(entry, "date", followers);
   if (postedAt !== null && activeKey !== "date") {
     wrap.appendChild(metricChip("", formatMetricPhrase("date", postedAt), sortLabel("date")));
@@ -2352,9 +2328,7 @@ function renderState(rawState: OutliersState, syncControls = false): void {
     if (state.sortKey) selectedSortKey = state.sortKey;
     if (state.sortDir) selectedSortDir = state.sortDir;
     syncSortUI();
-    saveFilterMode(state.filterMode);
     if (state.minViews) saveMinViews(state.minViews);
-    saveSort(selectedSortKey, selectedSortDir);
   }
 
   statusEl.textContent = "";
@@ -2467,6 +2441,9 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
       },
     });
     if (isStale()) return;
+    // The first page read after opening decides: a scan found now takes the opening view.
+    const opening = openingViewPending;
+    openingViewPending = false;
     const payload = stateResult?.[0]?.result as { state: OutliersState | null; url: string } | undefined;
     url = payload?.url ?? null;
     adoptProfileFromUrl(url);
@@ -2491,7 +2468,7 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
       profileReady = true;
       profileWaitStartedAt = null;
       const editing = startedDuringStartup || isScanStarting(tabId);
-      const keepControls = editing
+      const keepControls = editing || opening
         || activityAtStart !== viewActivityOf(tabId, generation) || hasViewWrites(tabId, generation);
       renderState(rawState, !keepControls);
       // An edit made before the scan was restored queued no write; send it now that it's known.
@@ -2514,7 +2491,7 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
     // The TikTok card covers TikTok while it's off; otherwise say how to let Outliers in.
     showNotice(
       "Open an Instagram or TikTok profile to scan its videos.",
-      hasTikTokAccess
+      hasTikTokAccess || lastKnownProfileRef?.platform !== "tiktok"
         ? "On a profile already? Chrome may be blocking Outliers on this site: click the puzzle icon in the toolbar and allow Outliers here."
         : undefined
     );
@@ -2545,6 +2522,7 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
   }
 
   let info: ProfileInfo | null = null;
+  let infoDocumentId: string | undefined;
   try {
     // The MAIN world sees the page's own data, so the count is exact in any language.
     const result = await chrome.scripting.executeScript({
@@ -2553,6 +2531,7 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
       func: readProfileInfo,
     });
     info = (result?.[0]?.result as ProfileInfo | null | undefined) ?? null;
+    infoDocumentId = result?.[0]?.documentId;
   } catch {
     info = null;
   }
@@ -2568,6 +2547,19 @@ async function rehydrateOnce(tabId: number, generation: number, epoch: number): 
     latestFollowers = info.followers;
     if (profileWaitStartedAt == null) profileWaitStartedAt = Date.now();
     const waitedLong = Date.now() - profileWaitStartedAt >= PROFILE_WAIT_HINT_MS;
+    // A scan of this profile from earlier in this tab comes back instead of a fresh Run.
+    const kept = isScanStarting(tabId) ? null : await readScanSnapshot(tabId, ref);
+    if (isStale()) return;
+    // 5× needs a follower count; without one a restore would show nothing, so wait for it.
+    const restoreFollowers = info.followers ?? kept?.followers ?? null;
+    const canRestore = selectedFilterMode !== "ratio5x" || (restoreFollowers !== null && restoreFollowers > 0);
+    if (kept && info.onScanTab && canRestore && !isScanStarting(tabId)) {
+      profileReady = true;
+      profileWaitStartedAt = null;
+      await restoreScan(tabId, kept, info, infoDocumentId);
+      return;
+    }
+    keptScanAvailable = kept !== null;
     // Keep polling until the follower count and the scan tab are both in: either can arrive late.
     profileReady = info.followers !== null && info.onScanTab;
     if (profileReady) profileWaitStartedAt = null;
@@ -2606,13 +2598,20 @@ function adoptProfileFromUrl(url: string | null): void {
 function readinessHint(info: ProfileInfo, waitedLong: boolean): StatsHint | undefined {
   if (!info.onScanTab) {
     if (info.platform === "tiktok") {
-      return { text: "Open the Videos tab of this profile to scan it." };
+      return {
+        text: keptScanAvailable
+          ? "Open the Videos tab to see your last scan of this profile again."
+          : "Open the Videos tab of this profile to scan it.",
+      };
     }
     return {
-      text: "Outliers scans the Reels tab.",
+      text: keptScanAvailable ? "Your last scan of this profile is kept. Open the Reels tab to see it." : "Outliers scans the Reels tab.",
       actionLabel: "Open Reels tab",
       onAction: openReelsTab,
     };
+  }
+  if (info.followers === 0 && selectedFilterMode === "ratio5x") {
+    return { text: "This profile has no followers, so 5× is off. Min Views and All still work." };
   }
   if (info.followers === null && selectedFilterMode === "ratio5x") {
     return waitedLong
@@ -2655,9 +2654,22 @@ function updateRunAvailability(): void {
 chrome.runtime.onMessage.addListener(function (
   msg: OutliersMessage,
   sender: chrome.runtime.MessageSender,
-  _sendResponse: (response?: unknown) => void
-): undefined {
+  sendResponse: (response?: unknown) => void
+): true | undefined {
   if (cachedTabId != null && sender.tab?.id !== cachedTabId) return;
+
+  if (msg.type === "outliers:save") {
+    // Save or remove from the viewer bar over Instagram's or TikTok's own viewer. Only the panel
+    // of the tab it came from answers, even before that panel has finished binding.
+    const ownTab = cachedTabId ?? panelTabId();
+    if (ownTab == null || sender.tab?.id !== ownTab || !msg.entry?.url) return;
+    (msg.save ? saveReelFromResult(msg.entry) : unsaveReel(msg.entry.url)).then(function () {
+      sendResponse({ ok: true });
+    }).catch(function () {
+      sendResponse({ ok: false });
+    });
+    return true;
+  }
 
   if (msg.type === "outliers:state") {
     statePushes++;
@@ -2697,6 +2709,7 @@ async function handleNavigation(details: { tabId: number; url: string }, generat
 
   lastKnownProfile = newProfile;
   lastKnownProfileRef = newRef;
+  keptScanAvailable = false;
   cancelViewPush();
 
   await retireScanInPage(details.tabId);
@@ -2716,6 +2729,86 @@ async function handleNavigation(details: { tabId: number; url: string }, generat
   // The navigation poll rehydrates on its next tick, once the new profile has rendered.
 }
 
+// ── Kept scans ───────────────────────────────────────────────────────────
+// A finished scan is kept in chrome.storage.session (memory only, for this browser session) per
+// tab and profile when the tab moves to another profile, so coming back brings it back.
+let keptScanAvailable = false;
+
+async function keepScanSnapshot(tabId: number, kept: ScanSnapshot | null): Promise<void> {
+  if (!kept || !kept.handle || !Array.isArray(kept.videos) || kept.videos.length === 0) return;
+  try {
+    await keepScan(tabId, kept);
+  } catch {
+    // Non-fatal: the scan just isn't kept.
+  }
+}
+
+async function readScanSnapshot(tabId: number, ref: ProfileRef): Promise<ScanSnapshot | null> {
+  const key = scanSnapshotKey(tabId, ref.platform, ref.handle);
+  try {
+    const result = await chrome.storage.session.get(key);
+    const kept = result[key] as ScanSnapshot | undefined;
+    return kept && Array.isArray(kept.videos) && kept.videos.length > 0 ? kept : null;
+  } catch {
+    return null;
+  }
+}
+
+async function forgetScanSnapshot(tabId: number, ref: ProfileRef): Promise<void> {
+  keptScanAvailable = false;
+  try {
+    await chrome.storage.session.remove(scanSnapshotKey(tabId, ref.platform, ref.handle));
+  } catch {
+    // Non-fatal
+  }
+}
+
+// Rebuilds a kept scan on the page with the panel's current Show/Sort; no scrolling.
+async function restoreScan(
+  tabId: number,
+  kept: ScanSnapshot,
+  info: ProfileInfo,
+  documentId: string | undefined
+): Promise<void> {
+  keptScanAvailable = false;
+  // Owned like a Run startup: Run stays off meanwhile, Show/Sort edits land in startup.view, and
+  // every injection goes to the document whose profile was just read.
+  const generation = bindGeneration;
+  const epoch = documentEpoch;
+  const startup: ScanStartup = { tabId, view: currentView() };
+  startingScans.set(tabId, startup);
+  updateRunAvailability();
+  const moved = function (): boolean {
+    return !isStillBound(tabId, generation) || epoch !== documentEpoch;
+  };
+  const target = documentId ? { tabId, documentIds: [documentId] } : { tabId };
+  try {
+    await chrome.scripting.executeScript({ target, world: "MAIN", files: ["page-bridge.js"] });
+    if (moved()) return;
+    await chrome.scripting.executeScript({
+      target,
+      func: (function (s: ScanSnapshot, v: ViewSettings, p: { handle: string; followers: number | null }) {
+        window.__outliers_scan_limit = s.scanLimit;
+        window.__outliers_view = v;
+        window.__outliers_profile = p;
+        window.__outliers_restore = s;
+      }) as unknown as () => void,
+      args: [kept, startup.view, { handle: info.handle, followers: info.followers ?? kept.followers }],
+    });
+    if (moved()) return;
+    await chrome.scripting.executeScript({ target, files: ["injected.js"] });
+    if (moved()) return;
+    statusEl.textContent = "Brought back your scan from " + new Date(kept.savedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + ". Reset to scan again.";
+    statusEl.className = "status-msg";
+  } catch {
+    // The page moved on (Chrome refuses a document that's gone); the poll reads it again.
+    if (!moved()) profileReady = false;
+  } finally {
+    if (startingScans.get(tabId) === startup) startingScans.delete(tabId);
+    if (isStillBound(tabId, generation)) updateRunAvailability();
+  }
+}
+
 // Drops the page's scan (its reset reloads the page) so it can't be restored onto another profile.
 // A scan whose profile the page shows again (or a video viewer over it) is kept: the tab may be
 // back on that profile by the time this runs. With `onlyIf`, the reset goes to the document
@@ -2725,17 +2818,18 @@ async function retireScanInPage(
   onlyIf?: { documentId: string | undefined; staleHandle: string }
 ): Promise<void> {
   try {
-    await chrome.scripting.executeScript({
+    const result = await chrome.scripting.executeScript({
       target: onlyIf?.documentId ? { tabId, documentIds: [onlyIf.documentId] } : { tabId },
       args: [onlyIf ? onlyIf.staleHandle : null],
       func: (function (staleHandle: string | null) {
         const w = window as unknown as {
           __outliers_reset?: () => void;
+          __outliers_snapshot?: () => unknown;
           __outliers_state?: { profileHandle?: string | null };
           __outliers_active?: boolean;
         };
         const scanned = String(w.__outliers_state?.profileHandle ?? "").toLowerCase();
-        if (staleHandle !== null && scanned !== staleHandle.toLowerCase()) return;
+        if (staleHandle !== null && scanned !== staleHandle.toLowerCase()) return null;
         if (scanned) {
           let first = window.location.pathname.split("/")[1] ?? "";
           try {
@@ -2744,13 +2838,22 @@ async function retireScanInPage(
             // Keep the raw segment
           }
           first = first.toLowerCase();
-          if (/^(reel|reels|p|tv)$/.test(first) || first.replace(/^@/, "") === scanned) return;
+          if (/^(reel|reels|p|tv)$/.test(first) || first.replace(/^@/, "") === scanned) return null;
+        }
+        // Hand the finished scan back first, so returning to its profile can bring it back.
+        let kept: unknown = null;
+        try {
+          kept = typeof w.__outliers_snapshot === "function" ? w.__outliers_snapshot() : null;
+        } catch {
+          kept = null;
         }
         if (typeof w.__outliers_reset === "function") w.__outliers_reset();
         w.__outliers_state = undefined;
         w.__outliers_active = false;
-      }) as unknown as () => void,
+        return kept;
+      }) as unknown as () => unknown,
     });
+    await keepScanSnapshot(tabId, (result?.[0]?.result as ScanSnapshot | null | undefined) ?? null);
   } catch {
     // Non-fatal: the document is gone, so there is nothing left to retire.
   }
@@ -3073,9 +3176,7 @@ runBtn.addEventListener("click", async function () {
       return bound() && epoch !== documentEpoch;
     };
 
-    saveFilterMode(view.filterMode);
     if (view.filterMode === "minViews") saveMinViews(view.minViews);
-    saveSort(selectedSortKey, selectedSortDir);
 
     statusEl.textContent = "Starting scan…";
 
@@ -3163,8 +3264,13 @@ runBtn.addEventListener("click", async function () {
       return;
     }
 
-    setButtonsForScanning();
-    statusEl.textContent = "";
+    // A scanner that starts sets its state before injection returns, so none means it never
+    // ran: injected.ts skipped init because an earlier scanner on this page still holds the
+    // guard. Say so instead of showing a Stop button for a scan that isn't happening.
+    console.warn("[outliers] the scanner did not start on this page");
+    statusEl.textContent = "Outliers couldn't start a scan on this page. Reload the page, then run the scan again.";
+    statusEl.className = "status-msg error";
+    setButtonsForIdle();
   } catch (err: unknown) {
     if (!showsTab()) return;
     const message = err instanceof Error ? err.message : "Something went wrong.";
@@ -3210,6 +3316,9 @@ resetBtn.addEventListener("click", async function () {
 
   try {
     if (tabId != null) {
+      // Reset means start over: the kept copy of this scan goes too.
+      const ref = lastKnownProfileRef;
+      if (ref) await forgetScanSnapshot(tabId, ref);
       await chrome.scripting.executeScript({
         target: { tabId },
         func: function () {
@@ -3251,7 +3360,6 @@ for (let i = 0; i < filterModeBtns.length; i++) {
       syncMinViewsUI(DEFAULT_MIN_VIEWS);
       saveMinViews(DEFAULT_MIN_VIEWS);
     }
-    saveFilterMode(mode);
     setFilterControlsDisabled(false);
     onViewChanged();
   });
@@ -3411,14 +3519,12 @@ sortKeySelect.addEventListener("change", function () {
   const key = sortKeySelect.value;
   if (!isSortKey(key)) return;
   selectedSortKey = key;
-  saveSort(selectedSortKey, selectedSortDir);
   syncSortUI();
   onViewChanged();
 });
 
 sortDirBtn.addEventListener("click", function () {
   selectedSortDir = selectedSortDir === "desc" ? "asc" : "desc";
-  saveSort(selectedSortKey, selectedSortDir);
   syncSortUI();
   onViewChanged();
 });
@@ -3431,11 +3537,13 @@ async function init(): Promise<void> {
   closeShareModal();
   switchPanelView("outliers");
   syncScanLimitUI(loadScanLimit());
-  syncFilterModeUI(loadFilterMode());
+  // Every open starts on 5× Outliers, Views, highest first, and a scan still on the page is
+  // refiltered to match (see openingViewPending). Picks made while the panel is open stick.
+  forgetSavedView();
+  syncFilterModeUI(DEFAULT_VIEW.filterMode);
   syncMinViewsUI(loadMinViews());
-  const sort = loadSort();
-  selectedSortKey = sort.key;
-  selectedSortDir = sort.dir;
+  selectedSortKey = DEFAULT_VIEW.sortKey;
+  selectedSortDir = DEFAULT_VIEW.sortDir;
   syncSortUI();
   setFilterControlsDisabled(false);
   await refreshTikTokAccess();

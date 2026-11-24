@@ -3,6 +3,7 @@ import { readProfileInfo } from "./shared/read-profile";
 import { buildEmptyStateCopy } from "./shared/empty-state-copy";
 import { requestOpenVideo, requestPageMetrics } from "./shared/bridge";
 import { videoNoun } from "./shared/platform";
+import { SAVED_REELS_KEY } from "./shared/storage-keys";
 import {
   DEFAULT_VIEW,
   formatCount,
@@ -18,7 +19,7 @@ import {
   sortLabel,
   viewsMultiple,
 } from "./shared/videos";
-import type { OutliersEntry, OutliersState, Platform, ViewSettings } from "./types/state";
+import type { OutliersEntry, OutliersState, Platform, ScanSnapshot, ViewSettings } from "./types/state";
 
 /** What one grid tile shows. Counts are null when the tile doesn't show them. */
 interface TileRead {
@@ -66,6 +67,11 @@ function init(): void {
   let _viewerList: OutliersEntry[] = [];
   let _viewerIndex = 0;
   let _viewerTimer: number | null = null;
+  // Library URLs, kept in step with storage, so the viewer bar shows Save or Saved.
+  const _savedUrls = new Set<string>();
+  let _saveBusy = false;
+  // A failed Save keeps its message up for a moment on the video it was for.
+  let _saveError: { url: string; until: number; text: string } | null = null;
   // The one video the viewer was last asked to show, until it shows it.
   let _viewerPending: { id: string; timer: number; onPopState: () => void } | null = null;
 
@@ -595,7 +601,17 @@ function init(): void {
       // Opaque when off too, so Instagram's own arrow never shows through.
       NAV + " .outliers-nav-arrow.is-off { background: #d9c7e6; color: #9a86ad; cursor: default; box-shadow: none; }",
       NAV + " .outliers-nav-arrow svg { width: 24px; height: 24px; }",
-      NAV + " .outliers-nav-count { position: fixed; top: 16px; left: 16px; z-index: 2147483646; padding: 6px 12px; border-radius: 999px; background: #f99b21; color: #2b1943; font-size: 14px; font-weight: 800; pointer-events: none; }",
+      NAV + " .outliers-nav-bar { position: fixed; top: 16px; left: 16px; z-index: 2147483646; max-width: calc(100vw - 112px); display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; padding: 6px 6px 6px 12px; border-radius: 999px; background: #f99b21; color: #2b1943; font-size: 14px; font-weight: 800; box-shadow: 0 6px 18px rgba(0,0,0,0.3); }",
+      NAV + " .outliers-nav-count { white-space: nowrap; }",
+      NAV + " .outliers-nav-stats { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; font-size: 13px; }",
+      NAV + " .outliers-nav-stat { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }",
+      NAV + " .outliers-nav-stat svg { width: 13px; height: 13px; flex: 0 0 auto; }",
+      NAV + " .outliers-nav-stat.multiple { padding: 1px 7px; border-radius: 999px; background: #2b1943; color: #f99b21; }",
+      NAV + " .outliers-nav-save { margin: 0; padding: 5px 14px; border: 2px solid #2b1943; border-radius: 999px; background: #fff; color: #2b1943; font-size: 13px; font-weight: 800; cursor: pointer; white-space: nowrap; }",
+      NAV + " .outliers-nav-save:hover { background: #fff3e0; }",
+      NAV + " .outliers-nav-save.is-saved { background: #950acc; border-color: #950acc; color: #fff; }",
+      NAV + " .outliers-nav-save:focus-visible { outline: 3px solid #950acc; outline-offset: 2px; }",
+      NAV + " .outliers-nav-save:disabled { cursor: progress; opacity: 0.7; }",
       ...adapter.pageCss,
     ].join("\n");
     document.head.appendChild(style);
@@ -724,6 +740,12 @@ function init(): void {
     return span;
   }
 
+  function countKeys(): Array<"views" | "likes" | "comments" | "shares" | "saves"> {
+    return adapter.platform === "tiktok"
+      ? ["views", "likes", "comments", "shares", "saves"]
+      : ["views", "likes", "comments"];
+  }
+
   function buildCard(entry: OutliersEntry, rank: number, f: number | null, sortKey: ViewSettings["sortKey"]): HTMLElement {
     const card = document.createElement("a");
     card.className = "outliers-card";
@@ -751,8 +773,9 @@ function init(): void {
     card.appendChild(rankEl);
 
     // The badge marks videos that out-reached the follower count; smaller multiples stay in the panel.
+    // Sorted by the multiple, the headline already says it.
     const multiple = viewsMultiple(entry, f);
-    if (multiple !== null && multiple >= 1) {
+    if (multiple !== null && multiple >= 1 && sortKey !== "multiple") {
       const multEl = document.createElement("span");
       multEl.className = "outliers-card-multiple";
       multEl.textContent = formatMultiple(multiple);
@@ -767,14 +790,11 @@ function init(): void {
     primary.textContent = formatMetricPhrase(sortKey, metricValue(entry, sortKey, f), entry.likesHidden);
     info.appendChild(primary);
 
+    // The other counts; the one it's sorted by is the headline, so it isn't repeated here.
     const stats = document.createElement("div");
     stats.className = "outliers-card-stats";
-    stats.appendChild(statEl("views", entry.views, sortKey === "views"));
-    stats.appendChild(statEl("likes", entry.likes, sortKey === "likes"));
-    stats.appendChild(statEl("comments", entry.comments, sortKey === "comments"));
-    if (adapter.platform === "tiktok") {
-      stats.appendChild(statEl("shares", entry.shares, sortKey === "shares"));
-      stats.appendChild(statEl("saves", entry.saves, sortKey === "saves"));
+    for (const key of countKeys()) {
+      if (key !== sortKey) stats.appendChild(statEl(key, entry[key], false));
     }
     info.appendChild(stats);
     card.appendChild(info);
@@ -890,11 +910,9 @@ function init(): void {
     ensureAppStyle();
     const nav = document.createElement("div");
     nav.id = VIEWER_NAV_ID;
-    const count = document.createElement("div");
-    count.className = "outliers-nav-count";
     nav.appendChild(viewerArrow(-1));
     nav.appendChild(viewerArrow(1));
-    nav.appendChild(count);
+    nav.appendChild(viewerBar());
     // The viewer may close on clicks outside it: these never reach it, and leave its focus alone.
     ["pointerdown", "mousedown", "click"].forEach(function (type) {
       nav.addEventListener(type, function (ev) {
@@ -951,7 +969,143 @@ function init(): void {
     next.classList.toggle("is-off", atEnd);
     next.setAttribute("aria-disabled", String(atEnd));
     (nav.querySelector(".outliers-nav-count") as HTMLElement).textContent = "Outliers · #" + (_viewerIndex + 1) + " of " + total;
+    renderViewerBar(nav);
     coverNativeArrows(prev, next);
+  }
+
+  // The bar over the viewer: where this video ranks, every count Outliers has for it, and Save.
+  function viewerBar(): HTMLElement {
+    const bar = document.createElement("div");
+    bar.className = "outliers-nav-bar";
+    const count = document.createElement("span");
+    count.className = "outliers-nav-count";
+    const stats = document.createElement("span");
+    stats.className = "outliers-nav-stats";
+    const save = document.createElement("button");
+    save.type = "button";
+    save.className = "outliers-nav-save";
+    save.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      toggleViewerSave(save);
+    });
+    bar.appendChild(count);
+    bar.appendChild(stats);
+    bar.appendChild(save);
+    return bar;
+  }
+
+  function renderViewerBar(nav: HTMLElement): void {
+    const entry = _viewerList[_viewerIndex];
+    const stats = nav.querySelector(".outliers-nav-stats") as HTMLElement | null;
+    const save = nav.querySelector(".outliers-nav-save") as HTMLButtonElement | null;
+    if (!entry || !stats || !save) return;
+    // Rebuilt only when what it shows changes; the sync timer calls this five times a second.
+    const multiple = viewsMultiple(entry, followers);
+    const shown = entry.url + "|" + countKeys().map(function (key) {
+      return String(entry[key] ?? "");
+    }).join(",") + "|" + String(multiple);
+    if (stats.getAttribute("data-shown") !== shown) {
+      stats.setAttribute("data-shown", shown);
+      stats.replaceChildren();
+      for (const key of countKeys()) {
+        const stat = statEl(key, entry[key], false);
+        stat.className = "outliers-nav-stat";
+        stats.appendChild(stat);
+      }
+      if (multiple !== null) {
+        const chip = document.createElement("span");
+        chip.className = "outliers-nav-stat multiple";
+        chip.textContent = formatMultiple(multiple);
+        chip.title = "Views ÷ followers";
+        stats.appendChild(chip);
+      }
+    }
+    if (_saveBusy) return;
+    // Mid-step the bar already counts the next video, which isn't showing yet: hold Save until it is.
+    save.disabled = _viewerPending !== null;
+    if (_saveError && _saveError.url === entry.url && Date.now() < _saveError.until) {
+      save.textContent = _saveError.text;
+      save.classList.remove("is-saved");
+      return;
+    }
+    _saveError = null;
+    const saved = _savedUrls.has(entry.url);
+    save.textContent = saved ? "Saved ✓" : "Save";
+    save.title = saved ? "In your Library. Click to remove it." : "Save to your Outliers Library";
+    save.setAttribute("aria-pressed", String(saved));
+    save.classList.toggle("is-saved", saved);
+  }
+
+  // The side panel owns the Library, so Save goes through it; with the panel closed there is
+  // nobody to answer, and the button says so.
+  function toggleViewerSave(button: HTMLButtonElement): void {
+    const shownId = shownVideoId();
+    const entry = shownId === null ? undefined : _viewerList[listIndexOf(shownId)];
+    if (!entry || _saveBusy || _viewerPending !== null) return;
+    const save = !_savedUrls.has(entry.url);
+    _saveBusy = true;
+    button.disabled = true;
+    // After an extension reload this script is cut off from the extension; only a page reload helps.
+    const cutOff = function (): boolean {
+      try {
+        return !chrome.runtime?.id;
+      } catch {
+        return true;
+      }
+    };
+    const done = function (ok: boolean): void {
+      _saveBusy = false;
+      button.disabled = false;
+      if (ok) {
+        if (save) _savedUrls.add(entry.url);
+        else _savedUrls.delete(entry.url);
+      } else {
+        _saveError = {
+          url: entry.url,
+          until: Date.now() + 4000,
+          text: cutOff() ? "Reload the page to save" : "Open the Outliers panel to save",
+        };
+      }
+      const nav = document.getElementById(VIEWER_NAV_ID);
+      if (nav) renderViewerBar(nav);
+    };
+    try {
+      chrome.runtime.sendMessage({ type: "outliers:save", entry, save }).then(function (reply: unknown) {
+        done(!!(reply as { ok?: boolean } | undefined)?.ok);
+      }).catch(function () {
+        done(false);
+      });
+    } catch {
+      done(false);
+    }
+  }
+
+  function readSavedUrls(list: unknown): void {
+    _savedUrls.clear();
+    if (!Array.isArray(list)) return;
+    for (const row of list) {
+      const url = (row as { url?: unknown } | null)?.url;
+      if (typeof url === "string") _savedUrls.add(url);
+    }
+  }
+
+  function watchLibrary(): void {
+    try {
+      chrome.storage.local.get(SAVED_REELS_KEY).then(function (result) {
+        readSavedUrls(result[SAVED_REELS_KEY]);
+      }).catch(function () {
+        // Non-fatal: the bar starts on Save.
+      });
+      chrome.storage.onChanged.addListener(function (changes, area) {
+        const change = changes[SAVED_REELS_KEY];
+        if (area !== "local" || !change) return;
+        readSavedUrls(change.newValue);
+        const nav = document.getElementById(VIEWER_NAV_ID);
+        if (nav && !_saveBusy) renderViewerBar(nav);
+      });
+    } catch {
+      // The extension was reloaded under this page; Save then reports the panel is needed.
+    }
   }
 
   // The platform's own arrows sit at the viewer's left and right edges; ours go on top of them.
@@ -1104,6 +1258,7 @@ function init(): void {
     hideInteractionLock();
     runCtx.isDone = true;
     updateState(state);
+    keepFinishedScan();
   }
 
   function finalizeFromCurrentMap(myGen: number): void {
@@ -1126,6 +1281,7 @@ function init(): void {
 
   function autoScrollAndRun(): void {
     _runGeneration++;
+    _scannedAt = Date.now();
     const myGen = _runGeneration;
 
     resetRunContext();
@@ -1219,6 +1375,67 @@ function init(): void {
 
   window.__outliers_apply_view = applyView;
 
+  // When the scan was made; a restored scan keeps its original time.
+  let _scannedAt = Date.now();
+
+  function snapshot(): ScanSnapshot | null {
+    if (!runCtx.isDone || !PROFILE_HANDLE || runCtx.videoMap.size === 0) return null;
+    return {
+      platform: adapter.platform,
+      handle: PROFILE_HANDLE,
+      // Only the count this scan already holds: by now the page may show another profile.
+      followers,
+      scanLimit: SCAN_LIMIT,
+      videos: Array.from(runCtx.videoMap.values()),
+      savedAt: _scannedAt,
+    };
+  }
+
+  // Kept as soon as the scan finishes, so a reload or full navigation can't lose it even with
+  // the panel closed. The background stores it for this tab.
+  function keepFinishedScan(): void {
+    const kept = snapshot();
+    if (!kept) return;
+    try {
+      chrome.runtime.sendMessage({ type: "outliers:keep-scan", snapshot: kept }).catch(function () {
+        // Non-fatal: the panel still keeps it when the tab leaves the profile.
+      });
+    } catch {
+      // Cut off from the extension (it was reloaded); nothing to keep it in.
+    }
+  }
+
+  window.__outliers_snapshot = snapshot;
+
+  // Back on a profile scanned earlier in this tab: show that scan again without scrolling.
+  function restore(saved: ScanSnapshot): void {
+    _runGeneration++;
+    resetRunContext();
+    _scannedAt = typeof saved.savedAt === "number" ? saved.savedAt : Date.now();
+    for (const video of saved.videos) {
+      if (video?.id) runCtx.videoMap.set(video.id, video);
+    }
+    if (followers === null) followers = positiveOrNull(saved.followers);
+    ensureAppStyle();
+    // The profile header can be up before the platform's own grid; render once the grid is there
+    // so it's hidden under ours instead of showing beside it. Give up waiting after 3 s.
+    const myGen = _runGeneration;
+    const waitUntil = Date.now() + 3000;
+    // Tell the panel right away, so it shows the scan coming back rather than offering Run.
+    updateState(buildState("scanning", "analyzing"));
+    const renderWhenGridIsUp = function (): void {
+      if (myGen !== _runGeneration) return;
+      if (!adapter.findGridHost() && Date.now() < waitUntil) {
+        _scrollTimer = window.setTimeout(renderWhenGridIsUp, 150);
+        return;
+      }
+      _scrollTimer = null;
+      analyze(myGen);
+    };
+    renderWhenGridIsUp();
+  }
+  watchLibrary();
+
   function run(): void {
     const onScanPage = adapter.isScanPage();
     console.log("[outliers] run() — URL:", window.location.href, "scan page:", onScanPage);
@@ -1231,6 +1448,13 @@ function init(): void {
     // this isn't the scan the user asked for.
     if (seeded && seeded.handle !== PROFILE_HANDLE) {
       reportError("The page changed. Wait for the profile to load, then run the scan again.");
+      return;
+    }
+
+    const saved = window.__outliers_restore;
+    window.__outliers_restore = undefined;
+    if (saved && saved.platform === adapter.platform && saved.handle === PROFILE_HANDLE && saved.videos?.length) {
+      restore(saved);
       return;
     }
 
