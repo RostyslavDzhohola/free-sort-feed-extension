@@ -1,6 +1,8 @@
-// Background service worker — opens the side panel for the tab whose toolbar icon was clicked.
+// Background service worker — opens the side panel for the tab whose toolbar icon was clicked,
+// and closes it on the next click.
 // The panel belongs to that tab: Chrome hides it on other tabs and shows it again on return.
 import { startHotReload } from "./hot-reload";
+import { CLOSE_PANEL_MESSAGE, panelPortTabId } from "./shared/panel-port";
 import { SCAN_SNAPSHOT_PREFIX, keepScan } from "./shared/storage-keys";
 import type { OutliersMessage } from "./types/state";
 
@@ -11,8 +13,46 @@ chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(funct
   console.warn("[outliers] could not set the side panel behavior:", err);
 });
 
+// Open panels by tab. Each panel connects on load and reconnects when this worker restarts
+// (connectToBackground in sidepanel.ts), so the map is current by the time the icon is clicked.
+const openPanels = new Map<number, chrome.runtime.Port>();
+
+chrome.runtime.onConnect.addListener(function (port) {
+  const tabId = panelPortTabId(port.name);
+  if (tabId == null || !port.sender?.url?.startsWith(chrome.runtime.getURL("sidepanel.html"))) return;
+  openPanels.set(tabId, port);
+  port.onDisconnect.addListener(function () {
+    if (openPanels.get(tabId) === port) openPanels.delete(tabId);
+  });
+});
+
+function closePanel(tabId: number, port: chrome.runtime.Port): void {
+  const askPanel = function (): void {
+    try {
+      port.postMessage({ type: CLOSE_PANEL_MESSAGE });
+    } catch {
+      // The panel went away in the meantime.
+    }
+  };
+  // sidePanel.close() is Chrome 141+; older Chrome gets the panel to close itself.
+  if (typeof chrome.sidePanel.close !== "function") {
+    askPanel();
+    return;
+  }
+  chrome.sidePanel.close({ tabId }).catch(function (err) {
+    console.warn("[outliers] could not close the side panel:", err);
+    askPanel();
+  });
+}
+
 chrome.action.onClicked.addListener(function (tab) {
   if (tab.id == null) return;
+  // A second click on the icon closes this tab's panel, like a toggle.
+  const panel = openPanels.get(tab.id);
+  if (panel) {
+    closePanel(tab.id, panel);
+    return;
+  }
   // Not awaited: open() must run inside the click's user gesture, and Chrome applies the two in order.
   chrome.sidePanel.setOptions({ tabId: tab.id, path: "sidepanel.html?tab=" + tab.id, enabled: true }).catch(function (err) {
     console.warn("[outliers] could not set up the side panel:", err);
