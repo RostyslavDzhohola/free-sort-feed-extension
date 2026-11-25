@@ -1,5 +1,6 @@
 import { startHotReload } from "./hot-reload";
 import { SAVED_REELS_KEY, keepScan, scanSnapshotKey } from "./shared/storage-keys";
+import { CLOSE_PANEL_MESSAGE, panelPortName } from "./shared/panel-port";
 import { buildOutliersCsv, buildSavedCsv } from "./shared/export-csv";
 import { buildEmptyStateCopy } from "./shared/empty-state-copy";
 import { readProfileInfo, type ProfileInfo } from "./shared/read-profile";
@@ -197,6 +198,8 @@ const REVIEW_URL = "https://chromewebstore.google.com/detail/outliers/heogkfpbea
 const REVIEW_PROMPT_MIN_OUTLIERS = 1;
 // On a later panel open, wait a moment so the ask doesn't land on top of loading.
 const REVIEW_PROMPT_OPEN_DELAY_MS = 1_500;
+// Wait before reconnecting the panel port, so a failing connect can't spin.
+const PANEL_RECONNECT_MS = 500;
 // After this long without a follower count on a profile, stop showing the spinner and explain.
 const PROFILE_WAIT_HINT_MS = 8_000;
 
@@ -3609,7 +3612,9 @@ async function init(): Promise<void> {
   });
   window.addEventListener("beforeunload", stopNavigationPolling);
 
-  const tabId = panelTabId() ?? (await getActiveTabId());
+  const ownTab = panelTabId();
+  if (ownTab != null) connectToBackground(ownTab);
+  const tabId = ownTab ?? (await getActiveTabId());
   if (!tabId) {
     showNotice("Open an Instagram or TikTok profile to scan its videos.");
     return;
@@ -3623,6 +3628,27 @@ function panelTabId(): number | null {
   const raw = new URLSearchParams(window.location.search).get("tab");
   const id = raw ? Number(raw) : NaN;
   return Number.isInteger(id) && id >= 0 ? id : null;
+}
+
+// Tells background.ts this tab's panel is open, so a second click on the toolbar icon closes it.
+// Chrome stops an idle service worker after about 30 s, which drops the port; reconnecting starts
+// the worker again, so it always knows which panels are open.
+function connectToBackground(tabId: number): void {
+  if (!chrome.runtime?.id) return; // The extension was reloaded or removed; this panel is orphaned.
+  let port: chrome.runtime.Port;
+  try {
+    port = chrome.runtime.connect(chrome.runtime.id, { name: panelPortName(tabId) });
+  } catch {
+    return;
+  }
+  port.onMessage.addListener(function (msg: { type?: string } | undefined) {
+    if (msg?.type === CLOSE_PANEL_MESSAGE) window.close();
+  });
+  port.onDisconnect.addListener(function () {
+    setTimeout(function () {
+      connectToBackground(tabId);
+    }, PANEL_RECONNECT_MS);
+  });
 }
 
 async function bindToTab(tabId: number): Promise<void> {
